@@ -580,12 +580,14 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
       .domain([0, d3.max(allVals) ?? 5])
       .range([290, 40]);
 
+    // drawBox returns fence values so drawOutliers can reuse them (no duplicate computation)
+    // drawBox 返回须线边界值，供 drawOutliers 复用，避免重复计算
     const drawBox = (
       g: d3.Selection<SVGGElement, unknown, null, undefined>,
       vals: number[],
       cx: number,
       color: string,
-    ) => {
+    ): { lower: number; upper: number } => {
       const sorted = [...vals].sort((a, b) => a - b);
       const q1 = d3.quantile(sorted, 0.25) ?? 0;
       const median = d3.quantile(sorted, 0.5) ?? 0;
@@ -614,28 +616,25 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
           .attr("y1", y1!).attr("y2", y2!)
           .attr("stroke", color).attr("stroke-width", 1.5).attr("stroke-dasharray", "3,2");
       }
+
+      return { lower, upper };
     };
 
     const g = svg.append("g");
 
-    // Helper to draw individual outlier points beyond whiskers
-    // 绘制超出须线的离群点
+    // Draw outlier points beyond whiskers using fence values from drawBox (no recomputation)
+    // 使用 drawBox 返回的边界值绘制离群点，无需重复计算
     const drawOutliers = (
       g2: d3.Selection<SVGGElement, unknown, null, undefined>,
       vals: number[], cx: number, color: string,
+      lower: number, upper: number,
     ) => {
-      const sorted = [...vals].sort((a, b) => a - b);
-      const q1 = d3.quantile(sorted, 0.25) ?? 0;
-      const q3 = d3.quantile(sorted, 0.75) ?? 0;
-      const iqr = q3 - q1;
-      const lower = q1 - 1.5 * iqr;
-      const upper = q3 + 1.5 * iqr;
-      const outliers = sorted.filter((v) => v < lower || v > upper);
+      const outliers = vals.filter((v) => v < lower || v > upper);
       g2.selectAll(`.out${cx}`)
         .data(outliers)
         .join("circle")
         .attr("class", `out${cx}`)
-        .attr("cx", (_, i) => cx + ((i % 3) - 1) * 3)  // minor jitter
+        .attr("cx", (_, i) => cx + ((i % 3) - 1) * 3)
         .attr("cy", (v) => yScale(v))
         .attr("r", 2.5)
         .attr("fill", "none")
@@ -645,18 +644,22 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
 
     // Draw boxes and outliers for Shannon (left) and Simpson (right)
     // 绘制Shannon（左）和Simpson（右）的箱线图及离群点
-    drawBox(g, group_a.shannon, 110, "var(--secondary)");
-    drawOutliers(g, group_a.shannon, 110, "var(--secondary)");
-    drawBox(g, group_b.shannon, 220, "var(--primary)");
-    drawOutliers(g, group_b.shannon, 220, "var(--primary)");
-    drawBox(g, group_a.simpson, 380, "var(--secondary)");
-    drawOutliers(g, group_a.simpson, 380, "var(--secondary)");
-    drawBox(g, group_b.simpson, 490, "var(--primary)");
-    drawOutliers(g, group_b.simpson, 490, "var(--primary)");
+    const fA_sh = drawBox(g, group_a.shannon, 110, "var(--secondary)");
+    drawOutliers(g, group_a.shannon, 110, "var(--secondary)", fA_sh.lower, fA_sh.upper);
+    const fB_sh = drawBox(g, group_b.shannon, 220, "var(--primary)");
+    drawOutliers(g, group_b.shannon, 220, "var(--primary)", fB_sh.lower, fB_sh.upper);
+    const fA_si = drawBox(g, group_a.simpson, 380, "var(--secondary)");
+    drawOutliers(g, group_a.simpson, 380, "var(--secondary)", fA_si.lower, fA_si.upper);
+    const fB_si = drawBox(g, group_b.simpson, 490, "var(--primary)");
+    drawOutliers(g, group_b.simpson, 490, "var(--primary)", fB_si.lower, fB_si.upper);
 
-    // Y axis / Y轴
+    // Y axis with label / Y轴及标签
     svg.append("g").attr("transform", "translate(40,0)")
       .call(d3.axisLeft(yScale).ticks(5)).attr("font-size", 11);
+    svg.append("text")
+      .attr("transform", "translate(12,165) rotate(-90)")
+      .attr("text-anchor", "middle").attr("fill", "currentColor")
+      .attr("font-size", 11).text("Diversity Index");
 
     // Panel titles / 面板标题
     svg.append("text").attr("x", 165).attr("y", 25)

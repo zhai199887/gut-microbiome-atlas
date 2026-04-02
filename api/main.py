@@ -3,6 +3,7 @@ main.py – Gut Microbiome Atlas FastAPI backend
 主后端：差异分析、筛选选项、数据统计 API
 """
 
+import logging
 import os
 import json
 import math
@@ -20,37 +21,28 @@ from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from scipy import stats
+from scipy.spatial.distance import cdist
 from dotenv import load_dotenv
+
+# Configure logging / 配置日志
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # ── Load environment variables / 加载环境变量 ─────────────────────────────────
 load_dotenv(Path(__file__).parent.parent / ".env.local", override=True)
 load_dotenv(Path(__file__).parent.parent / ".env", override=False)
 
-def _require_env(key: str) -> str:
-    """Fail fast if a required environment variable is missing. / 缺少必要环境变量时立即报错"""
-    val = os.environ.get(key)
-    if not val:
-        raise RuntimeError(
-            f"Required environment variable '{key}' is not set. "
-            f"Please set it in .env.local before starting the server."
-        )
-    return val
-
 METADATA_PATH = os.getenv("METADATA_PATH", "")  # set via .env.local
 ABUNDANCE_PATH = os.getenv("ABUNDANCE_PATH", "")  # set via .env.local
 ADMIN_TOKEN    = os.getenv("ADMIN_TOKEN", "")
 
-# Validate at import time so errors surface immediately
-# 在导入时校验，让错误立即暴露
+# Validate at startup — use logging so warnings are never silently swallowed
+# 启动时校验：使用 logging 确保警告不会被静默丢弃
 if not METADATA_PATH:
-    import warnings
-    warnings.warn("METADATA_PATH not set — data endpoints will fail. Set it in .env.local")
+    logging.warning("METADATA_PATH not set — data endpoints will fail. Set it in .env.local")
 if not ABUNDANCE_PATH:
-    import warnings
-    warnings.warn("ABUNDANCE_PATH not set — diff-analysis endpoints will fail. Set it in .env.local")
+    logging.warning("ABUNDANCE_PATH not set — diff-analysis endpoints will fail. Set it in .env.local")
 if not ADMIN_TOKEN:
-    import warnings
-    warnings.warn("ADMIN_TOKEN not set — admin endpoints will reject all requests")
+    logging.warning("ADMIN_TOKEN not set — admin endpoints will reject all requests")
 
 app = FastAPI(
     title="Gut Microbiome Atlas API",
@@ -59,10 +51,18 @@ app = FastAPI(
 )
 
 # CORS: allow all origins in dev, restrict to frontend URL in production
-# 跨域：开发模式允许所有来源，生产模式限制为前端域名
+# 跨域：开发模式允许所有来源，生产模式必须设置 FRONTEND_URL
 _FRONTEND_URL = os.getenv("FRONTEND_URL", "")
 _DEBUG = os.getenv("DEBUG", "true").lower() == "true"
-_ALLOWED_ORIGINS = ["*"] if _DEBUG else ([_FRONTEND_URL] if _FRONTEND_URL else [])
+
+if not _DEBUG and not _FRONTEND_URL:
+    raise RuntimeError(
+        "FRONTEND_URL must be set when DEBUG=false. "
+        "Without it, CORS will block all frontend requests. "
+        "Set FRONTEND_URL in .env.local (e.g. http://localhost:5173)"
+    )
+
+_ALLOWED_ORIGINS = ["*"] if _DEBUG else [_FRONTEND_URL]
 
 app.add_middleware(
     CORSMiddleware,
@@ -229,7 +229,6 @@ def bray_curtis_pcoa(matrix_a: np.ndarray, matrix_b: np.ndarray,
 
     # Bray-Curtis distance via scipy C implementation (much faster than Python loop)
     # 使用scipy的C实现计算Bray-Curtis距离（远比Python循环快）
-    from scipy.spatial.distance import cdist
     bc = cdist(combined, combined, metric="braycurtis")
     bc = np.nan_to_num(bc)  # replace any NaN from all-zero rows
 

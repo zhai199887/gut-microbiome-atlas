@@ -168,6 +168,7 @@ const AgeGroupBarChart = ({
       .sort((a, b) => b.value - a.value);
 
     if (ageData.length === 0) {
+      svg.attr("viewBox", "0 0 480 60");
       svg.append("text").attr("x", 10).attr("y", 30)
         .text("No age-stratified data available")
         .attr("fill", "currentColor").attr("font-size", 12);

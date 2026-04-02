@@ -35,18 +35,23 @@ interface MetabolismMapping {
 
 const MetabolismPage = () => {
   const [mapping, setMapping] = useState<MetabolismMapping | null>(null);
+  const [fetchError, setFetchError] = useState(false);
   const [selected, setSelected] = useState<MetabolismCategory | null>(null);
   const [search, setSearch] = useState("");
   const abundance = useData((s) => s.abundance);
 
   useEffect(() => {
     fetch("/data/metabolism_mapping.json")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data: MetabolismMapping) => {
         setMapping(data);
         setSelected(data.categories[0] ?? null);
       })
       .catch(() => {
+        setFetchError(true);
         setMapping({ version: "error", last_updated: "", categories: [] });
       });
   }, []);
@@ -55,6 +60,21 @@ const MetabolismPage = () => {
     return (
       <div className={classes.page}>
         <div className={classes.loading}>Loading metabolism data…</div>
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className={classes.page}>
+        <div className={classes.header}>
+          <a href="/" className={classes.back}>← Back to Atlas</a>
+          <h1>Metabolic Function Browser</h1>
+        </div>
+        <div className={classes.errorBanner}>
+          Unable to load metabolism data. Please ensure{" "}
+          <code>/public/data/metabolism_mapping.json</code> exists and is valid JSON.
+        </div>
       </div>
     );
   }

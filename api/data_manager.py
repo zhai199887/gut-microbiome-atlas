@@ -14,14 +14,8 @@ from typing import Optional
 import pandas as pd
 
 # ── Paths / 路径配置 ──────────────────────────────────────────────────────────
-METADATA_PATH = os.getenv(
-    "METADATA_PATH",
-    r"D:\483项目\result_with_age_sex_with_age_group_meta.csv",
-)
-ABUNDANCE_PATH = os.getenv(
-    "ABUNDANCE_PATH",
-    r"D:\R代码\unfiltered_abundance.csv",
-)
+METADATA_PATH = os.getenv("METADATA_PATH", "")
+ABUNDANCE_PATH = os.getenv("ABUNDANCE_PATH", "")
 CHANGELOG_PATH = Path(__file__).parent / "data_changelog.json"
 VERSION_PATH   = Path(__file__).parent / "data_version.json"
 
@@ -174,7 +168,7 @@ def get_data_stats() -> dict:
     try:
         meta = pd.read_csv(
             METADATA_PATH, encoding="gbk", on_bad_lines="skip",
-            usecols=["geo_loc_name", "inform-all"] if True else None,
+            usecols=["geo_loc_name", "inform-all"],
             low_memory=False,
         )
         country_count = meta["geo_loc_name"].str.split(":").str[0].nunique() if "geo_loc_name" in meta.columns else 0

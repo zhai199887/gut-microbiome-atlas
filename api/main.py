@@ -26,15 +26,31 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env.local", override=True)
 load_dotenv(Path(__file__).parent.parent / ".env", override=False)
 
-METADATA_PATH = os.getenv(
-    "METADATA_PATH",
-    r"D:\483项目\result_with_age_sex_with_age_group_meta.csv",
-)
-ABUNDANCE_PATH = os.getenv(
-    "ABUNDANCE_PATH",
-    r"D:\R代码\unfiltered_abundance.csv",
-)
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "gut-atlas-admin-2026")
+def _require_env(key: str) -> str:
+    """Fail fast if a required environment variable is missing. / 缺少必要环境变量时立即报错"""
+    val = os.environ.get(key)
+    if not val:
+        raise RuntimeError(
+            f"Required environment variable '{key}' is not set. "
+            f"Please set it in .env.local before starting the server."
+        )
+    return val
+
+METADATA_PATH = os.getenv("METADATA_PATH", "")  # set via .env.local
+ABUNDANCE_PATH = os.getenv("ABUNDANCE_PATH", "")  # set via .env.local
+ADMIN_TOKEN    = os.getenv("ADMIN_TOKEN", "")
+
+# Validate at import time so errors surface immediately
+# 在导入时校验，让错误立即暴露
+if not METADATA_PATH:
+    import warnings
+    warnings.warn("METADATA_PATH not set — data endpoints will fail. Set it in .env.local")
+if not ABUNDANCE_PATH:
+    import warnings
+    warnings.warn("ABUNDANCE_PATH not set — diff-analysis endpoints will fail. Set it in .env.local")
+if not ADMIN_TOKEN:
+    import warnings
+    warnings.warn("ADMIN_TOKEN not set — admin endpoints will reject all requests")
 
 app = FastAPI(
     title="Gut Microbiome Atlas API",
@@ -42,11 +58,15 @@ app = FastAPI(
     description="Backend API for differential microbiome analysis",
 )
 
-# Allow requests from local dev and Vercel
-# 允许本地开发和Vercel的跨域请求
+# CORS: allow all origins in dev, restrict to frontend URL in production
+# 跨域：开发模式允许所有来源，生产模式限制为前端域名
+_FRONTEND_URL = os.getenv("FRONTEND_URL", "")
+_DEBUG = os.getenv("DEBUG", "true").lower() == "true"
+_ALLOWED_ORIGINS = ["*"] if _DEBUG else ([_FRONTEND_URL] if _FRONTEND_URL else [])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -207,14 +227,11 @@ def bray_curtis_pcoa(matrix_a: np.ndarray, matrix_b: np.ndarray,
     combined = np.vstack([matrix_a, matrix_b])
     n = len(combined)
 
-    # Bray-Curtis distance / Bray-Curtis距离
-    bc = np.zeros((n, n))
-    for i in range(n):
-        for j in range(i + 1, n):
-            a, b = combined[i], combined[j]
-            denom = a.sum() + b.sum()
-            d = np.abs(a - b).sum() / denom if denom > 0 else 0
-            bc[i, j] = bc[j, i] = d
+    # Bray-Curtis distance via scipy C implementation (much faster than Python loop)
+    # 使用scipy的C实现计算Bray-Curtis距离（远比Python循环快）
+    from scipy.spatial.distance import cdist
+    bc = cdist(combined, combined, metric="braycurtis")
+    bc = np.nan_to_num(bc)  # replace any NaN from all-zero rows
 
     # Classical MDS (PCoA) / 主坐标分析
     # Double centering / 双中心化
@@ -390,20 +407,23 @@ def diff_analysis(req: DiffAnalysisRequest):
         log2fc = math.log2((mean_a + pseudo) / (mean_b + pseudo))
 
         # Statistical test / 统计检验
+        # Statistical test / 统计检验（单次调用，复用结果计算效应量）
+        u_stat = 0.0
         try:
             if req.method == "wilcoxon":
-                stat, p = stats.mannwhitneyu(vals_a, vals_b, alternative="two-sided")
+                mwu = stats.mannwhitneyu(vals_a, vals_b, alternative="two-sided")
+                u_stat, p = float(mwu.statistic), float(mwu.pvalue)
             else:
-                stat, p = stats.ttest_ind(vals_a, vals_b)
+                t_res = stats.ttest_ind(vals_a, vals_b)
+                u_stat, p = float(t_res.statistic), float(t_res.pvalue)
         except Exception:
             p = 1.0
 
-        # Effect size (rank-biserial correlation for MWU)
-        # 效应量（MWU的秩双列相关）
+        # Effect size (rank-biserial correlation for MWU, Cohen's d for t-test)
+        # 效应量（MWU的秩双列相关；t检验的Cohen's d）
         n_a, n_b = len(vals_a), len(vals_b)
         if req.method == "wilcoxon":
-            u = float(stats.mannwhitneyu(vals_a, vals_b, alternative="two-sided").statistic)
-            effect_size = float(1 - 2 * u / (n_a * n_b)) if n_a * n_b > 0 else 0.0
+            effect_size = float(1 - 2 * u_stat / (n_a * n_b)) if n_a * n_b > 0 else 0.0
         else:
             pooled_std = float(np.std(np.concatenate([vals_a, vals_b])))
             effect_size = float((mean_a - mean_b) / pooled_std) if pooled_std > 0 else 0.0

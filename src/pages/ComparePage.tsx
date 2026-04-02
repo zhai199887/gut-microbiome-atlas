@@ -618,12 +618,41 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
 
     const g = svg.append("g");
 
-    // Draw boxes for Shannon (left panel) and Simpson (right panel)
-    // 绘制Shannon（左）和Simpson（右）的箱线图
+    // Helper to draw individual outlier points beyond whiskers
+    // 绘制超出须线的离群点
+    const drawOutliers = (
+      g2: d3.Selection<SVGGElement, unknown, null, undefined>,
+      vals: number[], cx: number, color: string,
+    ) => {
+      const sorted = [...vals].sort((a, b) => a - b);
+      const q1 = d3.quantile(sorted, 0.25) ?? 0;
+      const q3 = d3.quantile(sorted, 0.75) ?? 0;
+      const iqr = q3 - q1;
+      const lower = q1 - 1.5 * iqr;
+      const upper = q3 + 1.5 * iqr;
+      const outliers = sorted.filter((v) => v < lower || v > upper);
+      g2.selectAll(`.out${cx}`)
+        .data(outliers)
+        .join("circle")
+        .attr("class", `out${cx}`)
+        .attr("cx", (_, i) => cx + ((i % 3) - 1) * 3)  // minor jitter
+        .attr("cy", (v) => yScale(v))
+        .attr("r", 2.5)
+        .attr("fill", "none")
+        .attr("stroke", color)
+        .attr("opacity", 0.55);
+    };
+
+    // Draw boxes and outliers for Shannon (left) and Simpson (right)
+    // 绘制Shannon（左）和Simpson（右）的箱线图及离群点
     drawBox(g, group_a.shannon, 110, "var(--secondary)");
+    drawOutliers(g, group_a.shannon, 110, "var(--secondary)");
     drawBox(g, group_b.shannon, 220, "var(--primary)");
+    drawOutliers(g, group_b.shannon, 220, "var(--primary)");
     drawBox(g, group_a.simpson, 380, "var(--secondary)");
+    drawOutliers(g, group_a.simpson, 380, "var(--secondary)");
     drawBox(g, group_b.simpson, 490, "var(--primary)");
+    drawOutliers(g, group_b.simpson, 490, "var(--primary)");
 
     // Y axis / Y轴
     svg.append("g").attr("transform", "translate(40,0)")

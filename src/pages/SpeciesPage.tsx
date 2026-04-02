@@ -3,7 +3,7 @@
  * Species detail page: abundance by disease, country, metabolic roles
  * 物种详情页：显示该物种在不同疾病和国家中的丰度分布
  */
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { renderToString } from "react-dom/server";
 import { Link, useParams } from "react-router-dom";
 import * as d3 from "d3";
@@ -47,7 +47,7 @@ const SpeciesPage = () => {
       {matchedGenus && (
         <div className={classes.content}>
           <DiseaseBoxChart genus={matchedGenus} abundance={abundance} summary={summary} />
-          <CountryBarChart genus={matchedGenus} abundance={abundance} summary={summary} />
+          <AgeGroupBarChart genus={matchedGenus} abundance={abundance} summary={summary} />
           <MetabolismTags genus={matchedGenus} />
         </div>
       )}
@@ -141,19 +141,20 @@ const DiseaseBoxChart = ({
   );
 };
 
-// ── Country bar chart / 国家丰度柱状图 ───────────────────────────────────────
+// ── Age-group bar chart (country-level data not in abundance summary)
+// 年龄段丰度柱状图（丰度摘要中无按国家的聚合数据）
 
-const CountryBarChart = ({
+const AgeGroupBarChart = ({
   genus,
   abundance,
-  summary,
+  summary: _summary,
 }: {
   genus: string;
   abundance: NonNullable<ReturnType<typeof useData.getState>["abundance"]>;
   summary: NonNullable<ReturnType<typeof useData.getState>["summary"]>;
 }) => {
-  // Use abundance.by_age_group as proxy since we don't have by_country in abundance summary
-  // 使用by_age_group数据（没有按国家的丰度摘要）
+  // abundance.by_age_group holds mean abundance per age group
+  // by_age_group 存储每个年龄段的平均丰度
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -226,12 +227,12 @@ const CountryBarChart = ({
 // ── Metabolic function tags / 代谢功能标签 ───────────────────────────────────
 
 const MetabolismTags = ({ genus }: { genus: string }) => {
-  const [categories, setCategories] = React.useState<
+  const [categories, setCategories] = useState<
     { id: string; name_en: string; icon: string }[]
   >([]);
 
-  React.useEffect(() => {
-    fetch("data/metabolism_mapping.json")
+  useEffect(() => {
+    fetch("/data/metabolism_mapping.json")
       .then((r) => r.json())
       .then((data: { categories: { id: string; name_en: string; icon: string; taxa: string[] }[] }) => {
         const matches = data.categories.filter((c) =>
@@ -239,7 +240,8 @@ const MetabolismTags = ({ genus }: { genus: string }) => {
             genus.toLowerCase().includes(t.toLowerCase()))
         );
         setCategories(matches);
-      });
+      })
+      .catch(() => { /* mapping file unavailable, show no tags */ });
   }, [genus]);
 
   if (categories.length === 0) return null;
@@ -261,8 +263,5 @@ const MetabolismTags = ({ genus }: { genus: string }) => {
     </div>
   );
 };
-
-// Need React import for useState/useEffect in sub-component
-import React from "react";
 
 export default SpeciesPage;

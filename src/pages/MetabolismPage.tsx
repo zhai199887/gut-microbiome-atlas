@@ -40,11 +40,14 @@ const MetabolismPage = () => {
   const abundance = useData((s) => s.abundance);
 
   useEffect(() => {
-    fetch("data/metabolism_mapping.json")
+    fetch("/data/metabolism_mapping.json")
       .then((r) => r.json())
       .then((data: MetabolismMapping) => {
         setMapping(data);
         setSelected(data.categories[0] ?? null);
+      })
+      .catch(() => {
+        setMapping({ version: "error", last_updated: "", categories: [] });
       });
   }, []);
 

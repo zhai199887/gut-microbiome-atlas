@@ -502,11 +502,16 @@ def diff_analysis(req: DiffAnalysisRequest):
 
 # ── Data management endpoints / 数据管理端点 ──────────────────────────────────
 
+def _check_admin(token: str | None):
+    """Reject if ADMIN_TOKEN unset or token doesn't match. / 校验admin token，空token也拒绝"""
+    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
+        raise HTTPException(401, "Invalid admin token")
+
+
 @app.get("/api/admin/check")
 def admin_check(x_admin_token: str = Header(None)):
     """Verify admin token. / 验证管理员token"""
-    if x_admin_token != ADMIN_TOKEN:
-        raise HTTPException(401, "Invalid admin token")
+    _check_admin(x_admin_token)
     return {"status": "authorized"}
 
 
@@ -519,8 +524,7 @@ async def upload_metadata(
     Upload new metadata CSV to merge into dataset. Requires admin token.
     上传新元数据CSV合并到数据集（需要admin token）
     """
-    if x_admin_token != ADMIN_TOKEN:
-        raise HTTPException(401, "Invalid admin token")
+    _check_admin(x_admin_token)
 
     # Save to temp file / 保存到临时文件
     suffix = ".csv"
@@ -546,8 +550,7 @@ async def validate_metadata_endpoint(
     x_admin_token: str = Header(None),
 ):
     """Validate metadata CSV format without merging. / 校验格式但不合并"""
-    if x_admin_token != ADMIN_TOKEN:
-        raise HTTPException(401, "Invalid admin token")
+    _check_admin(x_admin_token)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
         content = await file.read()

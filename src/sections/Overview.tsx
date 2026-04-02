@@ -86,7 +86,7 @@ const Overview = () => {
         <>
           {formatNumber(diseases)} disease types
           <br />
-          from <i>inform-all</i>
+          (curatedMetagenomicData)
         </>
       ),
     },
@@ -105,6 +105,17 @@ const Overview = () => {
           : "thousands of"}{" "}
         publicly available human gut microbiome samples, annotated with age,
         sex, and disease metadata.
+      </p>
+
+      <p className={classes.methodology}>
+        <b>Data &amp; Methods:</b>{" "}
+        Samples sourced from the{" "}
+        <a href="https://bioconductor.org/packages/curatedMetagenomicData" target="_blank" rel="noreferrer">
+          curatedMetagenomicData
+        </a>{" "}
+        compendium (Pasolli <i>et al.</i>, 2017). Taxonomic profiles generated with MetaPhlAn.
+        Differential abundance uses Wilcoxon rank-sum test with Benjamini–Hochberg FDR correction (adj. p &lt; 0.05).
+        Beta diversity computed as Bray–Curtis dissimilarity, visualised by PCoA.
       </p>
 
       {summary ? (

@@ -291,9 +291,10 @@ const CategoryDetail = ({
     }
 
     const maxVal = d3.max(flatData, (d) => d.val) ?? 0.01;
+    // Use CSS variable for start color to avoid hardcoded hex / 使用CSS变量作为起始色，避免硬编码
     const colorScale = d3.scaleSequential()
       .domain([0, maxVal])
-      .interpolator(d3.interpolate("#1a1a2e", "var(--primary)"));
+      .interpolator(d3.interpolate("var(--black)", "var(--primary)"));
 
     const xScale = d3.scaleBand().domain(diseases).range([0, cellW * diseases.length]).padding(0.05);
     const yScale = d3.scaleBand().domain(availableGenera).range([0, cellH * availableGenera.length]).padding(0.05);
@@ -325,6 +326,30 @@ const CategoryDetail = ({
       .selectAll("text")
       .attr("transform", "rotate(-30)")
       .attr("text-anchor", "start");
+
+    // Color legend bar / 色阶图例
+    const legendW = Math.min(cellW * diseases.length, 200);
+    const legendH = 10;
+    const legendY = cellH * availableGenera.length + 10;
+    const defs = svg.append("defs");
+    const gradId = `heatGrad-${category.id}`;
+    const grad = defs.append("linearGradient").attr("id", gradId)
+      .attr("x1", "0%").attr("x2", "100%");
+    grad.append("stop").attr("offset", "0%").attr("stop-color", "var(--black)");
+    grad.append("stop").attr("offset", "100%").attr("stop-color", "var(--primary)");
+
+    g.append("rect")
+      .attr("x", 0).attr("y", legendY)
+      .attr("width", legendW).attr("height", legendH)
+      .attr("fill", `url(#${gradId})`).attr("rx", 2);
+    g.append("text").attr("x", 0).attr("y", legendY + legendH + 11)
+      .attr("font-size", 8).attr("fill", "currentColor").text("0%");
+    g.append("text").attr("x", legendW).attr("y", legendY + legendH + 11)
+      .attr("text-anchor", "end").attr("font-size", 8).attr("fill", "currentColor")
+      .text(`${(maxVal * 100).toFixed(2)}%`);
+    g.append("text").attr("x", legendW / 2).attr("y", legendY + legendH + 11)
+      .attr("text-anchor", "middle").attr("font-size", 8).attr("fill", "var(--light-gray)")
+      .text("Mean Abundance");
   }, [category, abundance]);
 
   return (
@@ -397,9 +422,28 @@ const CategoryDetail = ({
       {category.references.length > 0 && (
         <div className={classes.refBlock}>
           <h4>Key References</h4>
-          {category.references.map((r) => (
-            <span key={r} className={classes.ref}>{r}</span>
-          ))}
+          {category.references.map((r) => {
+            // If reference looks like a DOI or PubMed ID, make it a link
+            // 如果是DOI或PMID格式，转为可点击链接
+            const doiMatch = r.match(/10\.\d{4,}\/\S+/);
+            const pmidMatch = r.match(/PMID[:\s]*(\d+)/i);
+            if (doiMatch) {
+              return (
+                <a key={r} href={`https://doi.org/${doiMatch[0]}`}
+                  target="_blank" rel="noreferrer" className={classes.ref}>
+                  {r}
+                </a>
+              );
+            } else if (pmidMatch) {
+              return (
+                <a key={r} href={`https://pubmed.ncbi.nlm.nih.gov/${pmidMatch[1]}`}
+                  target="_blank" rel="noreferrer" className={classes.ref}>
+                  {r}
+                </a>
+              );
+            }
+            return <span key={r} className={classes.ref}>{r}</span>;
+          })}
         </div>
       )}
     </div>

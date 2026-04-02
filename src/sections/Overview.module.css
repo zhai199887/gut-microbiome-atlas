@@ -35,6 +35,20 @@
   text-align: center;
 }
 
+/* Methodology note / 方法说明 */
+.methodology {
+  font-size: 0.82rem;
+  color: var(--light-gray);
+  line-height: 1.6;
+  border-left: 2px solid var(--dark-gray);
+  padding-left: 12px;
+  margin: 4px 0 12px;
+}
+
+.methodology a {
+  color: var(--secondary-light);
+}
+
 /* Feature cards / 功能卡片 */
 .featureGrid {
   display: grid;

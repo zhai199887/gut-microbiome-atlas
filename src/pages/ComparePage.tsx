@@ -89,7 +89,7 @@ const ComparePage = () => {
       })
       .catch(() => {
         setFilterLoading(false);
-        setError("无法连接后端 API（请先启动 api/start.bat）");
+        setError("Cannot connect to backend API. Please start the API server before running analysis.");
       });
   }, []);
 
@@ -435,6 +435,12 @@ const DiffBarChart = ({ result }: { result: DiffResult }) => {
 
     // Set viewBox / 设置viewBox
     svg.attr("viewBox", `0 0 ${W + margin.left + margin.right} ${H + margin.top + margin.bottom}`);
+
+    // Method note / 方法注释
+    const totalW = W + margin.left + margin.right;
+    svg.append("text").attr("x", totalW - 4).attr("y", H + margin.top + margin.bottom - 4)
+      .attr("text-anchor", "end").attr("font-size", 9).attr("fill", "var(--gray)")
+      .text(`Showing taxa with adj. p < 0.05 (BH FDR) · ${result.summary.method}`);
   }, [result]);
 
   return <svg ref={svgRef} className={`compare-chart ${classes.chart}`} />;
@@ -472,20 +478,31 @@ const VolcanoChart = ({ result }: { result: DiffResult }) => {
       return d.log2fc > 0 ? "var(--secondary)" : "var(--primary)";
     };
 
-    // Threshold lines / 阈值线
+    // Threshold lines with inline annotations / 阈值线及内联注释
     const pThresh = -Math.log10(0.05);
     g.append("line")
       .attr("x1", 0).attr("x2", iW)
       .attr("y1", yScale(pThresh)).attr("y2", yScale(pThresh))
       .attr("stroke", "var(--light-gray)").attr("stroke-dasharray", "4,3").attr("opacity", 0.6);
+    g.append("text").attr("x", iW - 2).attr("y", yScale(pThresh) - 4)
+      .attr("text-anchor", "end").attr("font-size", 9).attr("fill", "var(--light-gray)")
+      .text("adj.p=0.05");
+
     g.append("line")
       .attr("x1", xScale(-1)).attr("x2", xScale(-1))
       .attr("y1", 0).attr("y2", iH)
       .attr("stroke", "var(--light-gray)").attr("stroke-dasharray", "4,3").attr("opacity", 0.6);
+    g.append("text").attr("x", xScale(-1) - 3).attr("y", 10)
+      .attr("text-anchor", "end").attr("font-size", 9).attr("fill", "var(--light-gray)")
+      .text("|FC|=2");
+
     g.append("line")
       .attr("x1", xScale(1)).attr("x2", xScale(1))
       .attr("y1", 0).attr("y2", iH)
       .attr("stroke", "var(--light-gray)").attr("stroke-dasharray", "4,3").attr("opacity", 0.6);
+    g.append("text").attr("x", xScale(1) + 3).attr("y", 10)
+      .attr("text-anchor", "start").attr("font-size", 9).attr("fill", "var(--light-gray)")
+      .text("|FC|=2");
 
     // Points / 散点
     g.selectAll(".dot")
@@ -695,6 +712,23 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
       .attr("x1", margin.left + 250).attr("x2", margin.left + 250)
       .attr("y1", margin.top).attr("y2", margin.top + iH)
       .attr("stroke", "var(--gray)").attr("stroke-dasharray", "4,3").attr("opacity", 0.5);
+
+    // Color legend (Group A vs Group B) / 颜色图例
+    const legendX = W - margin.right + 8;
+    const legendY = margin.top + 20;
+    const legendItems = [
+      { color: "var(--secondary)", label: gA.length > 10 ? gA.slice(0, 9) + "…" : gA },
+      { color: "var(--primary)",   label: gB.length > 10 ? gB.slice(0, 9) + "…" : gB },
+    ];
+    legendItems.forEach(({ color, label }, i) => {
+      svg.append("rect")
+        .attr("x", legendX).attr("y", legendY + i * 18 - 9)
+        .attr("width", 10).attr("height", 10)
+        .attr("fill", color).attr("opacity", 0.7).attr("rx", 2);
+      svg.append("text")
+        .attr("x", legendX + 14).attr("y", legendY + i * 18)
+        .attr("font-size", 10).attr("fill", color).text(label);
+    });
   }, [result]);
 
   return <svg ref={svgRef} className={`compare-chart ${classes.chart}`} />;

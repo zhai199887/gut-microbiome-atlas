@@ -162,10 +162,21 @@ const AgeGroupBarChart = ({
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
 
+    // Sort by biological life-course order, not by abundance value
+    // 按生命周期顺序排序，保留年龄段的生物学意义
+    const AGE_ORDER = [
+      "infant", "child", "schoolage", "school_age", "adolescent",
+      "adult", "middle_aged", "senior", "elderly", "aged",
+    ];
+    const ageRank = (age: string) => {
+      const idx = AGE_ORDER.findIndex((k) => age.toLowerCase().includes(k));
+      return idx === -1 ? 99 : idx;
+    };
+
     const ageData = Object.entries(abundance.by_age_group)
       .map(([age, vals]) => ({ age, value: vals[genus] ?? 0 }))
       .filter((d) => d.value > 0)
-      .sort((a, b) => b.value - a.value);
+      .sort((a, b) => ageRank(a.age) - ageRank(b.age));
 
     if (ageData.length === 0) {
       svg.attr("viewBox", "0 0 480 60");

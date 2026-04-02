@@ -371,6 +371,7 @@ const DiffBarChart = ({ result }: { result: DiffResult }) => {
       .sort((a, b) => a.log2fc - b.log2fc);
 
     if (data.length === 0) {
+      svg.attr("viewBox", "0 0 700 100");
       svg.append("text").attr("x", 20).attr("y", 60)
         .text("No significant taxa (adjusted p < 0.05)")
         .attr("fill", "currentColor").attr("font-size", 14);
@@ -553,37 +554,38 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
 
-    const W = 600, H = 350;
+    // Margins ensure Y-axis always aligns with yScale range bounds
+    // margin确保Y轴始终与yScale范围边界对齐
+    const margin = { top: 35, right: 20, bottom: 40, left: 50 };
+    const W = 620, H = 360;
+    const iH = H - margin.top - margin.bottom;   // plot height in group space
+
     svg.attr("viewBox", `0 0 ${W} ${H}`);
 
     const { group_a, group_b } = result.alpha_diversity;
     const gA = result.summary.group_a_name;
     const gB = result.summary.group_b_name;
 
-    // Draw boxplots for Shannon and Simpson
-    // 绘制Shannon和Simpson的箱线图
-    const metrics: { key: "shannon" | "simpson"; label: string }[] = [
-      { key: "shannon", label: "Shannon Index" },
-      { key: "simpson", label: "Simpson Index (1-D)" },
-    ];
-
+    // All positions are relative to the margin group / 所有x坐标相对于margin组
     const boxW = 80;
     const positions = [
-      { x: 110, data: group_a.shannon, color: "var(--secondary)", label: gA },
-      { x: 220, data: group_b.shannon, color: "var(--primary)", label: gB },
-      { x: 380, data: group_a.simpson, color: "var(--secondary)", label: gA },
-      { x: 490, data: group_b.simpson, color: "var(--primary)", label: gB },
+      { x: 60,  data: group_a.shannon, color: "var(--secondary)", label: gA },
+      { x: 170, data: group_b.shannon, color: "var(--primary)", label: gB },
+      { x: 330, data: group_a.simpson, color: "var(--secondary)", label: gA },
+      { x: 440, data: group_b.simpson, color: "var(--primary)", label: gB },
     ];
 
     const allVals = positions.flatMap((p) => p.data);
     const yScale = d3.scaleLinear()
       .domain([0, d3.max(allVals) ?? 5])
-      .range([290, 40]);
+      .range([iH, 0]);   // group-relative coordinates / 组内坐标
+
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
     // drawBox returns fence values so drawOutliers can reuse them (no duplicate computation)
     // drawBox 返回须线边界值，供 drawOutliers 复用，避免重复计算
     const drawBox = (
-      g: d3.Selection<SVGGElement, unknown, null, undefined>,
+      grp: d3.Selection<SVGGElement, unknown, null, undefined>,
       vals: number[],
       cx: number,
       color: string,
@@ -597,21 +599,21 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
       const upper = Math.min(sorted[sorted.length - 1]!, q3 + 1.5 * iqr);
 
       // Box / 箱体
-      g.append("rect")
+      grp.append("rect")
         .attr("x", cx - boxW / 2).attr("y", yScale(q3))
         .attr("width", boxW).attr("height", Math.abs(yScale(q1) - yScale(q3)))
         .attr("fill", color).attr("opacity", 0.3)
         .attr("stroke", color).attr("stroke-width", 1.5);
 
       // Median line / 中位线
-      g.append("line")
+      grp.append("line")
         .attr("x1", cx - boxW / 2).attr("x2", cx + boxW / 2)
         .attr("y1", yScale(median)).attr("y2", yScale(median))
         .attr("stroke", color).attr("stroke-width", 2.5);
 
       // Whiskers / 须线
       for (const [y1, y2] of [[yScale(q1), yScale(lower)], [yScale(q3), yScale(upper)]]) {
-        g.append("line")
+        grp.append("line")
           .attr("x1", cx).attr("x2", cx)
           .attr("y1", y1!).attr("y2", y2!)
           .attr("stroke", color).attr("stroke-width", 1.5).attr("stroke-dasharray", "3,2");
@@ -620,17 +622,15 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
       return { lower, upper };
     };
 
-    const g = svg.append("g");
-
     // Draw outlier points beyond whiskers using fence values from drawBox (no recomputation)
     // 使用 drawBox 返回的边界值绘制离群点，无需重复计算
     const drawOutliers = (
-      g2: d3.Selection<SVGGElement, unknown, null, undefined>,
+      grp: d3.Selection<SVGGElement, unknown, null, undefined>,
       vals: number[], cx: number, color: string,
       lower: number, upper: number,
     ) => {
       const outliers = vals.filter((v) => v < lower || v > upper);
-      g2.selectAll(`.out${cx}`)
+      grp.selectAll(`.out${cx}`)
         .data(outliers)
         .join("circle")
         .attr("class", `out${cx}`)
@@ -644,43 +644,45 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
 
     // Draw boxes and outliers for Shannon (left) and Simpson (right)
     // 绘制Shannon（左）和Simpson（右）的箱线图及离群点
-    const fA_sh = drawBox(g, group_a.shannon, 110, "var(--secondary)");
-    drawOutliers(g, group_a.shannon, 110, "var(--secondary)", fA_sh.lower, fA_sh.upper);
-    const fB_sh = drawBox(g, group_b.shannon, 220, "var(--primary)");
-    drawOutliers(g, group_b.shannon, 220, "var(--primary)", fB_sh.lower, fB_sh.upper);
-    const fA_si = drawBox(g, group_a.simpson, 380, "var(--secondary)");
-    drawOutliers(g, group_a.simpson, 380, "var(--secondary)", fA_si.lower, fA_si.upper);
-    const fB_si = drawBox(g, group_b.simpson, 490, "var(--primary)");
-    drawOutliers(g, group_b.simpson, 490, "var(--primary)", fB_si.lower, fB_si.upper);
+    const fA_sh = drawBox(g, group_a.shannon, 60,  "var(--secondary)");
+    drawOutliers(g, group_a.shannon, 60,  "var(--secondary)", fA_sh.lower, fA_sh.upper);
+    const fB_sh = drawBox(g, group_b.shannon, 170, "var(--primary)");
+    drawOutliers(g, group_b.shannon, 170, "var(--primary)", fB_sh.lower, fB_sh.upper);
+    const fA_si = drawBox(g, group_a.simpson, 330, "var(--secondary)");
+    drawOutliers(g, group_a.simpson, 330, "var(--secondary)", fA_si.lower, fA_si.upper);
+    const fB_si = drawBox(g, group_b.simpson, 440, "var(--primary)");
+    drawOutliers(g, group_b.simpson, 440, "var(--primary)", fB_si.lower, fB_si.upper);
 
-    // Y axis with label / Y轴及标签
-    svg.append("g").attr("transform", "translate(40,0)")
-      .call(d3.axisLeft(yScale).ticks(5)).attr("font-size", 11);
+    // Y axis inside margin group — always aligned with yScale range / Y轴在margin组内，始终与yScale对齐
+    g.append("g").call(d3.axisLeft(yScale).ticks(5)).attr("font-size", 11);
     svg.append("text")
-      .attr("transform", "translate(12,165) rotate(-90)")
+      .attr("transform", `translate(14,${H / 2}) rotate(-90)`)
       .attr("text-anchor", "middle").attr("fill", "currentColor")
       .attr("font-size", 11).text("Diversity Index");
 
-    // Panel titles / 面板标题
-    svg.append("text").attr("x", 165).attr("y", 25)
+    // Panel titles (SVG-absolute x = group-relative x + margin.left)
+    // 面板标题（SVG绝对x = 组相对x + margin.left）
+    svg.append("text").attr("x", margin.left + 115).attr("y", 22)
       .attr("text-anchor", "middle").attr("fill", "currentColor")
       .attr("font-size", 13).attr("font-weight", 600).text("Shannon Index");
-    svg.append("text").attr("x", 435).attr("y", 25)
+    svg.append("text").attr("x", margin.left + 385).attr("y", 22)
       .attr("text-anchor", "middle").attr("fill", "currentColor")
       .attr("font-size", 13).attr("font-weight", 600).text("Simpson Index (1-D)");
 
     // X labels / X轴标签
     for (const pos of positions) {
       svg.append("text")
-        .attr("x", pos.x).attr("y", 318)
+        .attr("x", pos.x + margin.left).attr("y", margin.top + iH + 18)
         .attr("text-anchor", "middle").attr("fill", pos.color)
         .attr("font-size", 10)
         .text(pos.label.length > 12 ? pos.label.slice(0, 11) + "…" : pos.label);
     }
 
-    // Divider line between panels / 面板分隔线
+    // Divider line between panels (group-relative x=250, SVG x=300)
+    // 面板分隔线（组相对x=250，SVG x=300）
     svg.append("line")
-      .attr("x1", 305).attr("x2", 305).attr("y1", 30).attr("y2", 300)
+      .attr("x1", margin.left + 250).attr("x2", margin.left + 250)
+      .attr("y1", margin.top).attr("y2", margin.top + iH)
       .attr("stroke", "var(--gray)").attr("stroke-dasharray", "4,3").attr("opacity", 0.5);
   }, [result]);
 
@@ -698,6 +700,7 @@ const BetaPCoAChart = ({ result }: { result: DiffResult }) => {
 
     const coords = result.beta_diversity.pcoa_coords;
     if (!coords.length) {
+      svg.attr("viewBox", "0 0 560 100");
       svg.append("text").attr("x", 20).attr("y", 40)
         .text("PCoA data not available").attr("fill", "currentColor").attr("font-size", 14);
       return;

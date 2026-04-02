@@ -198,6 +198,7 @@ const CategoryDetail = ({
     );
 
     if (availableGenera.length === 0) {
+      svg.attr("viewBox", "0 0 480 60");
       svg.append("text").attr("x", 10).attr("y", 30)
         .text("No abundance data available for this category")
         .attr("fill", "currentColor").attr("font-size", 12);

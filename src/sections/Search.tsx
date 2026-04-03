@@ -5,6 +5,7 @@
  */
 import { useEffect, useRef, useState, useCallback } from "react";
 import { renderToString } from "react-dom/server";
+import { Link } from "react-router-dom";
 import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 import "@/components/tooltip";
@@ -188,7 +189,11 @@ const SpeciesProfileView = ({ profile }: { profile: SpeciesProfile }) => {
     <div className={classes.profileContainer}>
       {/* Header card / 物种信息卡 */}
       <div className={classes.profileHeader}>
-        <h3 className={classes.genusName}><i>{profile.genus}</i></h3>
+        <h3 className={classes.genusName}>
+          <Link to={`/species/${encodeURIComponent(profile.genus)}`} style={{ color: "inherit", textDecoration: "none" }}>
+            <i>{profile.genus}</i> →
+          </Link>
+        </h3>
         <div className={classes.statsRow}>
           <div className={classes.statCard}>
             <span className={classes.statValue}>{profile.total_samples.toLocaleString("en")}</span>

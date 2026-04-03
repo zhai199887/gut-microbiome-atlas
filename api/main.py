@@ -133,6 +133,37 @@ def get_abundance() -> pd.DataFrame:
     return df
 
 
+# ISO 3166-1 alpha-2 → country name mapping / ISO国家代码→国名映射
+COUNTRY_NAMES = {
+    "AE": "UAE", "AF": "Afghanistan", "AL": "Albania", "AM": "Armenia", "AT": "Austria",
+    "AU": "Australia", "AZ": "Azerbaijan", "BD": "Bangladesh", "BE": "Belgium",
+    "BF": "Burkina Faso", "BG": "Bulgaria", "BR": "Brazil", "BW": "Botswana",
+    "CA": "Canada", "CF": "Central African Rep.", "CH": "Switzerland", "CM": "Cameroon",
+    "CN": "China", "CO": "Colombia", "CZ": "Czechia", "DE": "Germany", "DK": "Denmark",
+    "EC": "Ecuador", "EE": "Estonia", "EG": "Egypt", "ES": "Spain", "ET": "Ethiopia",
+    "FI": "Finland", "FJ": "Fiji", "FR": "France", "GA": "Gabon", "GB": "United Kingdom",
+    "GH": "Ghana", "GR": "Greece", "GT": "Guatemala", "HK": "Hong Kong", "HN": "Honduras",
+    "HR": "Croatia", "HU": "Hungary", "ID": "Indonesia", "IE": "Ireland", "IL": "Israel",
+    "IN": "India", "IR": "Iran", "IS": "Iceland", "IT": "Italy", "JM": "Jamaica",
+    "JO": "Jordan", "JP": "Japan", "KE": "Kenya", "KR": "South Korea", "KZ": "Kazakhstan",
+    "LK": "Sri Lanka", "LT": "Lithuania", "LV": "Latvia", "MA": "Morocco", "MD": "Moldova",
+    "MG": "Madagascar", "ML": "Mali", "MM": "Myanmar", "MN": "Mongolia", "MW": "Malawi",
+    "MX": "Mexico", "MY": "Malaysia", "MZ": "Mozambique", "NG": "Nigeria", "NL": "Netherlands",
+    "NO": "Norway", "NP": "Nepal", "NZ": "New Zealand", "PE": "Peru", "PG": "Papua New Guinea",
+    "PH": "Philippines", "PK": "Pakistan", "PL": "Poland", "PT": "Portugal", "RO": "Romania",
+    "RS": "Serbia", "RU": "Russia", "RW": "Rwanda", "SA": "Saudi Arabia", "SE": "Sweden",
+    "SG": "Singapore", "SI": "Slovenia", "SK": "Slovakia", "SN": "Senegal", "SV": "El Salvador",
+    "TH": "Thailand", "TN": "Tunisia", "TR": "Turkey", "TW": "Taiwan", "TZ": "Tanzania",
+    "UA": "Ukraine", "UG": "Uganda", "US": "United States", "UZ": "Uzbekistan",
+    "VE": "Venezuela", "VN": "Vietnam", "ZA": "South Africa", "ZM": "Zambia", "ZW": "Zimbabwe",
+}
+
+
+def iso_to_name(code: str) -> str:
+    """Convert ISO code to human-readable name. / ISO代码转可读国名"""
+    return COUNTRY_NAMES.get(code, code)
+
+
 def extract_genus(col_name: str) -> str:
     """
     Extract genus from full taxonomy string.
@@ -497,10 +528,22 @@ def data_stats():
         with open(version_file) as f:
             version_info = json.load(f)
 
+    # Count unique diseases across ALL inform columns / 统计所有inform列的唯一疾病数
+    INFORM_COLS = [f"inform{i}" for i in range(12)]
+    all_diseases: set[str] = set()
+    for col in INFORM_COLS:
+        if col in meta.columns:
+            vals = meta[col].dropna().astype(str).str.strip()
+            all_diseases.update(v for v in vals if v and v != "nan" and v != "")
+    # Also check the 'disease' column as fallback / 也检查disease列
+    if "disease" in meta.columns:
+        vals = meta["disease"].dropna().astype(str).str.strip()
+        all_diseases.update(v for v in vals if v and v != "nan" and v != "")
+
     return {
         "total_samples": int(len(meta)),
-        "total_countries": int(meta["country"].nunique()),
-        "total_diseases": int(meta["disease"].nunique()),
+        "total_countries": int(meta["country"].nunique()) if "country" in meta.columns else 0,
+        "total_diseases": len(all_diseases),
         "last_updated": version_info.get("last_updated", datetime.now().strftime("%Y-%m-%d")),
         "version": version_info.get("version", f"v1.0_{datetime.now().strftime('%Y%m%d')}"),
     }
@@ -712,11 +755,30 @@ def diff_analysis(req: DiffAnalysisRequest):
 
 # ── Species search & profile endpoints / 物种搜索与画像端点 ──────────────────
 
+# Invalid genus names to filter out (taxonomy parsing artifacts)
+# 需过滤的无效属名（分类学解析产生的噪音）
+_INVALID_GENERA = {"NA", "group", "Sedis", "Incertae", "unclassified",
+                   "uncultured", "Unknown", "unknown", "noname", "002", "sp"}
+
+
+def is_valid_genus(name: str) -> bool:
+    """Check if genus name is a real biological name. / 检查属名是否为真实生物名"""
+    if not name or len(name) < 3:
+        return False
+    if name in _INVALID_GENERA:
+        return False
+    if name[0].islower():  # real genus names are capitalized / 真实属名首字母大写
+        return False
+    if name.isdigit():
+        return False
+    return True
+
+
 @lru_cache(maxsize=1)
 def get_genus_list() -> list[str]:
-    """Return sorted list of all genus names from abundance data. / 返回丰度数据中所有属名"""
+    """Return sorted list of all valid genus names from abundance data. / 返回丰度数据中所有有效属名"""
     abund = get_abundance()
-    genera = sorted(set(extract_genus(c) for c in abund.columns))
+    genera = sorted(set(g for g in (extract_genus(c) for c in abund.columns) if is_valid_genus(g)))
     return genera
 
 
@@ -793,8 +855,9 @@ def species_profile(genus: str):
             if not name or name == "nan" or name == "unknown":
                 continue
             vals = ga.loc[group_idx]
+            display_name = iso_to_name(name) if col_name == "country" else name
             results.append({
-                "name": name,
+                "name": display_name,
                 "mean_abundance": round(float(vals.mean()), 8),
                 "prevalence": round(float((vals > 0).sum() / len(vals)), 4),
                 "sample_count": len(vals),
@@ -837,6 +900,223 @@ def species_profile(genus: str):
         "by_age_group": group_means("age_group" if "age_group" in mm.columns else "age", 10),
         "by_sex": group_means("sex", 5),
     }
+
+
+# ── Disease browser endpoints / 疾病浏览端点 ─────────────────────────────────
+
+@lru_cache(maxsize=1)
+def get_disease_list_cached() -> list[dict]:
+    """
+    Build a list of all unique diseases with sample counts.
+    构建所有疾病及其样本数的列表
+    """
+    meta = get_metadata()
+    INFORM_COLS = [f"inform{i}" for i in range(12)]
+    disease_counts: dict[str, int] = {}
+    for col in INFORM_COLS:
+        if col not in meta.columns:
+            continue
+        for val in meta[col].dropna().astype(str).str.strip():
+            if val and val != "nan" and val != "":
+                disease_counts[val] = disease_counts.get(val, 0) + 1
+    result = [{"name": k, "sample_count": v} for k, v in disease_counts.items()]
+    result.sort(key=lambda x: x["sample_count"], reverse=True)
+    return result
+
+
+@app.get("/api/disease-list")
+def disease_list(q: str = ""):
+    """
+    Return all diseases with sample counts. Optional search filter.
+    返回所有疾病及样本数，可选搜索过滤
+    """
+    diseases = get_disease_list_cached()
+    if q and q.strip():
+        q_lower = q.strip().lower()
+        diseases = [d for d in diseases if q_lower in d["name"].lower()]
+    return {"diseases": diseases}
+
+
+@app.get("/api/disease-profile")
+def disease_profile(disease: str, top_n: int = 20):
+    """
+    Return a profile for a given disease:
+    为给定疾病返回画像：
+    - Top N genera by mean abundance in disease samples
+    - Comparison with healthy control (control = samples with no disease annotation)
+    - Age group distribution
+    - Sex distribution
+    - Country distribution
+    """
+    if not disease or not disease.strip():
+        raise HTTPException(400, "disease parameter is required")
+    disease = disease.strip()
+
+    meta = get_metadata()
+    abund = get_abundance()
+
+    # Find samples belonging to this disease / 查找该疾病的样本
+    INFORM_COLS = [f"inform{i}" for i in range(12)]
+    disease_mask = pd.Series(False, index=meta.index)
+    for col in INFORM_COLS:
+        if col not in meta.columns:
+            continue
+        disease_mask |= (meta[col].fillna("").astype(str).str.strip() == disease)
+
+    disease_samples = meta.loc[disease_mask]
+    if len(disease_samples) == 0:
+        raise HTTPException(404, f"Disease '{disease}' not found")
+
+    # Find healthy control samples (those with no disease in any inform column)
+    # 查找健康对照样本（所有inform列均无疾病标注）
+    control_mask = pd.Series(True, index=meta.index)
+    for col in INFORM_COLS:
+        if col not in meta.columns:
+            continue
+        control_mask &= (meta[col].fillna("").astype(str).str.strip().isin(["", "nan", "control", "healthy"]))
+    control_samples = meta.loc[control_mask]
+
+    # Get abundance for disease and control samples / 获取疾病组和对照组丰度
+    disease_keys = disease_samples["sample_key"].dropna().unique()
+    control_keys = control_samples["sample_key"].dropna().unique()
+
+    common_disease = abund.index.intersection(disease_keys)
+    common_control = abund.index.intersection(control_keys)
+
+    if len(common_disease) == 0:
+        raise HTTPException(404, "No abundance data for disease samples")
+
+    disease_abund = abund.loc[common_disease]
+    control_abund = abund.loc[common_control] if len(common_control) > 0 else None
+
+    # Compute genus-level mean abundance for disease group
+    # 计算疾病组的属级平均丰度
+    genus_map: dict[str, list[str]] = {}
+    for col in abund.columns:
+        g = extract_genus(col)
+        genus_map.setdefault(g, []).append(col)
+
+    genus_stats = []
+    for genus, cols in genus_map.items():
+        if not is_valid_genus(genus):
+            continue
+        d_vals = disease_abund[cols].sum(axis=1)
+        d_mean = float(d_vals.mean())
+        d_prev = float((d_vals > 0).sum() / len(d_vals)) if len(d_vals) > 0 else 0
+
+        c_mean = 0.0
+        c_prev = 0.0
+        if control_abund is not None and len(common_control) > 0:
+            c_vals = control_abund[cols].sum(axis=1)
+            c_mean = float(c_vals.mean())
+            c_prev = float((c_vals > 0).sum() / len(c_vals)) if len(c_vals) > 0 else 0
+
+        if d_mean > 0:
+            log2fc = float(np.log2((d_mean + 1e-10) / (c_mean + 1e-10))) if c_mean >= 0 else 0.0
+            genus_stats.append({
+                "genus": genus,
+                "disease_mean": round(d_mean, 8),
+                "disease_prevalence": round(d_prev, 4),
+                "control_mean": round(c_mean, 8),
+                "control_prevalence": round(c_prev, 4),
+                "log2fc": round(log2fc, 4),
+            })
+
+    genus_stats.sort(key=lambda x: x["disease_mean"], reverse=True)
+
+    # Demographics / 人口统计
+    def count_by(col_name: str) -> list[dict]:
+        if col_name not in disease_samples.columns:
+            return []
+        counts = disease_samples[col_name].fillna("unknown").astype(str).str.strip().value_counts()
+        return [
+            {"name": iso_to_name(k) if col_name == "country" else k, "count": int(v)}
+            for k, v in counts.items() if k and k != "nan"
+        ][:20]
+
+    return {
+        "disease": disease,
+        "sample_count": len(disease_samples),
+        "control_count": len(control_samples),
+        "top_genera": genus_stats[:top_n],
+        "by_country": count_by("country"),
+        "by_age_group": count_by("age_group" if "age_group" in disease_samples.columns else "age"),
+        "by_sex": count_by("sex"),
+    }
+
+
+# ── Microbe-disease network endpoint / 菌群-疾病网络端点 ─────────────────────
+
+@app.get("/api/network")
+def microbe_disease_network(top_diseases: int = 15, top_genera: int = 30):
+    """
+    Return nodes (diseases + genera) and edges for a force-directed network.
+    返回力导向图所需的节点（疾病 + 属）和边
+    Edge weight = mean abundance of genus in disease samples.
+    """
+    meta = get_metadata()
+    abund = get_abundance()
+
+    INFORM_COLS = [f"inform{i}" for i in range(12)]
+
+    # Get top diseases by sample count / 获取样本数最多的疾病
+    disease_counts: dict[str, set] = {}
+    for col in INFORM_COLS:
+        if col not in meta.columns:
+            continue
+        for idx, val in meta[col].dropna().items():
+            val = str(val).strip()
+            if val and val != "nan":
+                disease_counts.setdefault(val, set()).add(idx)
+
+    top_d = sorted(disease_counts.items(), key=lambda x: len(x[1]), reverse=True)[:top_diseases]
+    disease_names = [d[0] for d in top_d]
+
+    # Build genus map / 构建属映射
+    genus_map: dict[str, list[str]] = {}
+    for col in abund.columns:
+        g = extract_genus(col)
+        genus_map.setdefault(g, []).append(col)
+
+    # For each disease, compute mean abundance of each genus
+    # 对每个疾病，计算每个属的平均丰度
+    edges: list[dict] = []
+    genus_set: set[str] = set()
+
+    for disease_name in disease_names:
+        sample_indices = disease_counts[disease_name]
+        sample_keys = meta.loc[list(sample_indices), "sample_key"].dropna().unique()
+        common = abund.index.intersection(sample_keys)
+        if len(common) == 0:
+            continue
+        disease_abund = abund.loc[common]
+
+        # Get top genera for this disease / 获取该疾病的 top 属
+        genus_means = []
+        for genus, cols in genus_map.items():
+            if not is_valid_genus(genus):
+                continue
+            m = float(disease_abund[cols].sum(axis=1).mean())
+            if m > 0:
+                genus_means.append((genus, m))
+        genus_means.sort(key=lambda x: x[1], reverse=True)
+
+        for genus, mean_val in genus_means[:top_genera]:
+            edges.append({
+                "source": disease_name,
+                "target": genus,
+                "weight": round(mean_val, 6),
+            })
+            genus_set.add(genus)
+
+    # Build nodes / 构建节点
+    nodes = []
+    for d in disease_names:
+        nodes.append({"id": d, "type": "disease", "size": len(disease_counts[d])})
+    for g in genus_set:
+        nodes.append({"id": g, "type": "genus", "size": 1})
+
+    return {"nodes": nodes, "edges": edges}
 
 
 # ── Data management endpoints / 数据管理端点 ──────────────────────────────────

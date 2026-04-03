@@ -1,0 +1,110 @@
+/* NetworkPage.module.css — Microbe-Disease Network */
+
+.page {
+  min-height: 100vh;
+  background: var(--black);
+  color: var(--white);
+}
+
+.topBar {
+  padding: 20px 40px;
+  background: color-mix(in hsl, var(--black), var(--white) 6%);
+  border-bottom: 1px solid var(--dark-gray);
+}
+
+.back {
+  color: var(--primary);
+  text-decoration: none;
+  font-size: 0.85rem;
+  opacity: 0.8;
+  transition: opacity var(--fast);
+}
+.back:hover { opacity: 1; }
+
+.topBar h1 {
+  margin: 8px 0 4px;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.topBar p {
+  color: var(--light-gray);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  color: var(--light-gray);
+}
+
+.graphContainer {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 130px);
+}
+
+.graphContainer svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Legend */
+.legend {
+  position: absolute;
+  top: 16px;
+  right: 24px;
+  background: rgba(0,0,0,0.7);
+  border: 1px solid var(--gray);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 0.8rem;
+  z-index: 5;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.legendDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Controls */
+.controls {
+  position: absolute;
+  top: 16px;
+  left: 24px;
+  display: flex;
+  gap: 8px;
+  z-index: 5;
+}
+
+.controlBtn {
+  padding: 6px 14px;
+  border: 1px solid var(--gray);
+  border-radius: 6px;
+  background: rgba(0,0,0,0.7);
+  color: var(--white);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.controlBtn:hover { background: rgba(255,255,255,0.1); }
+
+/* Node labels */
+.nodeLabel {
+  font-size: 10px;
+  fill: currentColor;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}

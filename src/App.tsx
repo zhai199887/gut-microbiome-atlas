@@ -21,6 +21,8 @@ import "./App.css";
 const PhenotypePage = lazy(() => import("@/sections/PhenotypePage"));
 const ComparePage = lazy(() => import("@/pages/ComparePage"));
 const MetabolismPage = lazy(() => import("@/pages/MetabolismPage"));
+const DiseasePage = lazy(() => import("@/pages/DiseasePage"));
+const NetworkPage = lazy(() => import("@/pages/NetworkPage"));
 const SpeciesPage = lazy(() => import("@/pages/SpeciesPage"));
 const AdminPage = lazy(() => import("@/pages/AdminPage"));
 
@@ -61,6 +63,8 @@ const App = () => (
           <Route path="/" element={<MainPage />} />
           <Route path="/phenotype" element={<PhenotypePage />} />
           <Route path="/compare" element={<ComparePage />} />
+          <Route path="/disease" element={<DiseasePage />} />
+          <Route path="/network" element={<NetworkPage />} />
           <Route path="/metabolism" element={<MetabolismPage />} />
           <Route path="/species/:taxon" element={<SpeciesPage />} />
           <Route path="/admin" element={<AdminPage />} />

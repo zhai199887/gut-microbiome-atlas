@@ -12,7 +12,9 @@ const Header = () => {
     { to: "/",           label: t("nav.home") },
     { to: "/phenotype",  label: t("nav.explorer") },
     { to: "/compare",    label: t("nav.compare") },
+    { to: "/disease",   label: t("nav.disease") },
     { to: "/metabolism", label: t("nav.metabolism") },
+    { to: "/network",    label: t("nav.network") },
   ] as const;
 
   return (

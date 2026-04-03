@@ -189,8 +189,8 @@ const PhenotypePage = () => {
       ) : (
         <svg
           id="phenotype-chart"
-          viewBox="-200 -40 900 560"
-          style={{ width: "100%", maxWidth: 900 }}
+          viewBox="-350 -40 1050 560"
+          style={{ width: "100%", maxWidth: 1050 }}
         />
       )}
     </div>

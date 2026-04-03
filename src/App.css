@@ -215,6 +215,60 @@ span[data-tooltip] {
   text-underline-offset: 4px;
 }
 
+/* Page transition animation / 页面过渡动画 */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+main > section,
+main > div {
+  animation: fadeSlideIn 0.4s ease both;
+}
+
+main > section:nth-child(2) { animation-delay: 0.05s; }
+main > section:nth-child(3) { animation-delay: 0.1s; }
+main > section:nth-child(4) { animation-delay: 0.15s; }
+main > section:nth-child(5) { animation-delay: 0.2s; }
+
+/* Loading spinner / 加载旋转器 */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--dark-gray);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* Smooth chart transitions / 平滑图表过渡 */
+svg .bar,
+svg .cell,
+svg rect {
+  transition: opacity 0.2s ease, fill 0.2s ease;
+}
+
+/* Better responsive / 响应式改进 */
+@media (max-width: 600px) {
+  html { font-size: 12pt; }
+  header, section, footer {
+    padding: 30px 16px;
+    gap: 20px;
+  }
+  h1 { font-size: 1.4rem; }
+}
+
 .icon {
   flex-shrink: 0;
   width: unset;

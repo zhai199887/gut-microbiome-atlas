@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import {
   loadAbundance,
@@ -13,12 +13,21 @@ import MapSection from "@/sections/MapSection";
 import PhenotypeCharts from "@/sections/PhenotypeCharts";
 import SankeyChart from "@/sections/SankeyChart";
 import Search from "@/sections/Search";
-import PhenotypePage from "@/sections/PhenotypePage";
-import ComparePage from "@/pages/ComparePage";
-import MetabolismPage from "@/pages/MetabolismPage";
-import SpeciesPage from "@/pages/SpeciesPage";
 import "@/components/tooltip";
 import "./App.css";
+
+// Lazy-loaded pages for code splitting / 懒加载页面（代码分割）
+const PhenotypePage = lazy(() => import("@/sections/PhenotypePage"));
+const ComparePage = lazy(() => import("@/pages/ComparePage"));
+const MetabolismPage = lazy(() => import("@/pages/MetabolismPage"));
+const SpeciesPage = lazy(() => import("@/pages/SpeciesPage"));
+const AdminPage = lazy(() => import("@/pages/AdminPage"));
+
+const PageLoader = () => (
+  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" }}>
+    <div className="loading-spinner" />
+  </div>
+);
 
 const MainPage = () => {
   useEffect(() => {
@@ -45,13 +54,16 @@ const MainPage = () => {
 
 const App = () => (
   <BrowserRouter>
-    <Routes>
-      <Route path="/" element={<MainPage />} />
-      <Route path="/phenotype" element={<PhenotypePage />} />
-      <Route path="/compare" element={<ComparePage />} />
-      <Route path="/metabolism" element={<MetabolismPage />} />
-      <Route path="/species/:taxon" element={<SpeciesPage />} />
-    </Routes>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="/" element={<MainPage />} />
+        <Route path="/phenotype" element={<PhenotypePage />} />
+        <Route path="/compare" element={<ComparePage />} />
+        <Route path="/metabolism" element={<MetabolismPage />} />
+        <Route path="/species/:taxon" element={<SpeciesPage />} />
+        <Route path="/admin" element={<AdminPage />} />
+      </Routes>
+    </Suspense>
   </BrowserRouter>
 );
 

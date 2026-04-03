@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -50 100 100" id="logo">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -50 100 100" id="logo" role="img" aria-labelledby="logo-title logo-desc">
+  <title id="logo-title">Gut Microbiome Atlas</title>
+  <desc id="logo-desc">Logo depicting an intestinal tract outline with scattered microbial colonies representing the human gut microbiome</desc>
   <!-- 外圈 — Atlas 地球仪风格 -->
   <circle cx="0" cy="0" r="46" fill="none" stroke="currentColor" stroke-width="1.8" opacity="0.35"/>
   <circle cx="0" cy="0" r="43" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.6"/>

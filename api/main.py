@@ -69,10 +69,10 @@ A comprehensive analysis platform for the human gut microbiome, integrating **16
 
 ## Citation
 If you use this API in your research, please cite:
-> Zhai J, Dai C. Gut Microbiome Atlas: a comprehensive database and analysis platform for the human gut microbiome.
+> Zhai J, Li Y, Liu J, Su X, Cui R, Zheng D, Sun Y, Yu J, Dai C. Gut Microbiome Atlas: a comprehensive platform for exploring human gut microbiome across diseases, geography, and lifespan.
 
 ## Contact
-- Email: zhaijinxia@stu.gxmu.edu.cn
+- Correspondence: cdai@cmu.edu.cn
 """,
     docs_url="/api/docs",
     redoc_url="/api/redoc",

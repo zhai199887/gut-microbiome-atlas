@@ -215,6 +215,9 @@ def bray_curtis_pcoa(matrix_a: np.ndarray, matrix_b: np.ndarray,
     Subsamples to max_samples per group for performance.
     为性能考虑，每组最多采样max_samples个样本
     """
+    # Set random seed for reproducible subsampling / 设置种子保证可重复性
+    np.random.seed(42)
+
     # Subsample for performance / 为性能随机抽样
     if len(matrix_a) > max_samples:
         idx = np.random.choice(len(matrix_a), max_samples, replace=False)
@@ -312,8 +315,8 @@ def data_stats():
         "total_samples": int(len(meta)),
         "total_countries": int(meta["country"].nunique()),
         "total_diseases": int(meta["disease"].nunique()),
-        "last_updated": version_info.get("last_updated", "2026-04-03"),
-        "version": version_info.get("version", "v1.0_20260403"),
+        "last_updated": version_info.get("last_updated", datetime.now().strftime("%Y-%m-%d")),
+        "version": version_info.get("version", f"v1.0_{datetime.now().strftime('%Y%m%d')}"),
     }
 
 

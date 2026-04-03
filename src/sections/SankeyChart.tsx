@@ -116,8 +116,10 @@ const SankeyChart = () => {
       .map(([name]) => name);
 
     // ── Layout dimensions / 布局尺寸 ────────────────────────────────────
-    const W = 800, H = 480;
-    const margin = { top: 20, right: 160, bottom: 20, left: 140 };
+    const W = 800;
+    const minH = Math.max(480, topGenera.length * 28 + 60);
+    const H = minH;
+    const margin = { top: 30, right: 160, bottom: 30, left: 140 };
     const iW = W - margin.left - margin.right;
     const iH = H - margin.top - margin.bottom;
     const nodeW = 18;

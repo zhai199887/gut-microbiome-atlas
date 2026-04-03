@@ -14,6 +14,16 @@ const en = {
   "nav.disease": "Diseases",
   "nav.network": "Network",
   "nav.admin": "Admin",
+  "nav.biomarker": "Biomarkers",
+  "nav.chord": "Chord",
+  "nav.cooccurrence": "Co-occurrence",
+  "nav.lollipop": "Lollipop",
+  "nav.download": "Download",
+  "nav.similarity": "Similarity",
+  "nav.lifecycle": "Lifecycle",
+  "nav.analysis": "Analysis",
+  "nav.visualization": "Visualization",
+  "nav.tools": "Tools",
 
   // Header
   "header.title": "Gut Microbiome Atlas",
@@ -278,6 +288,16 @@ const zh: Record<keyof typeof en, string> = {
   "nav.disease": "疾病",
   "nav.network": "网络",
   "nav.admin": "管理",
+  "nav.biomarker": "标志物",
+  "nav.chord": "弦图",
+  "nav.cooccurrence": "共现网络",
+  "nav.lollipop": "差异丰度",
+  "nav.download": "下载",
+  "nav.similarity": "相似搜索",
+  "nav.lifecycle": "生命周期",
+  "nav.analysis": "分析",
+  "nav.visualization": "可视化",
+  "nav.tools": "工具",
 
   // Header
   "header.title": "肠道微生物图谱",

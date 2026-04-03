@@ -46,7 +46,7 @@ const SpeciesPage = () => {
 
       {matchedGenus && (
         <div className={classes.content}>
-          <DiseaseBoxChart genus={matchedGenus} abundance={abundance} summary={summary} />
+          <DiseaseBarChart genus={matchedGenus} abundance={abundance} summary={summary} />
           <AgeGroupBarChart genus={matchedGenus} abundance={abundance} summary={summary} />
           <MetabolismTags genus={matchedGenus} />
         </div>
@@ -57,7 +57,7 @@ const SpeciesPage = () => {
 
 // ── Disease abundance boxplot / 疾病丰度箱线图 ───────────────────────────────
 
-const DiseaseBoxChart = ({
+const DiseaseBarChart = ({
   genus,
   abundance,
   summary,
@@ -131,6 +131,12 @@ const DiseaseBoxChart = ({
     g.append("g")
       .call(d3.axisLeft(yScale).ticks(4).tickFormat((d) => `${(Number(d) * 100).toFixed(2)}%`))
       .attr("font-size", 10);
+
+    // Y-axis label / Y轴标签
+    svg.append("text")
+      .attr("transform", "translate(15," + (margin.top + iH / 2) + ") rotate(-90)")
+      .attr("text-anchor", "middle").attr("fill", "currentColor")
+      .attr("font-size", 11).text("Relative Abundance (%)");
   }, [genus, abundance, summary]);
 
   return (
@@ -226,6 +232,12 @@ const AgeGroupBarChart = ({
     g.append("g")
       .call(d3.axisLeft(yScale).ticks(4).tickFormat((d) => `${(Number(d) * 100).toFixed(2)}%`))
       .attr("font-size", 10);
+
+    // Y-axis label / Y轴标签
+    svg.append("text")
+      .attr("transform", "translate(15," + (margin.top + iH / 2) + ") rotate(-90)")
+      .attr("text-anchor", "middle").attr("fill", "currentColor")
+      .attr("font-size", 11).text("Relative Abundance (%)");
   }, [genus, abundance]);
 
   return (

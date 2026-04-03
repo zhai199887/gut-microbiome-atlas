@@ -433,6 +433,12 @@ const DiffBarChart = ({ result }: { result: DiffResult }) => {
       .attr("text-anchor", "middle").attr("fill", "var(--secondary)")
       .attr("font-size", 12).text(`${result.summary.group_a_name} →`);
 
+    // X-axis label / X轴标签
+    svg.append("text")
+      .attr("x", margin.left + W / 2).attr("y", H + margin.top + margin.bottom - 8)
+      .attr("text-anchor", "middle").attr("fill", "currentColor")
+      .attr("font-size", 11).text("log₂ Fold Change");
+
     // Set viewBox / 设置viewBox
     svg.attr("viewBox", `0 0 ${W + margin.left + margin.right} ${H + margin.top + margin.bottom}`);
 
@@ -809,16 +815,17 @@ const BetaPCoAChart = ({ result }: { result: DiffResult }) => {
 
     // Legend / 图例
     const lx = iW + 10;
+    const truncateText = (s: string, max: number) => s.length > max ? s.slice(0, max) + "…" : s;
     svg.append("circle").attr("cx", margin.left + lx + 6).attr("cy", margin.top + 20).attr("r", 6)
       .attr("fill", "var(--secondary)");
     svg.append("text").attr("x", margin.left + lx + 16).attr("y", margin.top + 24)
       .attr("font-size", 11).attr("fill", "var(--secondary)")
-      .text(result.summary.group_a_name.slice(0, 12));
+      .text(truncateText(result.summary.group_a_name, 12));
     svg.append("circle").attr("cx", margin.left + lx + 6).attr("cy", margin.top + 44).attr("r", 6)
       .attr("fill", "var(--primary)");
     svg.append("text").attr("x", margin.left + lx + 16).attr("y", margin.top + 48)
       .attr("font-size", 11).attr("fill", "var(--primary)")
-      .text(result.summary.group_b_name.slice(0, 12));
+      .text(truncateText(result.summary.group_b_name, 12));
   }, [result]);
 
   return <svg ref={svgRef} className={`compare-chart ${classes.chart}`} />;

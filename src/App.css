@@ -48,6 +48,19 @@ body {
   margin: 0;
 }
 
+/* Global select/option dark theme / 全局下拉选项深色主题 */
+select {
+  background: #1a1a2e;
+  color: #e4e8ee;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+}
+
+option {
+  background: #1a1a2e;
+  color: #e4e8ee;
+}
+
 header,
 section,
 footer {

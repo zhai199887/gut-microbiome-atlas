@@ -30,7 +30,6 @@ const PARTICLE_COUNT = 80;
 const CONNECTION_DIST = 160;
 const MOUSE_RADIUS = 200;
 const MOUSE_FORCE = 0.8;
-const DPR = Math.min(window.devicePixelRatio || 1, 2);
 
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
@@ -84,7 +83,18 @@ function drawBacillus(ctx: CanvasRenderingContext2D, m: Microbe, pulse: number) 
   ctx.translate(m.x, m.y);
   ctx.rotate(m.rotation);
   ctx.beginPath();
-  ctx.roundRect(-len / 2, -w / 2, len, w, w);
+  if (ctx.roundRect) {
+    ctx.roundRect(-len / 2, -w / 2, len, w, w);
+  } else {
+    // fallback for older browsers
+    const r = w / 2;
+    ctx.moveTo(-len / 2 + r, -w / 2);
+    ctx.lineTo(len / 2 - r, -w / 2);
+    ctx.arc(len / 2 - r, 0, r, -Math.PI / 2, Math.PI / 2);
+    ctx.lineTo(-len / 2 + r, w / 2);
+    ctx.arc(-len / 2 + r, 0, r, Math.PI / 2, -Math.PI / 2);
+    ctx.closePath();
+  }
   ctx.fillStyle = microbeColor(m.hue, m.opacity * (0.8 + pulse * 0.2));
   ctx.fill();
   ctx.restore();
@@ -124,6 +134,7 @@ const HeaderBg = () => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
     let w = 0;
     let h = 0;
     let mouse = { x: -9999, y: -9999 };
@@ -231,16 +242,19 @@ const HeaderBg = () => {
       animId = requestAnimationFrame(animate);
     };
 
+    const onResize = () => { resize(); };
+
     init();
     canvas.addEventListener("mousemove", onMouseMove);
     canvas.addEventListener("mouseleave", onMouseLeave);
-    window.addEventListener("resize", () => { resize(); });
+    window.addEventListener("resize", onResize);
     animId = requestAnimationFrame(animate);
 
     return () => {
       cancelAnimationFrame(animId);
       canvas.removeEventListener("mousemove", onMouseMove);
       canvas.removeEventListener("mouseleave", onMouseLeave);
+      window.removeEventListener("resize", onResize);
     };
   }, []);
 

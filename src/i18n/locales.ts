@@ -260,6 +260,13 @@ const en = {
   "download.download": "Download",
   "download.apiDocs": "API Documentation",
   "download.codeExamples": "Code Examples",
+  "download.summaryTitle": "Summary Statistics",
+  "download.summaryDesc": "Sample counts by country, disease, age group, and sex",
+  "download.genusDesc": "4,680 genus-level taxonomy names",
+  "download.diseaseProfileDesc": "Top genera comparison stats for a disease (mean, prevalence, log2FC)",
+  "download.diseasePlaceholder": "Enter disease name...",
+  "download.swaggerDesc": "Full API documentation available via Swagger UI:",
+  "download.openSwagger": "Open Swagger UI",
 
   // Similarity page
   "similarity.title": "Sample Similarity Search",
@@ -642,6 +649,13 @@ const zh: Record<keyof typeof en, string> = {
   "download.download": "下载",
   "download.apiDocs": "API 文档",
   "download.codeExamples": "代码示例",
+  "download.summaryTitle": "聚合统计数据",
+  "download.summaryDesc": "按国家、疾病、年龄组、性别的样本计数统计",
+  "download.genusDesc": "4,680 个属级分类名称列表",
+  "download.diseaseProfileDesc": "选定疾病的 Top 属对比统计（均值、检出率、log2FC）",
+  "download.diseasePlaceholder": "输入疾病名...",
+  "download.swaggerDesc": "完整的 API 文档可通过 Swagger UI 访问：",
+  "download.openSwagger": "打开 Swagger UI",
 
   // Similarity page
   "similarity.title": "样本相似性搜索",

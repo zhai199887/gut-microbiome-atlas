@@ -11,6 +11,8 @@ const en = {
   "nav.explorer": "Explorer",
   "nav.compare": "Compare",
   "nav.metabolism": "Metabolism",
+  "nav.disease": "Diseases",
+  "nav.network": "Network",
   "nav.admin": "Admin",
 
   // Header
@@ -35,6 +37,8 @@ const en = {
   "feature.phenotype.desc": "Compare microbiome composition across age groups, sexes, and diseases",
   "feature.compare.title": "Differential Analysis",
   "feature.compare.desc": "Statistical comparison between two user-defined sample groups (differential abundance, volcano plot, PCoA)",
+  "feature.disease.title": "Disease Browser",
+  "feature.disease.desc": "Explore disease-associated microbiome signatures and compare with healthy controls",
   "feature.metabolism.title": "Metabolic Functions",
   "feature.metabolism.desc": "Browse microbiota by metabolic role: SCFAs, bile acids, tryptophan, TMAO, and more",
 
@@ -146,6 +150,35 @@ const en = {
   // Sankey
   "sankey.title": "Taxonomy Flow: Phylum → Genus",
 
+  // Network
+  "network.title": "Microbe-Disease Network",
+  "network.subtitle": "Force-directed graph showing associations between top diseases and genera",
+  "network.back": "← Back to Atlas",
+  "network.diseaseNode": "Disease",
+  "network.genusNode": "Genus",
+  "network.edgeWeight": "Edge = abundance",
+
+  // Disease browser
+  "disease.title": "Disease Browser",
+  "disease.subtitle": "Select a disease to view its microbiome signature and compare with healthy controls",
+  "disease.back": "← Back to Atlas",
+  "disease.searchPlaceholder": "Search diseases…",
+  "disease.samples": "samples",
+  "disease.selectHint": "Select a disease from the list to view its microbiome profile",
+  "disease.topGenera": "Top Genera by Abundance",
+  "disease.genus": "Genus",
+  "disease.diseaseMean": "Disease Mean",
+  "disease.controlMean": "Control Mean",
+  "disease.log2fc": "Log₂FC",
+  "disease.prevalence": "Prevalence",
+  "disease.controlSamples": "Healthy Controls",
+  "disease.demographics": "Demographics",
+  "disease.byCountry": "By Country",
+  "disease.byAgeGroup": "By Age Group",
+  "disease.bySex": "By Sex",
+  "disease.enriched": "Enriched in disease",
+  "disease.depleted": "Depleted in disease",
+
   // Language switch
   "lang.switch": "中文",
 } as const;
@@ -156,6 +189,8 @@ const zh: Record<keyof typeof en, string> = {
   "nav.explorer": "探索",
   "nav.compare": "差异分析",
   "nav.metabolism": "代谢功能",
+  "nav.disease": "疾病",
+  "nav.network": "网络",
   "nav.admin": "管理",
 
   // Header
@@ -181,6 +216,8 @@ const zh: Record<keyof typeof en, string> = {
   "feature.compare.title": "差异分析",
   "feature.compare.desc": "两组样本间的统计比较（差异丰度、火山图、PCoA）",
   "feature.metabolism.title": "代谢功能",
+  "feature.disease.title": "疾病浏览",
+  "feature.disease.desc": "探索疾病相关微生物组特征，与健康对照比较",
   "feature.metabolism.desc": "按代谢角色浏览微生物：短链脂肪酸、胆汁酸、色氨酸、TMAO等",
 
   // Filter panel
@@ -290,6 +327,35 @@ const zh: Record<keyof typeof en, string> = {
 
   // Sankey
   "sankey.title": "分类流向：门 → 属",
+
+  // Network
+  "network.title": "菌群-疾病关联网络",
+  "network.subtitle": "力导向图展示主要疾病与菌属之间的关联",
+  "network.back": "← 返回首页",
+  "network.diseaseNode": "疾病",
+  "network.genusNode": "菌属",
+  "network.edgeWeight": "连线 = 丰度",
+
+  // Disease browser
+  "disease.title": "疾病浏览器",
+  "disease.subtitle": "选择疾病查看其微生物组特征，并与健康对照比较",
+  "disease.back": "← 返回首页",
+  "disease.searchPlaceholder": "搜索疾病…",
+  "disease.samples": "个样本",
+  "disease.selectHint": "从左侧列表选择疾病，查看其微生物组画像",
+  "disease.topGenera": "丰度最高的属",
+  "disease.genus": "属",
+  "disease.diseaseMean": "疾病组均值",
+  "disease.controlMean": "对照组均值",
+  "disease.log2fc": "Log₂FC",
+  "disease.prevalence": "检出率",
+  "disease.controlSamples": "健康对照",
+  "disease.demographics": "人口统计",
+  "disease.byCountry": "按国家",
+  "disease.byAgeGroup": "按年龄组",
+  "disease.bySex": "按性别",
+  "disease.enriched": "疾病中富集",
+  "disease.depleted": "疾病中减少",
 
   // Language switch
   "lang.switch": "EN",

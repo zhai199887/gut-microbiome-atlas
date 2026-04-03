@@ -19,7 +19,9 @@ const Overview = () => {
   const [apiStats, setApiStats] = useState<{
     last_updated?: string;
     version?: string;
-    total_species?: number;
+    total_samples?: number;
+    total_countries?: number;
+    total_diseases?: number;
   } | null>(null);
 
   useEffect(() => {
@@ -37,9 +39,10 @@ const Overview = () => {
     ? Object.keys(summary.region_counts).filter((k) => k !== "unknown").length
     : undefined;
 
-  const diseases = summary
-    ? Object.keys(summary.disease_counts).filter((k) => k !== "unknown").length
-    : undefined;
+  const diseases = apiStats?.total_diseases
+    ?? (summary
+      ? Object.keys(summary.disease_counts).filter((k) => k !== "unknown").length
+      : undefined);
 
   // Feature cards with i18n / 功能卡片国际化
   const FEATURE_CARDS = [
@@ -48,6 +51,12 @@ const Overview = () => {
       title: t("feature.phenotype.title"),
       desc: t("feature.phenotype.desc"),
       color: "var(--secondary)",
+    },
+    {
+      to: "/disease",
+      title: t("feature.disease.title"),
+      desc: t("feature.disease.desc"),
+      color: "#ff6b6b",
     },
     {
       to: "/compare",
@@ -87,8 +96,6 @@ const Overview = () => {
       text: (
         <>
           {formatNumber(diseases)} {t("overview.diseaseTypes")}
-          <br />
-          {t("overview.from")} <i>inform-all</i>
         </>
       ),
     },

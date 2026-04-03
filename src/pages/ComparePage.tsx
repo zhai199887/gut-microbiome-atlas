@@ -225,7 +225,7 @@ const ComparePage = () => {
               {" "}(n={result.summary.group_b_n})
             </span>
             <span className={classes.meta}>
-              {result.summary.total_taxa} {result.summary.taxonomy_level}s · {result.summary.method}
+              {result.summary.total_taxa} {result.summary.taxonomy_level === "genus" ? "genera" : "phyla"} · {result.summary.method}
             </span>
           </div>
 

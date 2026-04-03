@@ -142,3 +142,26 @@
   color: #888;
   line-height: 1.6;
 }
+
+.changelogTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.changelogTable th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  background: #f8f9fa;
+  border-bottom: 2px solid #dee2e6;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.changelogTable td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #f0f0f0;
+  vertical-align: top;
+  line-height: 1.5;
+}

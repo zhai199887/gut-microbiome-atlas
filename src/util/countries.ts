@@ -49,6 +49,7 @@ export const COUNTRY_NAMES_ZH: Record<string, string> = {
   TH: "泰国", TN: "突尼斯", TR: "土耳其", TW: "台湾", TZ: "坦桑尼亚",
   UA: "乌克兰", UG: "乌干达", US: "美国", UZ: "乌兹别克斯坦",
   VE: "委内瑞拉", VN: "越南", ZA: "南非", ZM: "赞比亚", ZW: "津巴布韦",
+  SD: "苏丹", UM: "美国本土外小岛屿", unknown: "未知",
 };
 
 /** Age group Chinese names / 年龄组中文名 */

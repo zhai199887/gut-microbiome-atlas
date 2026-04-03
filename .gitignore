@@ -29,3 +29,6 @@ C:/Users/
 
 # Keep public/data/ tracked (our generated data files)
 .vercel
+
+# Plans and internal docs - local only
+docs/

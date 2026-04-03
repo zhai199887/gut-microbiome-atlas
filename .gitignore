@@ -27,6 +27,14 @@ compile/downloaded
 C:/Users/
 *.tmp
 
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Raw/sensitive data — never commit sample-level metadata
+public/data/metadata.json
+
 # Keep public/data/ tracked (our generated data files)
 .vercel
 

@@ -98,7 +98,6 @@ export type Data = {
   byCountry?: ByGeo;
   summary?: MetadataSummary;
   abundance?: AbundanceSummary;
-  samples?: SampleRecord[];
   sampleSearch?: SampleSearch;
   geoSearch?: GeoSearch;
   selectedFeature?: { region: string; country: string; code: string };
@@ -156,79 +155,6 @@ export const loadAbundance = async () => {
     useData.setState({ abundance });
   } finally {
     setLoading("abundance", false);
-  }
-};
-
-export const loadSamples = async () => {
-  setLoading("samples", true);
-  try {
-    const samples = await request<SampleRecord[]>("data/metadata.json");
-    useData.setState({ samples });
-
-    /** Aggregate project-level stats from all constituent samples */
-    const projectMap = new Map<
-      string,
-      {
-        count: number;
-        diseases: Map<string, number>;
-        age_groups: Set<string>;
-        sexes: Set<string>;
-      }
-    >();
-
-    for (const s of samples) {
-      if (!projectMap.has(s.project)) {
-        projectMap.set(s.project, {
-          count: 0,
-          diseases: new Map(),
-          age_groups: new Set(),
-          sexes: new Set(),
-        });
-      }
-      const p = projectMap.get(s.project)!;
-      p.count++;
-      p.diseases.set(s.disease, (p.diseases.get(s.disease) ?? 0) + 1);
-      p.age_groups.add(s.age_group);
-      if (s.sex !== "unknown") p.sexes.add(s.sex);
-    }
-
-    const list: SampleSearch = [];
-
-    /** Project rows: show aggregated summary, not single-sample values */
-    for (const [proj, info] of projectMap) {
-      const topDisease = [...info.diseases.entries()]
-        .filter(([d]) => d !== "unknown")
-        .sort((a, b) => b[1] - a[1])[0]?.[0] ?? "unknown";
-
-      const diseaseCount = info.diseases.size;
-      const ageGroupCount = info.age_groups.size;
-
-      list.push({
-        type: "Project",
-        name: proj,
-        samples: info.count,
-        top_disease: topDisease,
-        disease_types: `${diseaseCount} type${diseaseCount !== 1 ? "s" : ""}`,
-        age_groups: `${ageGroupCount} group${ageGroupCount !== 1 ? "s" : ""}`,
-      });
-    }
-
-    /** Sample rows: individual-level annotations */
-    for (const s of samples) {
-      list.push({
-        type: "Sample",
-        name: s.sample_id,
-        samples: 1,
-        age_group: s.age_group,
-        sex: s.sex,
-        disease: s.disease,
-        country: s.country,
-      });
-    }
-
-    useData.setState({ sampleSearch: list });
-  } finally {
-    setLoading("samples", false);
   }
 };
 

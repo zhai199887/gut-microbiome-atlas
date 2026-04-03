@@ -23,6 +23,11 @@ from pydantic import BaseModel
 from scipy import stats
 from scipy.spatial.distance import cdist
 from dotenv import load_dotenv
+from starlette.requests import Request
+from starlette.responses import RedirectResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from analysis import wilcoxon_marker_test, spearman_cooccurrence, sample_similarity_search
 
 # Configure logging / 配置日志
@@ -47,9 +52,48 @@ if not ADMIN_TOKEN:
 
 app = FastAPI(
     title="Gut Microbiome Atlas API",
-    version="1.0.0",
-    description="Backend API for differential microbiome analysis",
+    version="2.0.0",
+    description="""
+# Gut Microbiome Atlas — RESTful API
+
+A comprehensive analysis platform for the human gut microbiome, integrating **168,464 samples** across **4,680 genera**, **69 countries**, and **217+ diseases**.
+
+## Features
+- **Differential Analysis**: Wilcoxon rank-sum test, t-test, LEfSe (LDA effect size), PERMANOVA
+- **Species Profiling**: Genus-level abundance across diseases, countries, age groups, and sex
+- **Disease Biomarker Discovery**: Wilcoxon + BH FDR correction + LDA effect size estimation
+- **Co-occurrence Network**: Spearman correlation-based microbial interaction networks
+- **Sample Similarity Search**: Bray-Curtis / Jaccard distance-based sample matching
+- **Lifecycle Atlas**: Age-stratified microbiome composition across 8 life stages
+- **Data Export**: CSV/JSON/TSV download for all analysis results
+
+## Citation
+If you use this API in your research, please cite:
+> Zhai J, Dai C. Gut Microbiome Atlas: a comprehensive database and analysis platform for the human gut microbiome.
+
+## Contact
+- Email: zhaijinxia@stu.gxmu.edu.cn
+""",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+    openapi_tags=[
+        {"name": "Overview", "description": "Health check and system statistics"},
+        {"name": "Species", "description": "Species/genus search and profiling"},
+        {"name": "Disease", "description": "Disease browsing and biomarker discovery"},
+        {"name": "Analysis", "description": "Differential analysis and statistical tests"},
+        {"name": "Network", "description": "Co-occurrence networks and chord diagrams"},
+        {"name": "Lifecycle", "description": "Age-stratified microbiome composition"},
+        {"name": "Similarity", "description": "Sample similarity search"},
+        {"name": "Download", "description": "Data export endpoints"},
+        {"name": "Admin", "description": "Administration endpoints"},
+    ],
 )
+
+# ── Rate limiting / 速率限制 ─────────────────────────────────────────────────
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS: allow all origins in dev, restrict to frontend URL in production
 # 跨域：开发模式允许所有来源，生产模式必须设置 FRONTEND_URL
@@ -492,14 +536,16 @@ def permanova_test(
 
 # ── API endpoints / API端点 ───────────────────────────────────────────────────
 
-@app.get("/api/health")
-def health():
+@app.get("/api/health", summary="Health check", description="Returns API status and timestamp.")
+@limiter.limit("120/minute")
+def health(request: Request):
     """Health check / 健康检查"""
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
 
 @app.get("/api/filter-options")
-def filter_options():
+@limiter.limit("120/minute")
+def filter_options(request: Request):
     """
     Return available filter option values from metadata.
     返回元数据中可用的筛选选项值
@@ -535,7 +581,8 @@ def filter_options():
 
 
 @app.get("/api/data-stats")
-def data_stats():
+@limiter.limit("120/minute")
+def data_stats(request: Request):
     """
     Return current dataset statistics for homepage display.
     返回当前数据集统计数据供首页展示
@@ -570,13 +617,15 @@ def data_stats():
 
 
 @app.get("/api/disease-names-zh")
-def get_disease_names_zh():
+@limiter.limit("120/minute")
+def get_disease_names_zh(request: Request):
     """Return disease name Chinese translations / 返回疾病名称中文翻译字典"""
     return DISEASE_NAMES_ZH
 
 
 @app.post("/api/diff-analysis")
-def diff_analysis(req: DiffAnalysisRequest):
+@limiter.limit("20/minute")
+def diff_analysis(request: Request, req: DiffAnalysisRequest):
     """
     Perform differential abundance analysis between two sample groups.
     对两组样本执行差异丰度分析
@@ -816,7 +865,8 @@ def get_genus_list() -> list[str]:
 
 
 @app.get("/api/species-search")
-def species_search(q: str = ""):
+@limiter.limit("120/minute")
+def species_search(request: Request, q: str = ""):
     """
     Autocomplete genus search. Returns up to 20 matching genus names.
     属名自动补全搜索，返回最多20个匹配结果
@@ -832,7 +882,8 @@ def species_search(q: str = ""):
 
 
 @app.get("/api/species-profile")
-def species_profile(genus: str):
+@limiter.limit("60/minute")
+def species_profile(request: Request, genus: str):
     """
     Return a comprehensive profile for a given genus:
     为给定属返回综合画像：
@@ -963,7 +1014,8 @@ def get_disease_list_cached() -> list[dict]:
 
 
 @app.get("/api/disease-list")
-def disease_list(q: str = ""):
+@limiter.limit("120/minute")
+def disease_list(request: Request, q: str = ""):
     """
     Return all diseases with sample counts. Optional search filter.
     返回所有疾病及样本数，可选搜索过滤
@@ -976,7 +1028,8 @@ def disease_list(q: str = ""):
 
 
 @app.get("/api/disease-profile")
-def disease_profile(disease: str, top_n: int = 20):
+@limiter.limit("60/minute")
+def disease_profile(request: Request, disease: str, top_n: int = 20):
     """
     Return a profile for a given disease:
     为给定疾病返回画像：
@@ -1096,7 +1149,8 @@ def disease_profile(disease: str, top_n: int = 20):
 # ── Microbe-disease network endpoint / 菌群-疾病网络端点 ─────────────────────
 
 @app.get("/api/network")
-def microbe_disease_network(top_diseases: int = 15, top_genera: int = 30):
+@limiter.limit("60/minute")
+def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera: int = 30):
     """
     Return nodes (diseases + genera) and edges for a force-directed network.
     返回力导向图所需的节点（疾病 + 属）和边
@@ -1179,14 +1233,17 @@ def _check_admin(token: str | None):
 
 
 @app.get("/api/admin/check")
-def admin_check(x_admin_token: str | None = Header(None)):
+@limiter.limit("10/minute")
+def admin_check(request: Request, x_admin_token: str | None = Header(None)):
     """Verify admin token. / 验证管理员token"""
     _check_admin(x_admin_token)
     return {"status": "authorized"}
 
 
 @app.post("/api/admin/upload-metadata")
+@limiter.limit("10/minute")
 async def upload_metadata(
+    request: Request,
     file: UploadFile = File(...),
     x_admin_token: str | None = Header(None),
 ):
@@ -1215,7 +1272,9 @@ async def upload_metadata(
 
 
 @app.post("/api/admin/validate-metadata")
+@limiter.limit("10/minute")
 async def validate_metadata_endpoint(
+    request: Request,
     file: UploadFile = File(...),
     x_admin_token: str | None = Header(None),
 ):
@@ -1242,7 +1301,8 @@ import csv as csv_mod
 
 
 @app.get("/api/download/summary-stats")
-def download_summary_stats(format: str = "csv"):
+@limiter.limit("30/minute")
+def download_summary_stats(request: Request, format: str = "csv"):
     """
     Download aggregated summary statistics (NOT raw sample data).
     下载聚合统计数据（不提供原始样本数据）
@@ -1301,9 +1361,10 @@ def download_summary_stats(format: str = "csv"):
 
 
 @app.get("/api/download/disease-profile")
-def download_disease_profile_data(disease: str, format: str = "csv"):
+@limiter.limit("30/minute")
+def download_disease_profile_data(request: Request, disease: str, format: str = "csv"):
     """Download disease profile data / 下载疾病画像数据"""
-    profile = disease_profile(disease, top_n=50)
+    profile = disease_profile(request, disease, top_n=50)
     rows = profile["top_genera"]
 
     if format == "json":
@@ -1325,9 +1386,10 @@ def download_disease_profile_data(disease: str, format: str = "csv"):
 
 
 @app.get("/api/download/species-profile")
-def download_species_profile_data(genus: str, format: str = "csv"):
+@limiter.limit("30/minute")
+def download_species_profile_data(request: Request, genus: str, format: str = "csv"):
     """Download species profile data / 下载物种画像数据"""
-    profile = species_profile(genus)
+    profile = species_profile(request, genus)
 
     if format == "json":
         return profile
@@ -1349,7 +1411,8 @@ def download_species_profile_data(genus: str, format: str = "csv"):
 
 
 @app.get("/api/download/genus-list")
-def download_genus_list(format: str = "csv"):
+@limiter.limit("30/minute")
+def download_genus_list(request: Request, format: str = "csv"):
     """Download list of all genera / 下载所有属名列表"""
     genera = get_genus_list()
 
@@ -1370,7 +1433,8 @@ def download_genus_list(format: str = "csv"):
 
 
 @app.get("/api/biomarker-discovery")
-def biomarker_discovery(disease: str, lda_threshold: float = 2.0, p_threshold: float = 0.05):
+@limiter.limit("60/minute")
+def biomarker_discovery(request: Request, disease: str, lda_threshold: float = 2.0, p_threshold: float = 0.05):
     """
     Discover biomarker taxa for a given disease vs healthy controls.
     发现疾病标志物：疾病组 vs 健康对照的显著差异属
@@ -1453,7 +1517,8 @@ def biomarker_discovery(disease: str, lda_threshold: float = 2.0, p_threshold: f
 
 
 @app.get("/api/lollipop-data")
-def lollipop_data(disease: str, top_n: int = 40):
+@limiter.limit("60/minute")
+def lollipop_data(request: Request, disease: str, top_n: int = 40):
     """
     Return differential abundance data for lollipop plot.
     返回棒棒糖图格式的差异丰度数据
@@ -1540,7 +1605,8 @@ def lollipop_data(disease: str, top_n: int = 40):
 
 
 @app.get("/api/chord-data")
-def chord_data(top_diseases: int = 10, top_genera: int = 12):
+@limiter.limit("60/minute")
+def chord_data(request: Request, top_diseases: int = 10, top_genera: int = 12):
     """
     Return disease-genus association matrix for chord diagram.
     返回疾病-属关联矩阵用于弦图
@@ -1608,7 +1674,9 @@ def chord_data(top_diseases: int = 10, top_genera: int = 12):
 
 
 @app.get("/api/cooccurrence")
+@limiter.limit("20/minute")
 def cooccurrence_network(
+    request: Request,
     disease: str = "",
     min_r: float = 0.3,
     top_genera: int = 50,
@@ -1703,7 +1771,9 @@ AGE_GROUP_ORDER = ["Infant", "Child", "Adolescent", "Adult", "Older_Adult", "Old
 
 
 @app.get("/api/lifecycle")
+@limiter.limit("60/minute")
 def lifecycle_atlas(
+    request: Request,
     disease: str = "",
     country: str = "",
     top_genera: int = 15,
@@ -1821,7 +1891,8 @@ def lifecycle_atlas(
 
 
 @app.get("/api/genus-names")
-async def get_genus_names():
+@limiter.limit("120/minute")
+async def get_genus_names(request: Request):
     """返回丰度矩阵所有属名列表（供前端下载模板用）。
     Return list of genus names from abundance matrix columns.
     """
@@ -1833,7 +1904,8 @@ async def get_genus_names():
 
 
 @app.post("/api/similarity-search")
-async def similarity_search(req: SimilarityRequest):
+@limiter.limit("20/minute")
+async def similarity_search(request: Request, req: SimilarityRequest):
     """接收用户上传的丰度向量，返回 Top-K 最相似样本。
     Receive user abundance vector, return Top-K most similar samples.
     注意：不暴露批量原始数据，仅返回样本ID、距离、元数据摘要。
@@ -1896,6 +1968,22 @@ async def similarity_search(req: SimilarityRequest):
         "total_genera": len(col_genus_map),
         "results": results,
     }
+
+
+# ── API v1 version aliases / API v1 版本别名 ─────────────────────────────────
+@app.get("/api/v1/{path:path}")
+async def v1_redirect_get(path: str, request: Request):
+    """Redirect GET /api/v1/* to /api/* for versioned access"""
+    query = str(request.query_params)
+    url = f"/api/{path}" + (f"?{query}" if query else "")
+    return RedirectResponse(url=url, status_code=307)
+
+@app.post("/api/v1/{path:path}")
+async def v1_redirect_post(path: str, request: Request):
+    """Redirect POST /api/v1/* to /api/* for versioned access"""
+    query = str(request.query_params)
+    url = f"/api/{path}" + (f"?{query}" if query else "")
+    return RedirectResponse(url=url, status_code=307)
 
 
 if __name__ == "__main__":

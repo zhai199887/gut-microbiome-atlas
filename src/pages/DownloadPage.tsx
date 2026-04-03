@@ -10,7 +10,7 @@ import classes from "./DownloadPage.module.css";
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 const DownloadPage = () => {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const [formats, setFormats] = useState<Record<string, string>>({});
 
   const getFormat = (key: string) => formats[key] ?? "csv";
@@ -33,10 +33,8 @@ const DownloadPage = () => {
       <div className={classes.cards}>
         {/* Summary statistics (aggregated, not raw) */}
         <div className={classes.card}>
-          <h3>{locale === "zh" ? "聚合统计数据" : "Summary Statistics"}</h3>
-          <p>{locale === "zh"
-            ? "按国家、疾病、年龄组、性别的样本计数统计"
-            : "Sample counts by country, disease, age group, and sex"}</p>
+          <h3>{t("download.summaryTitle")}</h3>
+          <p>{t("download.summaryDesc")}</p>
           <div className={classes.formatRow}>
             <select className={classes.formatSelect} value={getFormat("summary")} onChange={(e) => setFormat("summary", e.target.value)}>
               <option value="csv">CSV</option>
@@ -52,7 +50,7 @@ const DownloadPage = () => {
         {/* Genus list */}
         <div className={classes.card}>
           <h3>{t("download.abundance")}</h3>
-          <p>{locale === "zh" ? "4,680 个属级分类名称列表" : "4,680 genus-level taxonomy names"}</p>
+          <p>{t("download.genusDesc")}</p>
           <div className={classes.formatRow}>
             <select className={classes.formatSelect} value={getFormat("genus-list")} onChange={(e) => setFormat("genus-list", e.target.value)}>
               <option value="csv">CSV</option>
@@ -68,13 +66,11 @@ const DownloadPage = () => {
         {/* Disease profile */}
         <div className={classes.card}>
           <h3>{t("download.diseaseProfile")}</h3>
-          <p>{locale === "zh"
-            ? "选定疾病的 Top 属对比统计（均值、检出率、log2FC）"
-            : "Top genera comparison stats for a disease (mean, prevalence, log2FC)"}</p>
+          <p>{t("download.diseaseProfileDesc")}</p>
           <div className={classes.formatRow}>
             <input
               type="text"
-              placeholder={locale === "zh" ? "输入疾病名..." : "Enter disease name..."}
+              placeholder={t("download.diseasePlaceholder")}
               className={classes.formatSelect}
               id="disease-input"
             />
@@ -127,9 +123,7 @@ cat("Mean abundance:", profile$mean_abundance, "\\n")`}</div>
       <div className={classes.codeSection}>
         <h2>{t("download.apiDocs")}</h2>
         <p style={{ color: "var(--gray)", fontSize: "0.9rem" }}>
-          {locale === "zh"
-            ? "完整的 API 文档可通过 Swagger UI 访问："
-            : "Full API documentation available via Swagger UI:"}
+          {t("download.swaggerDesc")}
         </p>
         <a
           href={`${API_BASE}/docs`}
@@ -138,7 +132,7 @@ cat("Mean abundance:", profile$mean_abundance, "\\n")`}</div>
           className={classes.downloadBtn}
           style={{ display: "inline-block", textDecoration: "none", marginTop: "0.5rem" }}
         >
-          {locale === "zh" ? "打开 Swagger UI" : "Open Swagger UI"}
+          {t("download.openSwagger")}
         </a>
       </div>
     </div>

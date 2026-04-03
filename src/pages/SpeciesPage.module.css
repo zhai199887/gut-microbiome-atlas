@@ -59,3 +59,4 @@
   transition: all var(--fast);
 }
 .metaTag:hover { background: color-mix(in hsl, var(--secondary), var(--black) 50%); }
+.metaTag:visited { color: var(--secondary-light); }

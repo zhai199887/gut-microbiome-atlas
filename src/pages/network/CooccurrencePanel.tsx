@@ -7,6 +7,7 @@ import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 import { exportTable } from "@/util/export";
 import { exportSVG, exportPNG } from "@/util/chartExport";
+import { diseaseDisplayName } from "@/util/diseaseNames";
 import classes from "../CooccurrencePage.module.css";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -27,7 +28,7 @@ const CooccurrencePanel = () => {
   const [error, setError] = useState("");
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const dName = (n: string) => (locale === "zh" && diseaseZh[n]) ? diseaseZh[n] : n;
+  const dName = (n: string) => (locale === "zh" && diseaseZh[n]) ? diseaseZh[n] : diseaseDisplayName(n);
 
   // 加载疾病列表 + 中文名
   useEffect(() => {

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import * as d3 from "d3";
 import { useI18n } from "@/i18n";
+import { diseaseDisplayName } from "@/util/diseaseNames";
 import classes from "./LollipopPage.module.css";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -43,7 +44,7 @@ const LollipopPage = () => {
   const [loading, setLoading] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const dName = (n: string) => (locale === "zh" && diseaseZh[n]) ? diseaseZh[n] : n;
+  const dName = (n: string) => (locale === "zh" && diseaseZh[n]) ? diseaseZh[n] : diseaseDisplayName(n);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/disease-list`).then(r => r.json())

@@ -4,8 +4,8 @@ import * as d3 from "d3";
 import type { Feature } from "geojson";
 import { clamp } from "lodash";
 import Placeholder from "@/components/Placeholder";
-import type { Data, MetadataSummary } from "@/data";
-import { setSelectedFeature, useData } from "@/data";
+import type { Data, Filters, MetadataSummary, CountryStat } from "@/data";
+import { DEFAULT_FILTERS, setSelectedFeature, useData } from "@/data";
 import { downloadSvg, getCssVariable } from "@/util/dom";
 import { formatNumber } from "@/util/string";
 import classes from "./Map.module.css";
@@ -13,10 +13,58 @@ import classes from "./Map.module.css";
 const width = 770;
 const height = 400;
 
+/** Estimate filtered sample count for a country based on its stats */
+const estimateFilteredCount = (
+  stat: CountryStat | undefined,
+  total: number,
+  filters: Filters,
+): number => {
+  if (!stat) return 0;
+  const isDefault =
+    filters.sex === DEFAULT_FILTERS.sex &&
+    filters.age_groups.length === 0 &&
+    filters.diseases.length === 0;
+  if (isDefault) return total;
+
+  let ratio = 1.0;
+
+  // Sex filter: apply percentage
+  if (filters.sex !== "all" && stat.sex.known > 0) {
+    const pct = filters.sex === "female" ? stat.sex.female_pct : filters.sex === "male" ? stat.sex.male_pct : null;
+    if (pct !== null) ratio *= pct / 100;
+    else ratio *= 0;
+  }
+
+  // Age filter: fraction of samples in selected age groups
+  if (filters.age_groups.length > 0) {
+    const ageTotal = Object.values(stat.top_ages).reduce((s, v) => s + v, 0);
+    if (ageTotal > 0) {
+      const selected = filters.age_groups.reduce((s, g) => s + (stat.top_ages[g] ?? 0), 0);
+      ratio *= selected / ageTotal;
+    } else {
+      ratio = 0;
+    }
+  }
+
+  // Disease filter: fraction of samples with selected diseases
+  if (filters.diseases.length > 0) {
+    const diseaseTotal = Object.values(stat.top_diseases).reduce((s, v) => s + v, 0);
+    if (diseaseTotal > 0) {
+      const selected = filters.diseases.reduce((s, d) => s + (stat.top_diseases[d] ?? 0), 0);
+      ratio *= selected / diseaseTotal;
+    } else {
+      ratio = 0;
+    }
+  }
+
+  return Math.round(total * ratio);
+};
+
 const MapSection = () => {
   const byCountry = useData((s) => s.byCountry);
   const summary = useData((s) => s.summary);
   const selectedFeature = useData((s) => s.selectedFeature);
+  const filters = useData((s) => s.filters);
   const mapInstanceRef = useRef<ReturnType<typeof makeMap> | null>(null);
 
   useEffect(() => {
@@ -24,8 +72,8 @@ const MapSection = () => {
   }, []);
 
   useEffect(() => {
-    mapInstanceRef.current?.(byCountry, summary, selectedFeature);
-  }, [byCountry, summary, selectedFeature]);
+    mapInstanceRef.current?.(byCountry, summary, selectedFeature, filters);
+  }, [byCountry, summary, selectedFeature, filters]);
 
   if (!byCountry || !summary)
     return <Placeholder height={400}>Loading map...</Placeholder>;
@@ -134,6 +182,7 @@ const makeMap = () => {
     byCountry: Data["byCountry"],
     summary: MetadataSummary | undefined,
     selectedFeature: Data["selectedFeature"],
+    filters?: Filters,
   ) => {
     if (!byCountry) return;
 
@@ -161,15 +210,22 @@ const makeMap = () => {
       .attr("stroke-width", 0.5);
 
     const countryStats = summary?.country_stats ?? {};
+    const activeFilters = filters ?? DEFAULT_FILTERS;
 
     const enriched = {
       ...byCountry,
-      features: byCountry.features.map((f) => ({
-        ...f,
-        properties: {
-          ...f.properties,
-        },
-      })),
+      features: byCountry.features.map((f) => {
+        const code = f.properties.code ?? "";
+        const stat = countryStats[code];
+        const filteredSamples = estimateFilteredCount(stat, f.properties.samples, activeFilters);
+        return {
+          ...f,
+          properties: {
+            ...f.properties,
+            samples: filteredSamples,
+          },
+        };
+      }),
     };
 
     const [, max = 1000] = d3.extent(

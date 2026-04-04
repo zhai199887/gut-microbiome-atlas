@@ -4,10 +4,12 @@
  */
 import { useEffect, useRef } from "react";
 import * as d3 from "d3";
+import { useI18n } from "@/i18n";
 import type { DiffResult } from "./types";
 import classes from "../ComparePage.module.css";
 
 const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
+  const { locale } = useI18n();
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -38,7 +40,7 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
     if (allVals.length === 0) {
       svg.attr("viewBox", `0 0 ${W} 100`);
       svg.append("text").attr("x", 20).attr("y", 50)
-        .text("No alpha diversity data available")
+        .text(locale === "zh" ? "无 Alpha 多样性数据" : "No alpha diversity data available")
         .attr("fill", "currentColor").attr("font-size", 13);
       return;
     }
@@ -114,15 +116,15 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
     svg.append("text")
       .attr("transform", `translate(14,${H / 2}) rotate(-90)`)
       .attr("text-anchor", "middle").attr("fill", "currentColor")
-      .attr("font-size", 11).text("Diversity Index");
+      .attr("font-size", 11).text(locale === "zh" ? "多样性指数" : "Diversity Index");
 
     // Panel titles
     svg.append("text").attr("x", margin.left + 115).attr("y", 22)
       .attr("text-anchor", "middle").attr("fill", "currentColor")
-      .attr("font-size", 13).attr("font-weight", 600).text("Shannon Index");
+      .attr("font-size", 13).attr("font-weight", 600).text(locale === "zh" ? "Shannon 指数" : "Shannon Index");
     svg.append("text").attr("x", margin.left + 385).attr("y", 22)
       .attr("text-anchor", "middle").attr("fill", "currentColor")
-      .attr("font-size", 13).attr("font-weight", 600).text("Simpson Index (1-D)");
+      .attr("font-size", 13).attr("font-weight", 600).text(locale === "zh" ? "Simpson 指数 (1-D)" : "Simpson Index (1-D)");
 
     // X labels
     for (const pos of positions) {
@@ -155,7 +157,7 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
         .attr("x", legendX + 14).attr("y", legendY + i * 18)
         .attr("font-size", 10).attr("fill", color).text(label);
     });
-  }, [result]);
+  }, [result, locale]);
 
   return <svg ref={svgRef} className={`compare-chart ${classes.chart}`} />;
 };

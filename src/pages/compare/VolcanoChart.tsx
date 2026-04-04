@@ -5,10 +5,12 @@
 import { useEffect, useRef } from "react";
 import { renderToString } from "react-dom/server";
 import * as d3 from "d3";
+import { useI18n } from "@/i18n";
 import type { DiffResult, DiffTaxon } from "./types";
 import classes from "../ComparePage.module.css";
 
 const VolcanoChart = ({ result }: { result: DiffResult }) => {
+  const { locale } = useI18n();
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -79,10 +81,10 @@ const VolcanoChart = ({ result }: { result: DiffResult }) => {
       .attr("data-tooltip", (d, i) =>
         renderToString(
           <div className="tooltip-table">
-            <span>Taxon</span><span>{d.taxon}</span>
-            <span>log2FC</span><span>{d.log2fc.toFixed(3)}</span>
+            <span>{locale === "zh" ? "分类群" : "Taxon"}</span><span>{d.taxon}</span>
+            <span>log₂FC</span><span>{d.log2fc.toFixed(3)}</span>
             <span>−log₁₀(adj.p)</span><span>{negLogP[i]!.toFixed(2)}</span>
-            <span>adj.p</span><span>{d.adjusted_p.toExponential(2)}</span>
+            <span>{locale === "zh" ? "校正p值" : "adj.p"}</span><span>{d.adjusted_p.toExponential(2)}</span>
           </div>
         )
       );
@@ -113,12 +115,12 @@ const VolcanoChart = ({ result }: { result: DiffResult }) => {
     svg.append("text")
       .attr("x", W / 2).attr("y", H - 10)
       .attr("text-anchor", "middle").attr("fill", "currentColor").attr("font-size", 12)
-      .text("log₂ Fold Change");
+      .text(locale === "zh" ? "log₂ 差异倍数" : "log₂ Fold Change");
     svg.append("text")
       .attr("transform", `translate(14,${H / 2}) rotate(-90)`)
       .attr("text-anchor", "middle").attr("fill", "currentColor").attr("font-size", 12)
-      .text("−log₁₀(adj. p)");
-  }, [result]);
+      .text(locale === "zh" ? "−log₁₀(校正 p)" : "−log₁₀(adj. p)");
+  }, [result, locale]);
 
   return <svg ref={svgRef} className={`compare-chart ${classes.chart}`} />;
 };

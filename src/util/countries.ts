@@ -24,6 +24,7 @@ export const COUNTRY_NAMES: Record<string, string> = {
   TH: "Thailand", TN: "Tunisia", TR: "Turkey", TW: "Taiwan", TZ: "Tanzania",
   UA: "Ukraine", UG: "Uganda", US: "United States", UZ: "Uzbekistan",
   VE: "Venezuela", VN: "Vietnam", ZA: "South Africa", ZM: "Zambia", ZW: "Zimbabwe",
+  UM: "U.S. Minor Outlying Islands", unknown: "Unknown",
 };
 
 /** Chinese country names / 中文国名 */

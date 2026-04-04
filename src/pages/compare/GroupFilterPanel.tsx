@@ -53,9 +53,12 @@ const GroupFilterPanel = ({
         <label>{t("compare.country")}</label>
         <select value={value.country} onChange={set("country")} className={classes.select}>
           <option value="">{t("compare.any")}</option>
-          {options?.countries.map((c) => (
-            <option key={c} value={c}>{countryName(c, locale)} ({c})</option>
-          ))}
+          {options?.countries.map((c) => {
+            const display = countryName(c, locale);
+            // Hide raw code for special values; show "code" suffix only for real ISO codes
+            const showCode = display !== c && c !== "unknown" && c.length <= 3;
+            return <option key={c} value={c}>{showCode ? `${display} (${c})` : display}</option>;
+          })}
         </select>
       </div>
       <div className={classes.fieldRow}>

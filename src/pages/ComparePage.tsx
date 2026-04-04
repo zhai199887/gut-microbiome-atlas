@@ -8,6 +8,7 @@ import { Link } from "react-router-dom";
 import { useI18n } from "@/i18n";
 import { exportTable } from "@/util/export";
 import { exportSVG, exportPNG } from "@/util/chartExport";
+import { cachedFetch } from "@/util/apiCache";
 import "@/components/tooltip";
 import classes from "./ComparePage.module.css";
 
@@ -42,9 +43,8 @@ const ComparePage = () => {
 
   // Load filter options on mount / 挂载时加载筛选选项
   useEffect(() => {
-    fetch(`${API_BASE}/api/filter-options`)
-      .then((r) => r.json())
-      .then((data: FilterOptions) => {
+    cachedFetch<FilterOptions>(`${API_BASE}/api/filter-options`)
+      .then((data) => {
         setFilterOptions(data);
         setFilterLoading(false);
       })

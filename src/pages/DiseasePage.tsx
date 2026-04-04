@@ -11,6 +11,7 @@ import { useI18n } from "@/i18n";
 import { exportTable } from "@/util/export";
 import { exportSVG, exportPNG } from "@/util/chartExport";
 import { diseaseDisplayName, diseaseDisplayNameI18n } from "@/util/diseaseNames";
+import { cachedFetch } from "@/util/apiCache";
 import "@/components/tooltip";
 import BiomarkerPanel from "./disease/BiomarkerPanel";
 import LollipopPanel from "./disease/LollipopPanel";
@@ -67,15 +68,13 @@ const DiseasePage = () => {
 
   // Load disease list + Chinese names / 加载疾病列表 + 中文名
   useEffect(() => {
-    fetch(`${API_BASE}/api/disease-list`)
-      .then((r) => r.json())
+    cachedFetch<{ diseases: string[] }>(`${API_BASE}/api/disease-list`)
       .then((data) => {
         setDiseases(data.diseases ?? []);
         setFiltered(data.diseases ?? []);
       })
       .catch(() => {});
-    fetch(`${API_BASE}/api/disease-names-zh`)
-      .then((r) => r.json())
+    cachedFetch<Record<string, string>>(`${API_BASE}/api/disease-names-zh`)
       .then(setDiseaseZh)
       .catch(() => {});
   }, []);
@@ -102,12 +101,8 @@ const DiseasePage = () => {
     setActiveTab("profile");
     setLoading(true);
     setProfile(null);
-    fetch(`${API_BASE}/api/disease-profile?disease=${encodeURIComponent(name)}`)
-      .then((r) => {
-        if (!r.ok) throw new Error("Not found");
-        return r.json();
-      })
-      .then((data: DiseaseProfile) => setProfile(data))
+    cachedFetch<DiseaseProfile>(`${API_BASE}/api/disease-profile?disease=${encodeURIComponent(name)}`)
+      .then((data) => setProfile(data))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

@@ -10,6 +10,7 @@ import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 import { exportSVG, exportPNG } from "@/util/chartExport";
 import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
+import { cachedFetch } from "@/util/apiCache";
 import classes from "./NetworkPage.module.css";
 
 const ChordPanel = lazy(() => import("./network/ChordPanel"));
@@ -51,27 +52,13 @@ const NetworkPage = () => {
 
   // 加载关联网络数据 + 中文名
   useEffect(() => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-    fetch(`${API_BASE}/api/network?top_diseases=12&top_genera=15`, { signal: controller.signal })
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((d: NetworkData) => setData(d))
-      .catch((err) => {
-        if (err.name === "AbortError") {
-          setError(t("compare.backendError"));
-        } else {
-          setError(t("compare.backendError"));
-        }
-      })
-      .finally(() => { clearTimeout(timeout); setLoading(false); });
-    fetch(`${API_BASE}/api/disease-names-zh`)
-      .then((r) => r.json())
+    cachedFetch<NetworkData>(`${API_BASE}/api/network?top_diseases=12&top_genera=15`)
+      .then((d) => setData(d))
+      .catch(() => setError(t("compare.backendError")))
+      .finally(() => setLoading(false));
+    cachedFetch<Record<string, string>>(`${API_BASE}/api/disease-names-zh`)
       .then(setDiseaseZh)
-      .catch((err) => console.warn("disease-names-zh fetch failed:", err));
-    return () => { clearTimeout(timeout); controller.abort(); };
+      .catch(() => {});
   }, []);
 
   // 绘制力导向图（仅当 association tab 激活时）

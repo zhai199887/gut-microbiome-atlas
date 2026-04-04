@@ -9,6 +9,7 @@ import { useI18n } from "@/i18n";
 import { exportTable } from "@/util/export";
 import { exportSVG, exportPNG } from "@/util/chartExport";
 import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
+import { cachedFetch } from "@/util/apiCache";
 import type { CrossStudyResult, CrossStudyMarker, ProjectInfo } from "./types";
 import { API_BASE } from "./types";
 import classes from "./CrossStudyPanel.module.css";
@@ -51,15 +52,13 @@ const CrossStudyPanel = () => {
 
   // Load projects & diseases
   useEffect(() => {
-    const ctrl = new AbortController();
     Promise.all([
-      fetch(`${API_BASE}/api/project-list`, { signal: ctrl.signal }).then(r => r.json()),
-      fetch(`${API_BASE}/api/filter-options`, { signal: ctrl.signal }).then(r => r.json()),
+      cachedFetch<{ projects: ProjectInfo[] }>(`${API_BASE}/api/project-list`),
+      cachedFetch<{ diseases: string[] }>(`${API_BASE}/api/filter-options`),
     ]).then(([projData, filterData]) => {
       setProjects(projData.projects || []);
       setDiseases(filterData.diseases || []);
     }).catch(() => {});
-    return () => ctrl.abort();
   }, []);
 
   const toggleProject = (pid: string) => {

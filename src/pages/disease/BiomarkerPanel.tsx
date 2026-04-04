@@ -7,6 +7,7 @@ import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 import { exportTable } from "@/util/export";
 import { exportSVG, exportPNG } from "@/util/chartExport";
+import { cachedFetch } from "@/util/apiCache";
 import classes from "../DiseasePage.module.css";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -58,14 +59,9 @@ const BiomarkerPanel = ({ disease }: Props) => {
     setLoading(true);
     setResult(null);
     setError(null);
-    fetch(`${API_BASE}/api/biomarker-discovery?disease=${encodeURIComponent(disease)}&lda_threshold=${ldaThreshold}`)
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data: BiomarkerResult) => setResult(data))
-      .catch((err) => {
-        console.error("Biomarker API error:", err);
+    cachedFetch<BiomarkerResult>(`${API_BASE}/api/biomarker-discovery?disease=${encodeURIComponent(disease)}&lda_threshold=${ldaThreshold}`)
+      .then((data) => setResult(data))
+      .catch(() => {
         setError(locale === "zh" ? "后端未启动或连接失败" : "Backend not available or connection failed");
       })
       .finally(() => setLoading(false));

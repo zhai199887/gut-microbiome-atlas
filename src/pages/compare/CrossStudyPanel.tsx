@@ -115,7 +115,7 @@ const CrossStudyPanel = () => {
     const svg = d3.select(forestRef.current);
     svg.selectAll("*").remove();
 
-    const margin = { top: 40, right: 120, bottom: 50, left: 170 };
+    const margin = { top: 60, right: 120, bottom: 50, left: 170 };
     const rowH = 26;
     const w = 820;
     const h = margin.top + markers.length * rowH + margin.bottom;
@@ -212,8 +212,15 @@ const CrossStudyPanel = () => {
         .text(i2Str);
     });
 
-    // Direction legend
-    const legendY = margin.top - 30;
+    // Title
+    svg.append("text")
+      .attr("x", w / 2)
+      .attr("y", 16).attr("text-anchor", "middle")
+      .attr("fill", "#ddd").attr("font-size", 13).attr("font-weight", 600)
+      .text(t("crossStudy.forestTitle"));
+
+    // Direction legend (below title)
+    const legendY = 34;
     [
       { label: t("crossStudy.legend.disease"), color: "#e23fff", x: margin.left },
       { label: t("crossStudy.legend.control"), color: "#556eff", x: margin.left + 160 },
@@ -223,13 +230,6 @@ const CrossStudyPanel = () => {
       svg.append("text").attr("x", lx + 14).attr("y", legendY + 4)
         .attr("fill", "#aaa").attr("font-size", 9).text(label);
     });
-
-    // Title
-    svg.append("text")
-      .attr("x", w / 2)
-      .attr("y", 16).attr("text-anchor", "middle")
-      .attr("fill", "#ddd").attr("font-size", 13).attr("font-weight", 600)
-      .text(t("crossStudy.forestTitle"));
   }, [result, view, t]);
 
   // Heatmap
@@ -242,9 +242,9 @@ const CrossStudyPanel = () => {
     const svg = d3.select(heatmapRef.current);
     svg.selectAll("*").remove();
 
-    const margin = { top: 80, right: 30, bottom: 20, left: 140 };
-    const cellW = 50;
-    const cellH = 20;
+    const margin = { top: 110, right: 30, bottom: 20, left: 140 };
+    const cellW = 60;
+    const cellH = 22;
     const w = margin.left + projectIds.length * cellW + margin.right;
     const h = margin.top + markers.length * cellH + margin.bottom;
     svg.attr("viewBox", `0 0 ${w} ${h}`);
@@ -304,9 +304,9 @@ const CrossStudyPanel = () => {
     const svg = d3.select(consistencyRef.current);
     svg.selectAll("*").remove();
 
-    const margin = { top: 40, right: 80, bottom: 40, left: 160 };
+    const margin = { top: 50, right: 100, bottom: 40, left: 160 };
     const rowH = 22;
-    const w = 700;
+    const w = 750;
     const h = margin.top + markers.length * rowH + margin.bottom;
     svg.attr("viewBox", `0 0 ${w} ${h}`);
 
@@ -353,18 +353,18 @@ const CrossStudyPanel = () => {
         .attr("rx", 3)
         .attr("opacity", 0.85);
 
-      // Score label
+      // Score label + direction (combined to avoid overlap)
+      const dirSymbol = m.direction === "disease" ? "↑" : m.direction === "control" ? "↓" : "•";
+      const dirLabel = m.direction === "disease" ? "disease" : m.direction === "control" ? "control" : "mixed";
+      const dirColor = m.direction === "disease" ? "#e23fff" : m.direction === "control" ? "#556eff" : "#888";
       svg.append("text")
         .attr("x", x(m.cscs) + 4).attr("y", cy + rowH / 2 + 4)
         .attr("fill", cscsColor(m.cscs)).attr("font-size", 10).attr("font-weight", 600)
         .text(`${m.cscs}%`);
-
-      // Direction indicator
       svg.append("text")
-        .attr("x", w - margin.right + 8).attr("y", cy + rowH / 2 + 4)
-        .attr("fill", m.direction === "disease" ? "#e23fff" : m.direction === "control" ? "#556eff" : "#888")
-        .attr("font-size", 9)
-        .text(m.direction === "disease" ? "\u2191disease" : m.direction === "control" ? "\u2193control" : "mixed");
+        .attr("x", x(m.cscs) + 42).attr("y", cy + rowH / 2 + 4)
+        .attr("fill", dirColor).attr("font-size", 9)
+        .text(`${dirSymbol}${dirLabel}`);
     });
   }, [result, view]);
 

@@ -13,6 +13,27 @@ import type { CrossStudyResult, CrossStudyMarker, ProjectInfo } from "./types";
 import { API_BASE } from "./types";
 import classes from "./CrossStudyPanel.module.css";
 
+/** Cross-Study Consistency Score: % of projects agreeing on effect direction */
+function calcCSCS(m: CrossStudyMarker): number {
+  const entries = Object.values(m.per_project);
+  if (entries.length === 0) return 0;
+  const nPos = entries.filter(e => e.log2fc > 0).length;
+  const nNeg = entries.length - nPos;
+  return Math.round(Math.max(nPos, nNeg) / entries.length * 100);
+}
+function cscsLabel(score: number): string {
+  if (score >= 90) return "Very High";
+  if (score >= 75) return "High";
+  if (score >= 60) return "Moderate";
+  return "Low";
+}
+function cscsColor(score: number): string {
+  if (score >= 90) return "#22c55e";
+  if (score >= 75) return "#84cc16";
+  if (score >= 60) return "#eab308";
+  return "#ef4444";
+}
+
 const CrossStudyPanel = () => {
   const { t, locale } = useI18n();
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
@@ -23,9 +44,10 @@ const CrossStudyPanel = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CrossStudyResult | null>(null);
-  const [view, setView] = useState<"forest" | "heatmap" | "table">("forest");
+  const [view, setView] = useState<"forest" | "heatmap" | "consistency" | "table">("forest");
   const forestRef = useRef<SVGSVGElement>(null);
   const heatmapRef = useRef<SVGSVGElement>(null);
+  const consistencyRef = useRef<SVGSVGElement>(null);
 
   // Load projects & diseases
   useEffect(() => {
@@ -85,7 +107,7 @@ const CrossStudyPanel = () => {
     }
   };
 
-  // Forest plot
+  // Forest plot (enhanced / 美化版)
   useEffect(() => {
     if (!result || view !== "forest" || !forestRef.current) return;
     const markers = result.consensus_markers.slice(0, 25);
@@ -94,24 +116,35 @@ const CrossStudyPanel = () => {
     const svg = d3.select(forestRef.current);
     svg.selectAll("*").remove();
 
-    const margin = { top: 40, right: 30, bottom: 40, left: 160 };
-    const rowH = 24;
-    const w = 700;
+    const margin = { top: 40, right: 120, bottom: 50, left: 170 };
+    const rowH = 26;
+    const w = 820;
     const h = margin.top + markers.length * rowH + margin.bottom;
     svg.attr("viewBox", `0 0 ${w} ${h}`);
 
-    const xMax = Math.max(2, d3.max(markers, d => Math.abs(d.ci_high)) ?? 2, d3.max(markers, d => Math.abs(d.ci_low)) ?? 2);
-    const x = d3.scaleLinear().domain([-xMax, xMax]).range([margin.left, w - margin.right]);
+    const plotRight = w - margin.right;
+    const xMax = Math.max(2, d3.max(markers, d => Math.abs(d.ci_high)) ?? 2, d3.max(markers, d => Math.abs(d.ci_low)) ?? 2) * 1.1;
+    const x = d3.scaleLinear().domain([-xMax, xMax]).range([margin.left, plotRight]);
     const y = (i: number) => margin.top + i * rowH + rowH / 2;
 
-    // Zero line
+    // Alternating row backgrounds
+    markers.forEach((_, i) => {
+      if (i % 2 === 0) {
+        svg.append("rect")
+          .attr("x", 0).attr("y", margin.top + i * rowH)
+          .attr("width", w).attr("height", rowH)
+          .attr("fill", "rgba(255,255,255,0.02)");
+      }
+    });
+
+    // Zero line (no-effect reference)
     svg.append("line")
       .attr("x1", x(0)).attr("x2", x(0))
-      .attr("y1", margin.top - 10).attr("y2", h - margin.bottom)
-      .attr("stroke", "#555").attr("stroke-dasharray", "3,3");
+      .attr("y1", margin.top - 5).attr("y2", h - margin.bottom)
+      .attr("stroke", "#666").attr("stroke-width", 1).attr("stroke-dasharray", "4,3");
 
     // X axis
-    const xAxis = d3.axisBottom(x).ticks(5);
+    const xAxis = d3.axisBottom(x).ticks(7);
     svg.append("g")
       .attr("transform", `translate(0,${h - margin.bottom})`)
       .call(xAxis)
@@ -120,44 +153,81 @@ const CrossStudyPanel = () => {
 
     // X label
     svg.append("text")
-      .attr("x", (margin.left + w - margin.right) / 2)
-      .attr("y", h - 5)
+      .attr("x", (margin.left + plotRight) / 2)
+      .attr("y", h - 8)
       .attr("text-anchor", "middle")
       .attr("fill", "#888").attr("font-size", 11)
-      .text("log₂FC (meta-analysis)");
+      .text("log₂ Fold Change (meta-analysis)");
+
+    // Column headers
+    svg.append("text").attr("x", margin.left - 8).attr("y", margin.top - 12)
+      .attr("text-anchor", "end").attr("fill", "#999").attr("font-size", 9).attr("font-weight", 600)
+      .text("Taxon");
+    svg.append("text").attr("x", plotRight + 5).attr("y", margin.top - 12)
+      .attr("fill", "#999").attr("font-size", 9).attr("font-weight", 600)
+      .text("p-value   I²");
 
     markers.forEach((m, i) => {
       const cy = y(i);
-      // Taxon label
+      const color = m.direction === "disease" ? "#e23fff" : m.direction === "control" ? "#556eff" : "#888";
+
+      // Taxon label (italic for genus)
       svg.append("text")
         .attr("x", margin.left - 8).attr("y", cy + 4)
         .attr("text-anchor", "end")
         .attr("fill", "#ddd").attr("font-size", 11)
-        .text(m.taxon.length > 18 ? m.taxon.slice(0, 16) + "…" : m.taxon);
+        .attr("font-style", "italic")
+        .text(m.taxon.length > 20 ? m.taxon.slice(0, 18) + "…" : m.taxon);
+
+      // CI whisker caps
+      const capH = 6;
+      svg.append("line").attr("x1", x(m.ci_low)).attr("x2", x(m.ci_low))
+        .attr("y1", cy - capH / 2).attr("y2", cy + capH / 2).attr("stroke", color).attr("stroke-width", 1.2);
+      svg.append("line").attr("x1", x(m.ci_high)).attr("x2", x(m.ci_high))
+        .attr("y1", cy - capH / 2).attr("y2", cy + capH / 2).attr("stroke", color).attr("stroke-width", 1.2);
 
       // CI line
       svg.append("line")
         .attr("x1", x(m.ci_low)).attr("x2", x(m.ci_high))
         .attr("y1", cy).attr("y2", cy)
-        .attr("stroke", m.direction === "disease" ? "#e23fff" : m.direction === "control" ? "#556eff" : "#888")
-        .attr("stroke-width", 1.5);
+        .attr("stroke", color).attr("stroke-width", 2);
 
-      // Effect size diamond
-      const color = m.direction === "disease" ? "#e23fff" : m.direction === "control" ? "#556eff" : "#888";
-      svg.append("circle")
-        .attr("cx", x(m.meta_log2fc)).attr("cy", cy)
-        .attr("r", 4).attr("fill", color);
+      // Effect size diamond (rotated square)
+      const dSize = Math.min(6, Math.max(3, Math.sqrt(m.n_significant) * 2));
+      svg.append("rect")
+        .attr("x", x(m.meta_log2fc) - dSize).attr("y", cy - dSize)
+        .attr("width", dSize * 2).attr("height", dSize * 2)
+        .attr("fill", color).attr("transform", `rotate(45, ${x(m.meta_log2fc)}, ${cy})`);
 
-      // P-value and I²
+      // P-value + I² annotation
+      const pStr = m.meta_p < 0.001 ? "<.001" : m.meta_p.toFixed(3);
+      const i2Str = `${m.I2.toFixed(0)}%`;
+      const i2Color = m.I2 > 75 ? "#ef4444" : m.I2 > 50 ? "#eab308" : m.I2 > 25 ? "#84cc16" : "#22c55e";
       svg.append("text")
-        .attr("x", w - margin.right + 5).attr("y", cy + 4)
+        .attr("x", plotRight + 5).attr("y", cy + 4)
         .attr("fill", m.meta_p < 0.05 ? "#e23fff" : "#666").attr("font-size", 9)
-        .text(`p=${m.meta_p < 0.001 ? "<.001" : m.meta_p.toFixed(3)}`);
+        .text(pStr);
+      svg.append("text")
+        .attr("x", plotRight + 48).attr("y", cy + 4)
+        .attr("fill", i2Color).attr("font-size", 9).attr("font-weight", 600)
+        .text(i2Str);
+    });
+
+    // Direction legend
+    const legendY = margin.top - 30;
+    [
+      { label: t("crossStudy.legend.disease"), color: "#e23fff", x: margin.left },
+      { label: t("crossStudy.legend.control"), color: "#556eff", x: margin.left + 160 },
+    ].forEach(({ label, color: c, x: lx }) => {
+      svg.append("rect").attr("x", lx).attr("y", legendY - 5).attr("width", 10).attr("height", 10)
+        .attr("fill", c).attr("rx", 2);
+      svg.append("text").attr("x", lx + 14).attr("y", legendY + 4)
+        .attr("fill", "#aaa").attr("font-size", 9).text(label);
     });
 
     // Title
     svg.append("text")
-      .attr("x", (margin.left + w - margin.right) / 2)
+      .attr("x", w / 2)
       .attr("y", 16).attr("text-anchor", "middle")
       .attr("fill", "#ddd").attr("font-size", 13).attr("font-weight", 600)
       .text(t("crossStudy.forestTitle"));
@@ -223,6 +293,82 @@ const CrossStudyPanel = () => {
     });
   }, [result, view]);
 
+  // Consistency Score bar chart
+  useEffect(() => {
+    if (!result || view !== "consistency" || !consistencyRef.current) return;
+    const markers = result.consensus_markers
+      .map(m => ({ ...m, cscs: calcCSCS(m) }))
+      .sort((a, b) => b.cscs - a.cscs)
+      .slice(0, 30);
+    if (markers.length === 0) return;
+
+    const svg = d3.select(consistencyRef.current);
+    svg.selectAll("*").remove();
+
+    const margin = { top: 40, right: 80, bottom: 40, left: 160 };
+    const rowH = 22;
+    const w = 700;
+    const h = margin.top + markers.length * rowH + margin.bottom;
+    svg.attr("viewBox", `0 0 ${w} ${h}`);
+
+    const x = d3.scaleLinear().domain([0, 100]).range([margin.left, w - margin.right]);
+    const y = (i: number) => margin.top + i * rowH;
+
+    // X axis
+    svg.append("g")
+      .attr("transform", `translate(0,${h - margin.bottom})`)
+      .call(d3.axisBottom(x).ticks(5).tickFormat(d => `${d}%`))
+      .selectAll("text").attr("fill", "#aaa").attr("font-size", 10);
+    svg.selectAll(".domain, .tick line").attr("stroke", "#555");
+
+    // Title
+    svg.append("text")
+      .attr("x", (margin.left + w - margin.right) / 2)
+      .attr("y", 16).attr("text-anchor", "middle")
+      .attr("fill", "#ddd").attr("font-size", 13).attr("font-weight", 600)
+      .text("Cross-Study Consistency Score (CSCS)");
+
+    // Subtitle
+    svg.append("text")
+      .attr("x", (margin.left + w - margin.right) / 2)
+      .attr("y", 32).attr("text-anchor", "middle")
+      .attr("fill", "#888").attr("font-size", 10)
+      .text("% of studies agreeing on effect direction");
+
+    markers.forEach((m, i) => {
+      const cy = y(i);
+      // Taxon label
+      svg.append("text")
+        .attr("x", margin.left - 8).attr("y", cy + rowH / 2 + 4)
+        .attr("text-anchor", "end")
+        .attr("fill", "#ddd").attr("font-size", 10)
+        .text(m.taxon.length > 18 ? m.taxon.slice(0, 16) + "\u2026" : m.taxon);
+
+      // Bar
+      svg.append("rect")
+        .attr("x", margin.left)
+        .attr("y", cy + 3)
+        .attr("width", x(m.cscs) - margin.left)
+        .attr("height", rowH - 6)
+        .attr("fill", cscsColor(m.cscs))
+        .attr("rx", 3)
+        .attr("opacity", 0.85);
+
+      // Score label
+      svg.append("text")
+        .attr("x", x(m.cscs) + 4).attr("y", cy + rowH / 2 + 4)
+        .attr("fill", cscsColor(m.cscs)).attr("font-size", 10).attr("font-weight", 600)
+        .text(`${m.cscs}%`);
+
+      // Direction indicator
+      svg.append("text")
+        .attr("x", w - margin.right + 8).attr("y", cy + rowH / 2 + 4)
+        .attr("fill", m.direction === "disease" ? "#e23fff" : m.direction === "control" ? "#556eff" : "#888")
+        .attr("font-size", 9)
+        .text(m.direction === "disease" ? "\u2191disease" : m.direction === "control" ? "\u2193control" : "mixed");
+    });
+  }, [result, view]);
+
   const exportCsv = () => {
     if (!result) return;
     exportTable(
@@ -238,6 +384,8 @@ const CrossStudyPanel = () => {
         I2: m.I2,
         Q_P: m.Q_p,
         Direction: m.direction,
+        CSCS: calcCSCS(m),
+        CSCS_Label: cscsLabel(calcCSCS(m)),
       })),
       `cross_study_${disease}_${Date.now()}`,
     );
@@ -326,7 +474,7 @@ const CrossStudyPanel = () => {
 
           {/* View tabs */}
           <div className={classes.viewTabs}>
-            {(["forest", "heatmap", "table"] as const).map(v => (
+            {(["forest", "heatmap", "consistency", "table"] as const).map(v => (
               <button key={v} className={classes.viewTab} data-active={view === v} onClick={() => setView(v)}>
                 {t(`crossStudy.view.${v}` as const)}
               </button>
@@ -339,6 +487,9 @@ const CrossStudyPanel = () => {
           )}
           {view === "heatmap" && (
             <svg ref={heatmapRef} className="compare-chart" style={{ width: "100%", maxWidth: 700 }} />
+          )}
+          {view === "consistency" && (
+            <svg ref={consistencyRef} className="compare-chart" style={{ width: "100%", maxWidth: 750 }} />
           )}
           {view === "table" && (
             <div className={classes.tableWrap}>
@@ -353,6 +504,7 @@ const CrossStudyPanel = () => {
                     <th>I²</th>
                     <th>{t("crossStudy.col.direction")}</th>
                     <th>{t("crossStudy.col.nStudies")}</th>
+                    <th>CSCS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -370,6 +522,9 @@ const CrossStudyPanel = () => {
                       <td>{m.I2.toFixed(0)}%</td>
                       <td>{m.direction}</td>
                       <td>{m.n_significant}/{m.n_studies}</td>
+                      <td style={{ color: cscsColor(calcCSCS(m)), fontWeight: 600 }}>
+                        {calcCSCS(m)}%
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -381,11 +536,11 @@ const CrossStudyPanel = () => {
           <div className={classes.exportRow}>
             <button className={classes.exportBtn} onClick={exportCsv}>{t("export.csv")}</button>
             <button className={classes.exportBtn} onClick={() => {
-              const svg = view === "forest" ? forestRef.current : heatmapRef.current;
+              const svg = view === "forest" ? forestRef.current : view === "heatmap" ? heatmapRef.current : consistencyRef.current;
               if (svg) exportSVG(svg, `cross_study_${view}_${Date.now()}`);
             }}>{t("export.svg")}</button>
             <button className={classes.exportBtn} onClick={() => {
-              const svg = view === "forest" ? forestRef.current : heatmapRef.current;
+              const svg = view === "forest" ? forestRef.current : view === "heatmap" ? heatmapRef.current : consistencyRef.current;
               if (svg) exportPNG(svg, `cross_study_${view}_${Date.now()}`);
             }}>{t("export.png")}</button>
           </div>

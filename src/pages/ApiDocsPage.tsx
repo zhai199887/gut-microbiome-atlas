@@ -182,7 +182,40 @@ const ENDPOINTS: Endpoint[] = [
     r: (b) => `library(httr)\nlibrary(jsonlite)\n\npayload <- list(\n  abundances = list(Bacteroides = 0.25, Prevotella = 0.15, Faecalibacterium = 0.10),\n  metric = "braycurtis",\n  top_k = 10\n)\nres <- POST("${b}/api/similarity-search",\n  body = toJSON(payload, auto_unbox = TRUE),\n  content_type_json())\nresults <- fromJSON(content(res, "text"))$results\nprint(results)`,
     curl: (b) => `curl -s -X POST "${b}/api/similarity-search" \\\n  -H "Content-Type: application/json" \\\n  -d '{"abundances":{"Bacteroides":0.25,"Prevotella":0.15,"Faecalibacterium":0.10},"metric":"braycurtis","top_k":10}' \\\n  | python -m json.tool`,
   },
-  // 12. GET /api/download/summary-stats
+  // 12. GET /api/biomarker-profile
+  {
+    method: "GET",
+    path: "/api/biomarker-profile",
+    category: "species",
+    summary: "Cross-disease biomarker profile",
+    description: "For a given genus, compute log2 fold change vs healthy controls across all diseases. Returns enrichment/depletion direction, Wilcoxon p-value, and BH-adjusted p-value for each disease.",
+    params: [
+      { name: "genus", type: "string", required: true, description: "Genus name (e.g. 'Faecalibacterium')" },
+      { name: "min_samples", type: "integer", required: false, description: "Minimum samples per disease (default 10)" },
+    ],
+    python: (b) => `import requests\nimport pandas as pd\n\nres = requests.get("${b}/api/biomarker-profile", params={"genus": "Faecalibacterium"})\ndata = res.json()\nprint(f"Enriched in {data['n_enriched']} diseases, depleted in {data['n_depleted']}")\n\n# Convert to DataFrame for analysis\ndf = pd.DataFrame(data["profiles"])\nsig = df[df["significant"]].sort_values("log2fc")\nprint(sig[["disease", "log2fc", "adjusted_p"]].to_string())`,
+    r: (b) => `library(httr)\nlibrary(jsonlite)\n\nres <- GET("${b}/api/biomarker-profile", query = list(genus = "Faecalibacterium"))\ndata <- fromJSON(content(res, "text"))\ncat("Enriched:", data$n_enriched, "Depleted:", data$n_depleted, "\\n")\n\ndf <- data$profiles\nsig <- df[df$significant == TRUE, ]\nprint(sig[order(sig$log2fc), c("disease", "log2fc", "adjusted_p")])`,
+    curl: (b) => `curl -s "${b}/api/biomarker-profile?genus=Faecalibacterium" | python -m json.tool`,
+  },
+  // 13. POST /api/cross-study
+  {
+    method: "POST",
+    path: "/api/cross-study",
+    category: "analysis",
+    summary: "Cross-study meta-analysis",
+    description: "Inverse-variance weighted meta-analysis across multiple cohorts. Uses DerSimonian-Laird random effects model with I² heterogeneity statistics.",
+    body: {
+      project_ids: ["PRJNA389927", "PRJNA763023"],
+      disease: "CRC",
+      method: "wilcoxon",
+      p_threshold: 0.05,
+      min_studies: 2,
+    },
+    python: (b) => `import requests\n\npayload = {\n    "project_ids": ["PRJNA389927", "PRJNA763023"],\n    "disease": "CRC",\n    "method": "wilcoxon",\n    "p_threshold": 0.05,\n    "min_studies": 2\n}\nres = requests.post("${b}/api/cross-study", json=payload)\ndata = res.json()\nprint(f"Consensus markers: {data['n_consensus']}")\nfor m in data["markers"][:5]:\n    print(f"  {m['taxon']}: beta={m['meta_beta']:.3f}, I²={m['I2']:.1f}%")`,
+    r: (b) => `library(httr)\nlibrary(jsonlite)\n\npayload <- list(\n  project_ids = c("PRJNA389927", "PRJNA763023"),\n  disease = "CRC",\n  method = "wilcoxon",\n  p_threshold = 0.05,\n  min_studies = 2\n)\nres <- POST("${b}/api/cross-study",\n  body = toJSON(payload, auto_unbox = TRUE),\n  content_type_json())\ndata <- fromJSON(content(res, "text"))\ncat("Consensus markers:", data$n_consensus, "\\n")`,
+    curl: (b) => `curl -s -X POST "${b}/api/cross-study" \\\n  -H "Content-Type: application/json" \\\n  -d '{"project_ids":["PRJNA389927","PRJNA763023"],"disease":"CRC","method":"wilcoxon","p_threshold":0.05,"min_studies":2}' \\\n  | python -m json.tool`,
+  },
+  // 14. GET /api/download/summary-stats
   {
     method: "GET",
     path: "/api/download/summary-stats",

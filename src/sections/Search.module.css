@@ -26,6 +26,10 @@
   outline: none;
 }
 
+.searchInput:focus {
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
 .searchInput::placeholder {
   color: var(--light-gray);
   font-style: italic;
@@ -103,6 +107,39 @@
 
 .clearBtn:hover {
   text-decoration: underline;
+}
+
+/* Quick genus picker / 常用菌属选择器 */
+.quickPicker {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: 600px;
+  margin: 0.8rem auto 1.5rem;
+}
+
+.quickLabel {
+  font-size: 0.8rem;
+  color: var(--light-gray);
+  white-space: nowrap;
+}
+
+.quickSelect {
+  flex: 1;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--gray);
+  border-radius: 6px;
+  background: var(--dark-gray);
+  color: var(--white);
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  appearance: auto;
+}
+
+.quickSelect:hover {
+  border-color: var(--primary);
 }
 
 .errorMsg {

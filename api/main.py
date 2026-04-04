@@ -148,6 +148,30 @@ def warmup_data():
     except Exception as e:
         logging.warning(f"Warmup failed (non-fatal): {e}")
 
+    # Pre-warm fixed endpoints in background thread
+    # 后台线程预热固定端点（filter-options, data-stats, disease-list, network）
+    import threading
+
+    def _warmup_endpoints():
+        import time
+        time.sleep(2)  # wait for server to be ready
+        import urllib.request
+        endpoints = [
+            "http://127.0.0.1:8000/api/filter-options",
+            "http://127.0.0.1:8000/api/data-stats",
+            "http://127.0.0.1:8000/api/disease-list",
+            "http://127.0.0.1:8000/api/network?top_diseases=12&top_genera=15",
+        ]
+        for url in endpoints:
+            try:
+                urllib.request.urlopen(url, timeout=120)
+                logging.info(f"Warmup OK: {url.split('/')[-1].split('?')[0]}")
+            except Exception as e:
+                logging.warning(f"Warmup failed: {url} -> {e}")
+
+    threading.Thread(target=_warmup_endpoints, daemon=True).start()
+    logging.info("Background endpoint warmup started")
+
 
 # ── Response cache for compute-heavy endpoints / 计算密集端点结果缓存 ─────────
 
@@ -2867,9 +2891,14 @@ async def health_index(request: Request, req: HealthIndexRequest):
     pseudo = 1e-6
     raw_score = math.log10((h_sum + pseudo) / (d_sum + pseudo))
 
-    # Normalize to 0-100 (empirical range: roughly -2 to +2 for log10 ratio)
-    # Map: -2 → 0, 0 → 50, +2 → 100
-    normalized = max(0, min(100, (raw_score + 2) / 4 * 100))
+    # Use empirical percentile calibration from population data
+    # 使用群体数据的经验百分位数校准
+    pop = _compute_population_gmhi()
+    cal = pop.get("calibration", {})
+    p5 = cal.get("p5", -2.0)
+    p95 = cal.get("p95", 2.0)
+    score_range = p95 - p5 if p95 != p5 else 1.0
+    normalized = max(0, min(100, (raw_score - p5) / score_range * 100))
 
     # Determine category
     if normalized >= 70:
@@ -2934,9 +2963,9 @@ def _compute_population_gmhi() -> dict:
     h_cols = [i for i, g in enumerate(genus_labels) if g in health_set]
     d_cols = [i for i, g in enumerate(genus_labels) if g in disease_set]
 
-    def compute_scores(keys):
+    def compute_raw_scores(keys):
         if not keys:
-            return []
+            return np.array([])
         raw = abund.loc[keys].values.astype(float)
         totals = raw.sum(axis=1, keepdims=True)
         totals[totals == 0] = 1
@@ -2944,12 +2973,27 @@ def _compute_population_gmhi() -> dict:
         h_sums = rel[:, h_cols].sum(axis=1) if h_cols else np.zeros(len(keys))
         d_sums = rel[:, d_cols].sum(axis=1) if d_cols else np.zeros(len(keys))
         pseudo = 1e-6
-        raw_scores = np.log10((h_sums + pseudo) / (d_sums + pseudo))
-        normalized = np.clip((raw_scores + 2) / 4 * 100, 0, 100)
-        return normalized.tolist()
+        return np.log10((h_sums + pseudo) / (d_sums + pseudo))
 
-    nc_scores = compute_scores(nc_sample)
-    dis_scores = compute_scores(dis_sample)
+    nc_raw = compute_raw_scores(nc_sample)
+    dis_raw = compute_raw_scores(dis_sample)
+
+    # Use empirical percentile-based normalization from ALL raw scores
+    # 基于所有样本的原始分数经验分布做百分位数标准化
+    all_raw = np.concatenate([nc_raw, dis_raw]) if len(nc_raw) > 0 and len(dis_raw) > 0 else nc_raw
+    if len(all_raw) == 0:
+        all_raw = np.array([0])
+    p5 = float(np.percentile(all_raw, 5))
+    p95 = float(np.percentile(all_raw, 95))
+    score_range = p95 - p5 if p95 != p5 else 1.0
+
+    def normalize_scores(raw_arr):
+        if len(raw_arr) == 0:
+            return []
+        return np.clip((raw_arr - p5) / score_range * 100, 0, 100).tolist()
+
+    nc_scores = normalize_scores(nc_raw)
+    dis_scores = normalize_scores(dis_raw)
 
     # Build histogram bins (0-100, step 5)
     bins = list(range(0, 105, 5))
@@ -2968,18 +3012,24 @@ def _compute_population_gmhi() -> dict:
     return {
         "histogram": histogram,
         "nc_stats": {
-            "n": len(nc_scores), "mean": round(float(np.mean(nc_arr)), 1),
+            "n": len(nc_keys),  # actual total, not subsample
+            "mean": round(float(np.mean(nc_arr)), 1),
             "median": round(float(np.median(nc_arr)), 1),
             "std": round(float(np.std(nc_arr)), 1),
             "p25": round(float(np.percentile(nc_arr, 25)), 1),
             "p75": round(float(np.percentile(nc_arr, 75)), 1),
         },
         "disease_stats": {
-            "n": len(dis_scores), "mean": round(float(np.mean(dis_arr)), 1),
+            "n": len(disease_keys),  # actual total, not subsample
+            "mean": round(float(np.mean(dis_arr)), 1),
             "median": round(float(np.median(dis_arr)), 1),
             "std": round(float(np.std(dis_arr)), 1),
             "p25": round(float(np.percentile(dis_arr, 25)), 1),
             "p75": round(float(np.percentile(dis_arr, 75)), 1),
+        },
+        "calibration": {
+            "p5": round(p5, 4),
+            "p95": round(p95, 4),
         },
     }
 
@@ -2996,8 +3046,8 @@ async def health_index_reference(request: Request):
     return {
         "health_genera": ref["health_genera"][:20],
         "disease_genera": ref["disease_genera"][:20],
-        "n_nc_samples": ref.get("n_nc_samples", 0),
-        "n_disease_samples": ref.get("n_disease_samples", 0),
+        "n_nc_samples": pop.get("nc_stats", {}).get("n", ref.get("n_nc_samples", 0)),
+        "n_disease_samples": pop.get("disease_stats", {}).get("n", ref.get("n_disease_samples", 0)),
         "population": pop,
     }
 

@@ -37,17 +37,35 @@
       "@context": "https://schema.org",
       "@type": "Dataset",
       "name": "Gut Microbiome Atlas",
-      "description": "A comprehensive platform for exploring human gut microbiome across 168,000+ samples, 69 countries, 217+ diseases, and 8 life stages.",
+      "description": "A comprehensive platform for exploring human gut microbiome across 168,464 samples, 4,680 genera, 69 countries, 217+ diseases, and 8 life stages. Features differential analysis, cross-study meta-analysis, GMHI health index, lifecycle atlas, and species profiling.",
       "url": "https://compendiumwebsite.vercel.app",
-      "keywords": ["gut microbiome", "metagenomics", "16S rRNA", "microbiota", "human microbiome atlas"],
+      "keywords": ["gut microbiome", "metagenomics", "16S rRNA", "microbiota", "human microbiome atlas", "GMHI", "cross-study meta-analysis"],
       "creator": {
         "@type": "Organization",
         "name": "Department of Gastroenterology, The First Affiliated Hospital of China Medical University",
         "url": "https://www.cmu.edu.cn"
       },
-      "license": "https://creativecommons.org/licenses/by-nc/4.0/",
-      "temporalCoverage": "2025/2026",
-      "variableMeasured": ["microbial abundance", "taxonomic composition", "alpha diversity", "beta diversity"]
+      "license": "https://opensource.org/licenses/MIT",
+      "temporalCoverage": "2015-01-01/2026-04-04",
+      "spatialCoverage": {
+        "@type": "Place",
+        "name": "69 countries globally"
+      },
+      "distribution": {
+        "@type": "DataDownload",
+        "contentUrl": "https://compendiumwebsite.vercel.app/download",
+        "encodingFormat": "CSV"
+      },
+      "variableMeasured": [
+        "microbial relative abundance",
+        "taxonomic composition (genus and phylum level)",
+        "alpha diversity (Shannon, Simpson)",
+        "beta diversity (Bray-Curtis PCoA)",
+        "differential abundance (log2FC, effect size)",
+        "gut microbiome health index (GMHI)"
+      ],
+      "measurementTechnique": "Metagenomic sequencing (MetaPhlAn taxonomic profiling)",
+      "isAccessibleForFree": true
     }
     </script>
   </head>

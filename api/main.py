@@ -116,6 +116,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ── Security headers / 安全响应头 ────────────────────────────────────────────
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+
 # ── Disease ontology / 疾病本体映射 ───────────────────────────────────────────
 ONTOLOGY_PATH = os.path.join(os.path.dirname(__file__), "disease_ontology.json")
 with open(ONTOLOGY_PATH, "r", encoding="utf-8") as f:

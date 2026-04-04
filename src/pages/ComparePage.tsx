@@ -277,8 +277,11 @@ const ComparePage = () => {
 // ── LEfSe results display / LEfSe 结果展示 ──────────────────────────────────
 
 const LefseResults = ({ result }: { result: DiffResult }) => {
+  const { locale } = useI18n();
   if (!result.lefse_results || result.lefse_results.length === 0) {
-    return <p style={{ color: "var(--light-gray)", padding: "2rem" }}>No significant LEfSe features found.</p>;
+    return <p style={{ color: "var(--light-gray)", padding: "2rem" }}>
+      {locale === "zh" ? "未发现显著的 LEfSe 特征。" : "No significant LEfSe features found."}
+    </p>;
   }
 
   const maxLda = Math.max(...result.lefse_results.map((r) => Math.abs(r.lda_score)));
@@ -286,7 +289,9 @@ const LefseResults = ({ result }: { result: DiffResult }) => {
   return (
     <div style={{ padding: "1rem" }}>
       <p style={{ color: "var(--light-gray)", fontSize: "0.85rem", marginBottom: "1rem" }}>
-        LEfSe (LDA Effect Size) — features with LDA score ≥ 2.0 and Kruskal-Wallis p &lt; 0.05
+        {locale === "zh"
+          ? "LEfSe（LDA效应量）— LDA score ≥ 2.0 且 Kruskal-Wallis p < 0.05 的特征"
+          : "LEfSe (LDA Effect Size) — features with LDA score ≥ 2.0 and Kruskal-Wallis p < 0.05"}
       </p>
       <svg className="compare-chart" viewBox={`0 0 700 ${Math.max(200, result.lefse_results.length * 24 + 40)}`}
         style={{ width: "100%", maxWidth: 700 }}>
@@ -314,29 +319,34 @@ const LefseResults = ({ result }: { result: DiffResult }) => {
 // ── PERMANOVA results display / PERMANOVA 结果展示 ───────────────────────────
 
 const PermanovaResults = ({ result }: { result: DiffResult }) => {
+  const { locale } = useI18n();
   if (!result.permanova) {
-    return <p style={{ color: "var(--light-gray)", padding: "2rem" }}>No PERMANOVA results available.</p>;
+    return <p style={{ color: "var(--light-gray)", padding: "2rem" }}>
+      {locale === "zh" ? "无 PERMANOVA 结果。" : "No PERMANOVA results available."}
+    </p>;
   }
 
   const p = result.permanova;
   const sigStyle = { color: p.p_value < 0.05 ? "var(--primary)" : "var(--light-gray)" };
+  const zh = locale === "zh";
 
   return (
     <div style={{ padding: "2rem" }}>
-      <h3 style={{ marginBottom: "1rem" }}>PERMANOVA Results</h3>
+      <h3 style={{ marginBottom: "1rem" }}>{zh ? "PERMANOVA 结果" : "PERMANOVA Results"}</h3>
       <p style={{ color: "var(--light-gray)", fontSize: "0.85rem", marginBottom: "1.5rem" }}>
-        Permutational Multivariate Analysis of Variance — tests whether group centroids differ
-        in Bray-Curtis distance space ({p.permutations} permutations)
+        {zh
+          ? `置换多元方差分析 — 检验两组在 Bray-Curtis 距离空间中的质心是否存在差异（${p.permutations} 次置换）`
+          : `Permutational Multivariate Analysis of Variance — tests whether group centroids differ in Bray-Curtis distance space (${p.permutations} permutations)`}
       </p>
       <table style={{ borderCollapse: "collapse", width: "100%", maxWidth: 500 }}>
         <tbody>
           {[
-            ["F-statistic (pseudo-F)", p.f_statistic.toFixed(4)],
-            ["p-value", <span style={sigStyle}>{p.p_value.toFixed(4)}{p.p_value < 0.05 ? " *" : ""}</span>],
-            ["R² (effect size)", p.r_squared.toFixed(4)],
-            ["Permutations", String(p.permutations)],
-            ["Samples (A)", String(p.n_a)],
-            ["Samples (B)", String(p.n_b)],
+            [zh ? "F统计量 (pseudo-F)" : "F-statistic (pseudo-F)", p.f_statistic.toFixed(4)],
+            [zh ? "p值" : "p-value", <span style={sigStyle}>{p.p_value.toFixed(4)}{p.p_value < 0.05 ? " *" : ""}</span>],
+            [zh ? "R²（效应量）" : "R² (effect size)", p.r_squared.toFixed(4)],
+            [zh ? "置换次数" : "Permutations", String(p.permutations)],
+            [zh ? "样本数 (A)" : "Samples (A)", String(p.n_a)],
+            [zh ? "样本数 (B)" : "Samples (B)", String(p.n_b)],
           ].map(([label, val], i) => (
             <tr key={i} style={{ borderBottom: "1px solid var(--gray)" }}>
               <td style={{ padding: "0.5rem 1rem", color: "var(--light-gray)" }}>{label}</td>
@@ -347,9 +357,9 @@ const PermanovaResults = ({ result }: { result: DiffResult }) => {
       </table>
       <p style={{ color: "var(--light-gray)", fontSize: "0.8rem", marginTop: "1rem" }}>
         {p.p_value < 0.05
-          ? "The two groups have significantly different microbiome compositions (p < 0.05)."
-          : "No significant difference in microbiome composition between the two groups."}
-        {" "}R² = {(p.r_squared * 100).toFixed(1)}% of variation explained by grouping.
+          ? (zh ? "两组微生物组组成存在显著差异 (p < 0.05)。" : "The two groups have significantly different microbiome compositions (p < 0.05).")
+          : (zh ? "两组微生物组组成无显著差异。" : "No significant difference in microbiome composition between the two groups.")}
+        {" "}R² = {(p.r_squared * 100).toFixed(1)}%{zh ? " 的变异可由分组解释。" : " of variation explained by grouping."}
       </p>
     </div>
   );

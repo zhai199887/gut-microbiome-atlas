@@ -5,10 +5,12 @@
 import { useEffect, useRef } from "react";
 import { renderToString } from "react-dom/server";
 import * as d3 from "d3";
+import { useI18n } from "@/i18n";
 import type { DiffResult } from "./types";
 import classes from "../ComparePage.module.css";
 
 const BetaPCoAChart = ({ result }: { result: DiffResult }) => {
+  const { locale } = useI18n();
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -20,7 +22,7 @@ const BetaPCoAChart = ({ result }: { result: DiffResult }) => {
     if (!coords.length) {
       svg.attr("viewBox", "0 0 560 100");
       svg.append("text").attr("x", 20).attr("y", 40)
-        .text("PCoA data not available").attr("fill", "currentColor").attr("font-size", 14);
+        .text(locale === "zh" ? "PCoA 数据不可用" : "PCoA data not available").attr("fill", "currentColor").attr("font-size", 14);
       return;
     }
 
@@ -51,7 +53,7 @@ const BetaPCoAChart = ({ result }: { result: DiffResult }) => {
       .attr("data-tooltip", (d) =>
         renderToString(
           <div className="tooltip-table">
-            <span>Group</span>
+            <span>{locale === "zh" ? "分组" : "Group"}</span>
             <span style={{ color: d.group === "A" ? "var(--secondary)" : "var(--primary)" }}>
               {d.group === "A" ? result.summary.group_a_name : result.summary.group_b_name}
             </span>
@@ -76,7 +78,7 @@ const BetaPCoAChart = ({ result }: { result: DiffResult }) => {
       .text("PCo2 (Bray-Curtis)");
     svg.append("text").attr("x", W / 2).attr("y", H - 8)
       .attr("text-anchor", "middle").attr("fill", "var(--light-gray)").attr("font-size", 9)
-      .text("Note: % variance explained per axis not yet available");
+      .text(locale === "zh" ? "注：各轴方差解释百分比暂不可用" : "Note: % variance explained per axis not yet available");
 
     // Legend / 图例
     const lx = iW + 10;
@@ -91,7 +93,7 @@ const BetaPCoAChart = ({ result }: { result: DiffResult }) => {
     svg.append("text").attr("x", margin.left + lx + 16).attr("y", margin.top + 48)
       .attr("font-size", 11).attr("fill", "var(--primary)")
       .text(truncateText(result.summary.group_b_name, 12));
-  }, [result]);
+  }, [result, locale]);
 
   return <svg ref={svgRef} className={`compare-chart ${classes.chart}`} />;
 };

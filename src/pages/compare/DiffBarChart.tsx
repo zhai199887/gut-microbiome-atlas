@@ -5,10 +5,12 @@
 import { useEffect, useRef } from "react";
 import { renderToString } from "react-dom/server";
 import * as d3 from "d3";
+import { useI18n } from "@/i18n";
 import type { DiffResult } from "./types";
 import classes from "../ComparePage.module.css";
 
 const DiffBarChart = ({ result }: { result: DiffResult }) => {
+  const { locale } = useI18n();
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -25,7 +27,7 @@ const DiffBarChart = ({ result }: { result: DiffResult }) => {
     if (data.length === 0) {
       svg.attr("viewBox", "0 0 700 100");
       svg.append("text").attr("x", 20).attr("y", 60)
-        .text("No significant taxa (adjusted p < 0.05)")
+        .text(locale === "zh" ? "未发现显著差异分类群 (adj. p < 0.05)" : "No significant taxa (adjusted p < 0.05)")
         .attr("fill", "currentColor").attr("font-size", 14);
       return;
     }
@@ -54,11 +56,11 @@ const DiffBarChart = ({ result }: { result: DiffResult }) => {
       .attr("data-tooltip", (d) =>
         renderToString(
           <div className="tooltip-table">
-            <span>Taxon</span><span>{d.taxon}</span>
-            <span>log2FC</span><span>{d.log2fc.toFixed(3)}</span>
-            <span>adj.p</span><span>{d.adjusted_p.toExponential(2)}</span>
-            <span>Mean A</span><span>{(d.mean_a * 100).toFixed(3)}%</span>
-            <span>Mean B</span><span>{(d.mean_b * 100).toFixed(3)}%</span>
+            <span>{locale === "zh" ? "分类群" : "Taxon"}</span><span>{d.taxon}</span>
+            <span>log₂FC</span><span>{d.log2fc.toFixed(3)}</span>
+            <span>{locale === "zh" ? "校正p值" : "adj.p"}</span><span>{d.adjusted_p.toExponential(2)}</span>
+            <span>{locale === "zh" ? "均值 A" : "Mean A"}</span><span>{(d.mean_a * 100).toFixed(3)}%</span>
+            <span>{locale === "zh" ? "均值 B" : "Mean B"}</span><span>{(d.mean_b * 100).toFixed(3)}%</span>
           </div>
         )
       );
@@ -89,7 +91,7 @@ const DiffBarChart = ({ result }: { result: DiffResult }) => {
     svg.append("text")
       .attr("x", margin.left + W / 2).attr("y", H + margin.top + margin.bottom - 8)
       .attr("text-anchor", "middle").attr("fill", "currentColor")
-      .attr("font-size", 11).text("log₂ Fold Change");
+      .attr("font-size", 11).text(locale === "zh" ? "log₂ 差异倍数" : "log₂ Fold Change");
 
     // Set viewBox / 设置viewBox
     svg.attr("viewBox", `0 0 ${W + margin.left + margin.right} ${H + margin.top + margin.bottom}`);
@@ -98,8 +100,10 @@ const DiffBarChart = ({ result }: { result: DiffResult }) => {
     const totalW = W + margin.left + margin.right;
     svg.append("text").attr("x", totalW - 4).attr("y", H + margin.top + margin.bottom - 4)
       .attr("text-anchor", "end").attr("font-size", 10).attr("fill", "var(--light-gray)")
-      .text(`Showing taxa with adj. p < 0.05 (BH FDR) · ${result.summary.method}`);
-  }, [result]);
+      .text(locale === "zh"
+        ? `显示 adj. p < 0.05 (BH FDR) 的分类群 · ${result.summary.method}`
+        : `Showing taxa with adj. p < 0.05 (BH FDR) · ${result.summary.method}`);
+  }, [result, locale]);
 
   return <svg ref={svgRef} className={`compare-chart ${classes.chart}`} />;
 };

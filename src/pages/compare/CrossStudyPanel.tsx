@@ -22,7 +22,13 @@ function calcCSCS(m: CrossStudyMarker): number {
   const nNeg = entries.length - nPos;
   return Math.round(Math.max(nPos, nNeg) / entries.length * 100);
 }
-function cscsLabel(score: number): string {
+function cscsLabel(score: number, locale = "en"): string {
+  if (locale === "zh") {
+    if (score >= 90) return "极高";
+    if (score >= 75) return "高";
+    if (score >= 60) return "中等";
+    return "低";
+  }
   if (score >= 90) return "Very High";
   if (score >= 75) return "High";
   if (score >= 60) return "Moderate";
@@ -156,15 +162,15 @@ const CrossStudyPanel = () => {
       .attr("y", h - 8)
       .attr("text-anchor", "middle")
       .attr("fill", "#888").attr("font-size", 11)
-      .text("log₂ Fold Change (meta-analysis)");
+      .text(locale === "zh" ? "log₂ 差异倍数（元分析）" : "log₂ Fold Change (meta-analysis)");
 
     // Column headers
     svg.append("text").attr("x", margin.left - 8).attr("y", margin.top - 12)
       .attr("text-anchor", "end").attr("fill", "#999").attr("font-size", 9).attr("font-weight", 600)
-      .text("Taxon");
+      .text(locale === "zh" ? "分类群" : "Taxon");
     svg.append("text").attr("x", plotRight + 5).attr("y", margin.top - 12)
       .attr("fill", "#999").attr("font-size", 9).attr("font-weight", 600)
-      .text("p-value   I²");
+      .text(locale === "zh" ? "p值   I²" : "p-value   I²");
 
     markers.forEach((m, i) => {
       const cy = y(i);
@@ -325,14 +331,14 @@ const CrossStudyPanel = () => {
       .attr("x", (margin.left + w - margin.right) / 2)
       .attr("y", 16).attr("text-anchor", "middle")
       .attr("fill", "#ddd").attr("font-size", 13).attr("font-weight", 600)
-      .text("Cross-Study Consistency Score (CSCS)");
+      .text(locale === "zh" ? "跨研究一致性评分 (CSCS)" : "Cross-Study Consistency Score (CSCS)");
 
     // Subtitle
     svg.append("text")
       .attr("x", (margin.left + w - margin.right) / 2)
       .attr("y", 32).attr("text-anchor", "middle")
       .attr("fill", "#888").attr("font-size", 10)
-      .text("% of studies agreeing on effect direction");
+      .text(locale === "zh" ? "研究间效应方向一致性百分比" : "% of studies agreeing on effect direction");
 
     markers.forEach((m, i) => {
       const cy = y(i);

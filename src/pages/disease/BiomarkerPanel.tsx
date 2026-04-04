@@ -283,8 +283,10 @@ function drawForestPlot(svgEl: SVGSVGElement, markers: Marker[]) {
   g.append("text")
     .attr("x", iW / 2).attr("y", iH + 25)
     .attr("text-anchor", "middle").attr("fill", "currentColor").attr("font-size", 10)
-    .text("Mean Difference (Disease \u2212 Control)");
+    .text("Mean Difference (Disease − Control)");
 }
+
+// Note: forest plot axis label is kept in English as it's a standard statistical term
 
 // ── LDA Effect Size Bar Chart / LDA 效应值柱状图 ──────────────────────────────
 
@@ -347,7 +349,7 @@ function drawLDAChart(svgEl: SVGSVGElement, markers: Marker[]) {
   // 图例
   const legend = svg.append("g").attr("transform", `translate(${margin.left + 10}, ${H - 8})`);
   legend.append("rect").attr("width", 12).attr("height", 8).attr("fill", "#ff6b6b").attr("opacity", 0.8);
-  legend.append("text").attr("x", 16).attr("y", 7).text("Enriched in Disease").attr("fill", "currentColor").attr("font-size", 10);
-  legend.append("rect").attr("x", 160).attr("width", 12).attr("height", 8).attr("fill", "#4ecdc4").attr("opacity", 0.8);
-  legend.append("text").attr("x", 176).attr("y", 7).text("Enriched in Control").attr("fill", "currentColor").attr("font-size", 10);
+  legend.append("text").attr("x", 16).attr("y", 7).text("疾病组富集 / Enriched in Disease").attr("fill", "currentColor").attr("font-size", 10);
+  legend.append("rect").attr("x", 230).attr("width", 12).attr("height", 8).attr("fill", "#4ecdc4").attr("opacity", 0.8);
+  legend.append("text").attr("x", 246).attr("y", 7).text("对照组富集 / Enriched in Control").attr("fill", "currentColor").attr("font-size", 10);
 }

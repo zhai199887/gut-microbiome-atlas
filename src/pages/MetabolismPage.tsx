@@ -63,7 +63,7 @@ const MetabolismPage = () => {
   if (!mapping) {
     return (
       <div className={classes.page}>
-        <div className={classes.loading}>Loading metabolism data…</div>
+        <div className={classes.loading}>{t("metabolism.loading")}</div>
       </div>
     );
   }
@@ -76,8 +76,7 @@ const MetabolismPage = () => {
           <h1>{t("metabolism.title")}</h1>
         </div>
         <div className={classes.errorBanner}>
-          {t("metabolism.loadError")} Please ensure{" "}
-          <code>/public/data/metabolism_mapping.json</code> exists and is valid JSON.
+          {t("metabolism.loadError")}
         </div>
       </div>
     );
@@ -114,7 +113,7 @@ const MetabolismPage = () => {
           {search && searchResults.length > 0 && (
             <div className={classes.searchResults}>
               <p className={classes.searchHint}>
-                <b>{search}</b> found in:
+                <b>{search}</b> {locale === "zh" ? "存在于：" : "found in:"}
               </p>
               {searchResults.map((c) => (
                 <button
@@ -129,7 +128,9 @@ const MetabolismPage = () => {
           )}
           {search && searchResults.length === 0 && (
             <div className={classes.searchResults}>
-              <p className={classes.searchHint}>No category found for "<b>{search}</b>"</p>
+              <p className={classes.searchHint}>
+                {locale === "zh" ? <>未找到 "<b>{search}</b>" 相关类别</> : <>No category found for "<b>{search}</b>"</>}
+              </p>
             </div>
           )}
         </div>

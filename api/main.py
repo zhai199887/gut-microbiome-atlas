@@ -162,6 +162,7 @@ def warmup_data():
             "http://127.0.0.1:8000/api/disease-list",
             "http://127.0.0.1:8000/api/network?top_diseases=12&top_genera=15",
             "http://127.0.0.1:8000/api/disease-profile?disease=NC",
+            "http://127.0.0.1:8000/api/health-index/reference",
         ]
         for url in endpoints:
             try:

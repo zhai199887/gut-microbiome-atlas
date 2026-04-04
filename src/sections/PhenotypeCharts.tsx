@@ -2,7 +2,10 @@ import { useEffect } from "react";
 import { renderToString } from "react-dom/server";
 import * as d3 from "d3";
 import Placeholder from "@/components/Placeholder";
+import { useI18n } from "@/i18n";
 import { useData } from "@/data";
+import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
+import { AGE_GROUP_ZH } from "@/util/countries";
 import { getCssVariable } from "@/util/dom";
 import { formatNumber } from "@/util/string";
 import classes from "./PhenotypeCharts.module.css";
@@ -18,41 +21,50 @@ const AGE_ORDER = [
   "Unknown",
 ];
 
+/** Translate helpers for chart functions */
+type NameFn = (key: string) => string;
+
 const PhenotypeCharts = () => {
   const summary = useData((s) => s.summary);
   const filters = useData((s) => s.filters);
+  const { t, locale } = useI18n();
+
+  const dName: NameFn = (k) => diseaseDisplayNameI18n(k, locale);
+  const ageName: NameFn = (k) => locale === "zh" ? (AGE_GROUP_ZH[k] ?? k.replace(/_/g, " ")) : k.replace(/_/g, " ");
+  const sexName: NameFn = (k) => locale === "zh" ? ({ female: "女", male: "男", unknown: "未知" }[k] ?? k) : k;
 
   useEffect(() => {
     if (!summary) return;
-    drawAgeChart(summary.age_counts, summary.age_sex_cross, filters.age_groups);
-    drawDiseaseChart(summary.disease_counts, filters.diseases);
+    drawAgeChart(summary.age_counts, summary.age_sex_cross, filters.age_groups, ageName, sexName, locale);
+    drawDiseaseChart(summary.disease_counts, filters.diseases, dName, locale);
     drawHeatmap(
       summary.age_disease_cross,
       summary.top20_diseases.slice(0, 15),
+      dName, ageName, locale,
     );
-  }, [summary, filters]);
+  }, [summary, filters, locale]);
 
   if (!summary)
-    return <Placeholder height={300}>Loading charts...</Placeholder>;
+    return <Placeholder height={300}>{t("phenotype.loading" as any) || "Loading charts..."}</Placeholder>;
 
   return (
     <section>
-      <h2>Phenotype Overview</h2>
+      <h2>{locale === "zh" ? "表型概览" : "Phenotype Overview"}</h2>
 
       <div className={classes.grid}>
         <div className="sub-section">
-          <h3>Age Group Distribution</h3>
+          <h3>{locale === "zh" ? "年龄组分布" : "Age Group Distribution"}</h3>
           <svg id="age-chart" className="chart" viewBox="-80 -40 480 380" style={{ minHeight: 360 }} />
         </div>
 
         <div className="sub-section">
-          <h3>Top 20 Diseases</h3>
+          <h3>{locale === "zh" ? "Top 20 疾病" : "Top 20 Diseases"}</h3>
           <svg id="disease-chart" className="chart" viewBox="-200 -20 700 560" style={{ minHeight: 420 }} />
         </div>
       </div>
 
       <div className="sub-section" style={{ marginTop: "1.5rem" }}>
-        <h3>Age × Disease Heatmap</h3>
+        <h3>{locale === "zh" ? "年龄 × 疾病 热图" : "Age × Disease Heatmap"}</h3>
         <svg id="heatmap" className="chart" viewBox="-160 -80 960 490" />
       </div>
     </section>
@@ -67,6 +79,9 @@ const drawAgeChart = (
   ageCounts: Record<string, number>,
   ageSex: { age_group: string; sex: string; count: number }[],
   activeAgeGroups: string[] = [],
+  ageName: NameFn = (k) => k.replace(/_/g, " "),
+  sexName: NameFn = (k) => k,
+  locale: string = "en",
 ) => {
   const svg = d3.select<SVGSVGElement, unknown>("#age-chart");
   if (!svg.node()) return;
@@ -137,15 +152,15 @@ const drawAgeChart = (
       .attr("data-tooltip", (d) =>
         renderToString(
           <div className="tooltip-table">
-            <span>Age Group</span>
-            <span>{d.group.replace(/_/g, " ")}</span>
-            <span>Total</span>
+            <span>{locale === "zh" ? "年龄组" : "Age Group"}</span>
+            <span>{ageName(d.group)}</span>
+            <span>{locale === "zh" ? "总计" : "Total"}</span>
             <span>{formatNumber(d.total, false)}</span>
-            <span>Female</span>
+            <span>{sexName("female")}</span>
             <span>{formatNumber(d.female, false)}</span>
-            <span>Male</span>
+            <span>{sexName("male")}</span>
             <span>{formatNumber(d.male, false)}</span>
-            <span>Unknown sex</span>
+            <span>{locale === "zh" ? "未知性别" : "Unknown sex"}</span>
             <span>{formatNumber(d.unknown, false)}</span>
           </div>,
         ),
@@ -158,7 +173,7 @@ const drawAgeChart = (
     .call(
       d3
         .axisLeft(yScale)
-        .tickFormat((d) => d.replace(/_/g, " ")),
+        .tickFormat((d) => ageName(d)),
     )
     .attr("font-size", "14px");
 
@@ -189,7 +204,7 @@ const drawAgeChart = (
       .append("text")
       .attr("x", legendX + 18)
       .attr("y", i * 20 + 11)
-      .text(s)
+      .text(sexName(s))
       .attr("font-size", "13px")
       .attr("fill", "currentColor");
   });
@@ -197,7 +212,7 @@ const drawAgeChart = (
 
 /** Disease horizontal bar chart with optional highlighting
  * 疾病柱状图，支持筛选高亮 */
-const drawDiseaseChart = (diseaseCounts: Record<string, number>, activeDiseases: string[] = []) => {
+const drawDiseaseChart = (diseaseCounts: Record<string, number>, activeDiseases: string[] = [], dName: NameFn = (k) => k, locale: string = "en") => {
   const svg = d3.select<SVGSVGElement, unknown>("#disease-chart");
   if (!svg.node()) return;
   svg.selectAll("*").remove();
@@ -243,9 +258,9 @@ const drawDiseaseChart = (diseaseCounts: Record<string, number>, activeDiseases:
     .attr("data-tooltip", ([name, count]) =>
       renderToString(
         <div className="tooltip-table">
-          <span>Disease</span>
-          <span>{name}</span>
-          <span>Samples</span>
+          <span>{locale === "zh" ? "疾病" : "Disease"}</span>
+          <span>{dName(name)}</span>
+          <span>{locale === "zh" ? "样本数" : "Samples"}</span>
           <span>{formatNumber(count, false)}</span>
         </div>,
       ),
@@ -254,9 +269,10 @@ const drawDiseaseChart = (diseaseCounts: Record<string, number>, activeDiseases:
   svg
     .append("g")
     .call(
-      d3.axisLeft(yScale).tickFormat((d) =>
-        d.length > 22 ? d.slice(0, 20) + "…" : d,
-      ),
+      d3.axisLeft(yScale).tickFormat((d) => {
+        const name = dName(d);
+        return name.length > 22 ? name.slice(0, 20) + "…" : name;
+      }),
     )
     .attr("font-size", "13px");
 
@@ -277,6 +293,9 @@ const drawDiseaseChart = (diseaseCounts: Record<string, number>, activeDiseases:
 const drawHeatmap = (
   crossData: { age_group: string; disease: string; count: number }[],
   diseases: string[],
+  dName: NameFn = (k) => k,
+  ageName: NameFn = (k) => k.replace(/_/g, " "),
+  locale: string = "en",
 ) => {
   const svg = d3.select<SVGSVGElement, unknown>("#heatmap");
   if (!svg.node()) return;
@@ -366,11 +385,11 @@ const drawHeatmap = (
     .attr("data-tooltip", (d) =>
       renderToString(
         <div className="tooltip-table">
-          <span>Age Group</span>
-          <span>{d.age_group.replace(/_/g, " ")}</span>
-          <span>Disease</span>
-          <span>{d.disease}</span>
-          <span>Samples</span>
+          <span>{locale === "zh" ? "年龄组" : "Age Group"}</span>
+          <span>{ageName(d.age_group)}</span>
+          <span>{locale === "zh" ? "疾病" : "Disease"}</span>
+          <span>{dName(d.disease)}</span>
+          <span>{locale === "zh" ? "样本数" : "Samples"}</span>
           <span>{formatNumber(d.count, false)}</span>
         </div>,
       ),
@@ -390,9 +409,10 @@ const drawHeatmap = (
   svg
     .append("g")
     .attr("transform", `translate(0,${H})`)
-    .call(d3.axisBottom(xScale).tickFormat((d) =>
-      d.length > 12 ? d.slice(0, 11) + "…" : d,
-    ))
+    .call(d3.axisBottom(xScale).tickFormat((d) => {
+      const name = dName(d);
+      return name.length > 12 ? name.slice(0, 11) + "…" : name;
+    }))
     .attr("font-size", "11px")
     .selectAll("text")
     .attr("transform", "rotate(-30)")
@@ -407,7 +427,7 @@ const drawHeatmap = (
   /** y axis */
   svg
     .append("g")
-    .call(d3.axisLeft(yScale).tickFormat((d) => d.replace(/_/g, " ")))
+    .call(d3.axisLeft(yScale).tickFormat((d) => ageName(d)))
     .attr("font-size", "13px")
     .selectAll("text")
     .style("cursor", "pointer")
@@ -437,5 +457,5 @@ const drawHeatmap = (
     .text(formatNumber(maxVal));
   svg.append("text").attr("x", W / 2).attr("y", legendY + legendH + 14)
     .attr("text-anchor", "middle").attr("font-size", 10).attr("fill", "var(--light-gray)")
-    .text("Samples");
+    .text(locale === "zh" ? "样本数" : "Samples");
 };

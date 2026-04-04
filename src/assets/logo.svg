@@ -23,9 +23,9 @@
   <circle cx="0" cy="0" r="44" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.5"/>
 
   <!-- 经纬线 — Atlas 地球仪暗示 -->
-  <ellipse cx="0" cy="0" rx="24" ry="42" fill="none" stroke="currentColor" stroke-width="0.5" opacity="0.18"/>
-  <ellipse cx="0" cy="0" rx="42" ry="16" fill="none" stroke="currentColor" stroke-width="0.5" opacity="0.15" transform="rotate(-15)"/>
-  <ellipse cx="0" cy="0" rx="38" ry="10" fill="none" stroke="currentColor" stroke-width="0.4" opacity="0.12" transform="rotate(20)"/>
+  <ellipse cx="0" cy="0" rx="24" ry="42" fill="none" stroke="currentColor" stroke-width="0.6" opacity="0.3"/>
+  <ellipse cx="0" cy="0" rx="42" ry="16" fill="none" stroke="currentColor" stroke-width="0.6" opacity="0.25" transform="rotate(-15)"/>
+  <ellipse cx="0" cy="0" rx="38" ry="10" fill="none" stroke="currentColor" stroke-width="0.5" opacity="0.2" transform="rotate(20)"/>
 
   <!-- 所有内容裁剪到圆圈内 -->
   <g clip-path="url(#circle-clip)">

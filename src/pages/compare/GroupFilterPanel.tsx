@@ -7,6 +7,7 @@ import type { GroupFilter, FilterOptions } from "./types";
 import { useI18n } from "@/i18n";
 import { countryName, AGE_GROUP_ZH, SEX_ZH } from "@/util/countries";
 import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
+import { cachedFetch } from "@/util/apiCache";
 import classes from "../ComparePage.module.css";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -30,8 +31,7 @@ const GroupFilterPanel = ({
   // Load disease Chinese names / 加载疾病中文名
   useEffect(() => {
     if (locale === "zh") {
-      fetch(`${API_BASE}/api/disease-names-zh`)
-        .then((r) => r.json())
+      cachedFetch<Record<string, string>>(`${API_BASE}/api/disease-names-zh`)
         .then(setDiseaseZh)
         .catch(() => {});
     }

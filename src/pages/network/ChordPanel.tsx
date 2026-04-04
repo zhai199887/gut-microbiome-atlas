@@ -7,6 +7,7 @@ import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 import { exportSVG, exportPNG } from "@/util/chartExport";
 import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
+import { cachedFetch } from "@/util/apiCache";
 import classes from "../ChordPage.module.css";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -40,23 +41,18 @@ const ChordPanel = () => {
 
   // 加载中文疾病名
   useEffect(() => {
-    fetch(`${API_BASE}/api/disease-names-zh`)
-      .then(r => r.json())
+    cachedFetch<Record<string, string>>(`${API_BASE}/api/disease-names-zh`)
       .then(setDiseaseZh)
-      .catch((err) => console.warn("disease-names-zh fetch failed:", err));
+      .catch(() => {});
   }, []);
 
   // 加载弦图数据
   useEffect(() => {
     setLoading(true);
     setError("");
-    fetch(`${API_BASE}/api/chord-data?top_diseases=${topDiseases}&top_genera=${topGenera}`)
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((d: ChordData) => setData(d))
-      .catch((err) => setError(err.message ?? "Failed to load chord data"))
+    cachedFetch<ChordData>(`${API_BASE}/api/chord-data?top_diseases=${topDiseases}&top_genera=${topGenera}`)
+      .then((d) => setData(d))
+      .catch((err) => setError((err as Error).message ?? "Failed to load chord data"))
       .finally(() => setLoading(false));
   }, [topDiseases, topGenera]);
 

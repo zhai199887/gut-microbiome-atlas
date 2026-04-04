@@ -10,6 +10,7 @@ import { exportTable } from "@/util/export";
 import { exportSVG, exportPNG } from "@/util/chartExport";
 import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import { countryName, AGE_GROUP_ZH } from "@/util/countries";
+import { cachedFetch } from "@/util/apiCache";
 import classes from "./LifecyclePage.module.css";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -48,9 +49,9 @@ const LifecyclePage = () => {
   const agName = (n: string) => locale === "zh" ? (AGE_GROUP_ZH[n] ?? n.replace(/_/g, " ")) : n.replace(/_/g, " ");
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/disease-list`).then(r => r.json()).then(d => setDiseases(d.diseases ?? [])).catch(() => {});
-    fetch(`${API_BASE}/api/disease-names-zh`).then(r => r.json()).then(setDiseaseZh).catch(() => {});
-    fetch(`${API_BASE}/api/filter-options`).then(r => r.json()).then(d => setCountries(d.countries ?? [])).catch(() => {});
+    cachedFetch<{ diseases: string[] }>(`${API_BASE}/api/disease-list`).then(d => setDiseases(d.diseases ?? [])).catch(() => {});
+    cachedFetch<Record<string, string>>(`${API_BASE}/api/disease-names-zh`).then(setDiseaseZh).catch(() => {});
+    cachedFetch<{ countries: string[] }>(`${API_BASE}/api/filter-options`).then(d => setCountries(d.countries ?? [])).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -59,10 +60,9 @@ const LifecyclePage = () => {
     const params = new URLSearchParams();
     if (disease) params.set("disease", disease);
     if (country) params.set("country", country);
-    fetch(`${API_BASE}/api/lifecycle?${params}`)
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((d: LifecycleData) => setData(d))
-      .catch((e) => setError(locale === "zh" ? "后端未启动或连接失败" : `API error: ${e.message}`))
+    cachedFetch<LifecycleData>(`${API_BASE}/api/lifecycle?${params}`)
+      .then((d) => setData(d))
+      .catch((e) => setError(locale === "zh" ? "后端未启动或连接失败" : `API error: ${(e as Error).message}`))
       .finally(() => setLoading(false));
   }, [disease, country]);
 

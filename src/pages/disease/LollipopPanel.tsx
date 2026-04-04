@@ -7,6 +7,7 @@ import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 import { exportTable } from "@/util/export";
 import { exportSVG, exportPNG } from "@/util/chartExport";
+import { cachedFetch } from "@/util/apiCache";
 import classes from "../DiseasePage.module.css";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -50,14 +51,9 @@ const LollipopPanel = ({ disease }: Props) => {
     setLoading(true);
     setData([]);
     setError(null);
-    fetch(`${API_BASE}/api/lollipop-data?disease=${encodeURIComponent(disease)}`)
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
+    cachedFetch<{ data: LollipopItem[] }>(`${API_BASE}/api/lollipop-data?disease=${encodeURIComponent(disease)}`)
       .then(d => setData(d.data ?? []))
-      .catch((err) => {
-        console.error("Lollipop API error:", err);
+      .catch(() => {
         setError(locale === "zh" ? "后端未启动或连接失败" : "Backend not available or connection failed");
       })
       .finally(() => setLoading(false));

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "@/i18n";
+import { cachedFetch } from "@/util/apiCache";
 import Header from "@/sections/Header";
 import Footer from "@/sections/Footer";
 import classes from "./CitePage.module.css";
@@ -29,12 +30,9 @@ const CitePage = () => {
   } | null>(null);
 
   useEffect(() => {
-    const controller = new AbortController();
-    fetch(`${API_BASE}/api/data-stats`, { signal: controller.signal })
-      .then((r) => r.json())
+    cachedFetch<typeof apiStats>(`${API_BASE}/api/data-stats`)
       .then(setApiStats)
       .catch(() => {});
-    return () => controller.abort();
   }, []);
 
   const STATS = [

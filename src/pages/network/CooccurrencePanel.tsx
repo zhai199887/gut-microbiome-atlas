@@ -8,6 +8,7 @@ import { useI18n } from "@/i18n";
 import { exportTable } from "@/util/export";
 import { exportSVG, exportPNG } from "@/util/chartExport";
 import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
+import { cachedFetch } from "@/util/apiCache";
 import classes from "../CooccurrencePage.module.css";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -32,14 +33,12 @@ const CooccurrencePanel = () => {
 
   // 加载疾病列表 + 中文名
   useEffect(() => {
-    fetch(`${API_BASE}/api/disease-list`)
-      .then(r => r.json())
+    cachedFetch<{ diseases: string[] }>(`${API_BASE}/api/disease-list`)
       .then(d => setDiseases(d.diseases ?? []))
-      .catch((err) => console.warn("disease-list fetch failed:", err));
-    fetch(`${API_BASE}/api/disease-names-zh`)
-      .then(r => r.json())
+      .catch(() => {});
+    cachedFetch<Record<string, string>>(`${API_BASE}/api/disease-names-zh`)
       .then(setDiseaseZh)
-      .catch((err) => console.warn("disease-names-zh fetch failed:", err));
+      .catch(() => {});
   }, []);
 
   // 加载共现网络数据
@@ -48,13 +47,9 @@ const CooccurrencePanel = () => {
     setError("");
     const params = new URLSearchParams({ min_r: String(minR), top_genera: "40" });
     if (disease) params.set("disease", disease);
-    fetch(`${API_BASE}/api/cooccurrence?${params}`)
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((d: CoData) => setData(d))
-      .catch((err) => setError(err.message ?? "Failed to load co-occurrence data"))
+    cachedFetch<CoData>(`${API_BASE}/api/cooccurrence?${params}`)
+      .then((d) => setData(d))
+      .catch((err) => setError((err as Error).message ?? "Failed to load co-occurrence data"))
       .finally(() => setLoading(false));
   }, [disease, minR]);
 

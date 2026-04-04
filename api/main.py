@@ -632,6 +632,9 @@ def filter_options(request: Request):
     Return available filter option values from metadata.
     返回元数据中可用的筛选选项值
     """
+    cached = get_cached("filter_options")
+    if cached:
+        return cached
     meta = get_metadata()
 
     countries = sorted(meta["country"].dropna().unique().tolist())
@@ -654,12 +657,14 @@ def filter_options(request: Request):
     if "sex" in meta.columns:
         sexes = sorted(meta["sex"].dropna().unique().tolist())
 
-    return {
+    result = {
         "countries": countries,
         "diseases": diseases[:500],       # limit for payload size / 限制响应大小
         "age_groups": age_groups,
         "sexes": sexes,
     }
+    set_cached("filter_options", result)
+    return result
 
 
 @app.get("/api/data-stats",
@@ -671,6 +676,9 @@ def data_stats(request: Request):
     Return current dataset statistics for homepage display.
     返回当前数据集统计数据供首页展示
     """
+    cached = get_cached("data_stats")
+    if cached:
+        return cached
     meta = get_metadata()
 
     # Read version info if exists / 读取版本信息
@@ -691,13 +699,15 @@ def data_stats(request: Request):
     all_diseases.discard("unknown")
     all_diseases.discard("NC")
 
-    return {
+    result = {
         "total_samples": int(len(meta)),
         "total_countries": int(meta.loc[meta["country"] != "unknown", "country"].nunique()) if "country" in meta.columns else 0,
         "total_diseases": len(all_diseases),
         "last_updated": version_info.get("last_updated", datetime.now().strftime("%Y-%m-%d")),
         "version": version_info.get("version", f"v1.0_{datetime.now().strftime('%Y%m%d')}"),
     }
+    set_cached("data_stats", result)
+    return result
 
 
 @app.get("/api/disease-names-zh",
@@ -1307,6 +1317,11 @@ def disease_profile(request: Request, disease: str, top_n: int = 20):
         raise HTTPException(400, "disease parameter is required")
     disease = disease.strip()
 
+    cache_key = f"disease_profile:{disease}:{top_n}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
     meta = get_metadata()
     abund = get_abundance()
 
@@ -1402,7 +1417,7 @@ def disease_profile(request: Request, disease: str, top_n: int = 20):
     # Ontology info / 本体信息
     onto = DISEASE_ONTOLOGY.get(disease, {})
 
-    return {
+    result = {
         "disease": disease,
         "sample_count": len(disease_samples),
         "control_count": len(control_samples),
@@ -1418,6 +1433,8 @@ def disease_profile(request: Request, disease: str, top_n: int = 20):
         "by_age_group": count_by("age_group" if "age_group" in disease_samples.columns else "age"),
         "by_sex": count_by("sex"),
     }
+    set_cached(cache_key, result)
+    return result
 
 
 # ── Microbe-disease network endpoint / 菌群-疾病网络端点 ─────────────────────
@@ -1432,6 +1449,10 @@ def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera
     返回力导向图所需的节点（疾病 + 属）和边
     Edge weight = mean abundance of genus in disease samples.
     """
+    cache_key = f"network:{top_diseases}:{top_genera}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
     meta = get_metadata()
     abund = get_abundance()
 
@@ -1497,7 +1518,9 @@ def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera
     for g in genus_set:
         nodes.append({"id": g, "type": "genus", "size": 1})
 
-    return {"nodes": nodes, "edges": edges}
+    result = {"nodes": nodes, "edges": edges}
+    set_cached(cache_key, result)
+    return result
 
 
 # ── Data management endpoints / 数据管理端点 ──────────────────────────────────
@@ -1828,6 +1851,11 @@ def lollipop_data(request: Request, disease: str, top_n: int = 40):
         raise HTTPException(400, "disease parameter is required")
     disease = disease.strip()
 
+    cache_key = f"lollipop:{disease}:{top_n}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
     meta = get_metadata()
     abund = get_abundance()
 
@@ -1897,12 +1925,14 @@ def lollipop_data(request: Request, disease: str, top_n: int = 40):
         })
 
     results.sort(key=lambda x: abs(x["log2fc"]), reverse=True)
-    return {
+    result = {
         "disease": disease,
         "n_disease": len(d_keys),
         "n_control": len(c_keys),
         "data": results[:top_n],
     }
+    set_cached(cache_key, result)
+    return result
 
 
 @app.get("/api/chord-data",
@@ -1914,6 +1944,10 @@ def chord_data(request: Request, top_diseases: int = 10, top_genera: int = 12):
     Return disease-genus association matrix for chord diagram.
     返回疾病-属关联矩阵用于弦图
     """
+    cache_key = f"chord:{top_diseases}:{top_genera}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
     meta = get_metadata()
     abund = get_abundance()
 
@@ -1968,12 +2002,14 @@ def chord_data(request: Request, top_diseases: int = 10, top_genera: int = 12):
             row = [0.0] * len(genus_names)
         matrix.append(row)
 
-    return {
+    result = {
         "diseases": disease_names,
         "genera": genus_names,
         "phyla": [genus_phylum.get(g, "Unknown") for g in genus_names],
         "matrix": matrix,
     }
+    set_cached(cache_key, result)
+    return result
 
 
 @app.get("/api/species-cooccurrence",
@@ -2086,6 +2122,10 @@ def cooccurrence_network(
     Compute genus co-occurrence network based on Spearman correlation.
     基于 Spearman 相关性计算属共现网络
     """
+    cache_key = f"cooccurrence:{disease}:{min_r}:{top_genera}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
     meta = get_metadata()
     abund = get_abundance()
 
@@ -2156,7 +2196,7 @@ def cooccurrence_network(
                 "mean_abundance": round(float(genus_matrix[:, top_genera_names.index(g)].mean()), 4),
             })
 
-    return {
+    result = {
         "disease": disease or "Healthy (NC)",
         "n_samples": len(valid_keys),
         "n_genera": len(nodes),
@@ -2165,6 +2205,8 @@ def cooccurrence_network(
         "nodes": nodes,
         "edges": edges,
     }
+    set_cached(cache_key, result)
+    return result
 
 
 AGE_GROUP_ORDER = ["Infant", "Child", "Adolescent", "Adult", "Older_Adult", "Oldest_Old", "Centenarian", "Unknown"]
@@ -2184,6 +2226,10 @@ def lifecycle_atlas(
     Return genus composition across 8 life stages.
     返回 8 个生命阶段的属级组成
     """
+    cache_key = f"lifecycle:{disease}:{country}:{top_genera}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
     meta = get_metadata()
     abund = get_abundance()
 
@@ -2279,7 +2325,7 @@ def lifecycle_atlas(
                 "direction": "increase" if curr.get(max_change_genus, 0) > prev.get(max_change_genus, 0) else "decrease",
             })
 
-    return {
+    result = {
         "disease": disease or "Healthy (NC)",
         "country": country or "All",
         "total_samples": len(valid_keys),
@@ -2287,6 +2333,8 @@ def lifecycle_atlas(
         "data": stacked_data,
         "transitions": transitions,
     }
+    set_cached(cache_key, result)
+    return result
 
 
 # ── 样本相似性搜索 API / Sample Similarity Search ─────────────────────────────
@@ -2854,19 +2902,103 @@ async def health_index(request: Request, req: HealthIndexRequest):
     }
 
 
+@lru_cache(maxsize=1)
+def _compute_population_gmhi() -> dict:
+    """预计算 NC 和疾病样本的群体 GMHI 分布，用于前端展示"""
+    ref = _compute_health_disease_genera()
+    if not ref["health_genera"] and not ref["disease_genera"]:
+        return {"nc_scores": [], "disease_scores": [], "histogram": []}
+
+    meta = get_metadata()
+    abund = get_abundance()
+    abund_idx = set(abund.index)
+    col_names = abund.columns.tolist()
+
+    INFORM_COLS = [f"inform{i}" for i in range(12)]
+    nc_mask = pd.Series(False, index=meta.index)
+    for col in INFORM_COLS:
+        if col in meta.columns:
+            nc_mask |= meta[col].fillna("").astype(str).str.strip().str.upper() == "NC"
+    nc_keys = [k for k in meta.loc[nc_mask, "sample_key"].values if k in abund_idx]
+    disease_mask = ~nc_mask & meta["disease"].str.strip().str.lower().ne("unknown")
+    disease_keys = [k for k in meta.loc[disease_mask, "sample_key"].values if k in abund_idx]
+
+    np.random.seed(42)
+    nc_sample = list(np.random.choice(nc_keys, min(2000, len(nc_keys)), replace=False)) if len(nc_keys) > 0 else []
+    dis_sample = list(np.random.choice(disease_keys, min(2000, len(disease_keys)), replace=False)) if len(disease_keys) > 0 else []
+
+    health_set = {g["genus"].lower() for g in ref["health_genera"]}
+    disease_set = {g["genus"].lower() for g in ref["disease_genera"]}
+
+    genus_labels = [extract_genus(c).lower() for c in col_names]
+    h_cols = [i for i, g in enumerate(genus_labels) if g in health_set]
+    d_cols = [i for i, g in enumerate(genus_labels) if g in disease_set]
+
+    def compute_scores(keys):
+        if not keys:
+            return []
+        raw = abund.loc[keys].values.astype(float)
+        totals = raw.sum(axis=1, keepdims=True)
+        totals[totals == 0] = 1
+        rel = raw / totals * 100
+        h_sums = rel[:, h_cols].sum(axis=1) if h_cols else np.zeros(len(keys))
+        d_sums = rel[:, d_cols].sum(axis=1) if d_cols else np.zeros(len(keys))
+        pseudo = 1e-6
+        raw_scores = np.log10((h_sums + pseudo) / (d_sums + pseudo))
+        normalized = np.clip((raw_scores + 2) / 4 * 100, 0, 100)
+        return normalized.tolist()
+
+    nc_scores = compute_scores(nc_sample)
+    dis_scores = compute_scores(dis_sample)
+
+    # Build histogram bins (0-100, step 5)
+    bins = list(range(0, 105, 5))
+    nc_hist, _ = np.histogram(nc_scores, bins=bins) if nc_scores else (np.zeros(len(bins) - 1), None)
+    dis_hist, _ = np.histogram(dis_scores, bins=bins) if dis_scores else (np.zeros(len(bins) - 1), None)
+    histogram = []
+    for i in range(len(bins) - 1):
+        histogram.append({
+            "bin_start": bins[i], "bin_end": bins[i + 1],
+            "nc_count": int(nc_hist[i]), "disease_count": int(dis_hist[i]),
+        })
+
+    nc_arr = np.array(nc_scores) if nc_scores else np.array([0])
+    dis_arr = np.array(dis_scores) if dis_scores else np.array([0])
+
+    return {
+        "histogram": histogram,
+        "nc_stats": {
+            "n": len(nc_scores), "mean": round(float(np.mean(nc_arr)), 1),
+            "median": round(float(np.median(nc_arr)), 1),
+            "std": round(float(np.std(nc_arr)), 1),
+            "p25": round(float(np.percentile(nc_arr, 25)), 1),
+            "p75": round(float(np.percentile(nc_arr, 75)), 1),
+        },
+        "disease_stats": {
+            "n": len(dis_scores), "mean": round(float(np.mean(dis_arr)), 1),
+            "median": round(float(np.median(dis_arr)), 1),
+            "std": round(float(np.std(dis_arr)), 1),
+            "p25": round(float(np.percentile(dis_arr, 25)), 1),
+            "p75": round(float(np.percentile(dis_arr, 75)), 1),
+        },
+    }
+
+
 @app.get("/api/health-index/reference",
          summary="Health index reference data",
-         description="Returns precomputed health/disease genera lists and NC reference statistics.",
+         description="Returns precomputed health/disease genera lists, NC reference statistics, and population GMHI distribution.",
          tags=["Similarity"])
 @limiter.limit("60/minute")
 async def health_index_reference(request: Request):
-    """返回健康指数参考数据（健康属/疾病属列表）"""
+    """返回健康指数参考数据（健康属/疾病属列表 + 群体分布）"""
     ref = _compute_health_disease_genera()
+    pop = _compute_population_gmhi()
     return {
-        "health_genera": ref["health_genera"],
-        "disease_genera": ref["disease_genera"],
+        "health_genera": ref["health_genera"][:20],
+        "disease_genera": ref["disease_genera"][:20],
         "n_nc_samples": ref.get("n_nc_samples", 0),
         "n_disease_samples": ref.get("n_disease_samples", 0),
+        "population": pop,
     }
 
 

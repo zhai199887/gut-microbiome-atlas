@@ -10,6 +10,7 @@ import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 import { exportTable } from "@/util/export";
 import { exportSVG, exportPNG } from "@/util/chartExport";
+import { diseaseDisplayName } from "@/util/diseaseNames";
 import "@/components/tooltip";
 import BiomarkerPanel from "./disease/BiomarkerPanel";
 import LollipopPanel from "./disease/LollipopPanel";
@@ -79,8 +80,8 @@ const DiseasePage = () => {
       .catch(() => {});
   }, []);
 
-  // Helper: translate disease name / 翻译疾病名
-  const dName = (name: string) => (locale === "zh" && diseaseZh[name]) ? diseaseZh[name] : name;
+  // Helper: translate disease name / 翻译疾病名（中文用翻译，英文用标准全称）
+  const dName = (name: string) => (locale === "zh" && diseaseZh[name]) ? diseaseZh[name] : diseaseDisplayName(name);
 
   // Filter diseases (search both English and Chinese names) / 筛选疾病（支持中英文搜索）
   useEffect(() => {

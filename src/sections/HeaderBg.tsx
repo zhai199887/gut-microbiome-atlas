@@ -1,126 +1,159 @@
 import { useEffect, useRef } from "react";
 import classes from "./HeaderBg.module.css";
 
-/* ── 微生物类型 ── */
-type MicrobeKind = "coccus" | "bacillus" | "spirillum";
-
-interface Microbe {
+/* ── 粒子类型 ── */
+interface Cell {
   x: number;
   y: number;
   vx: number;
   vy: number;
-  size: number;
-  kind: MicrobeKind;
-  rotation: number;
-  rotSpeed: number;
+  radius: number;
+  membraneRadius: number;
   opacity: number;
-  phase: number;        // 用于脉动动画
-  hue: number;          // 在 primary↔secondary 之间插值
+  phase: number;
+  hue: number;          // 0→primary, 1→secondary
   pulseSpeed: number;
+  nucleusRatio: number;  // 内核相对大小
+  layer: number;         // 0=远景, 1=中景, 2=前景
+}
+
+interface HelixStrand {
+  x: number;
+  y: number;
+  angle: number;
+  length: number;
+  speed: number;
+  opacity: number;
+  phase: number;
+  drift: number;
 }
 
 /* ── 颜色常量 ── */
-const PRIMARY  = { r: 226, g: 63,  b: 255 }; // #e23fff
-const SECONDARY = { r: 85,  g: 110, b: 255 }; // #556eff
-const NETWORK_COLOR = "rgba(170, 183, 255, 0.06)";
-const NETWORK_COLOR_NEAR = "rgba(170, 183, 255, 0.12)";
+const P = { r: 226, g: 63,  b: 255 }; // --primary #e23fff
+const S = { r: 85,  g: 110, b: 255 }; // --secondary #556eff
+const TEAL = { r: 60, g: 200, b: 180 }; // 生物学绿
+
+function lerp3(a: typeof P, b: typeof P, t: number, alpha: number): string {
+  return `rgba(${Math.round(a.r + (b.r - a.r) * t)},${Math.round(a.g + (b.g - a.g) * t)},${Math.round(a.b + (b.b - a.b) * t)},${alpha})`;
+}
 
 /* ── 配置 ── */
-const PARTICLE_COUNT = 80;
-const CONNECTION_DIST = 160;
-const MOUSE_RADIUS = 200;
-const MOUSE_FORCE = 0.8;
+const CELL_COUNT = 45;
+const HELIX_COUNT = 3;
+const CONNECTION_DIST = 180;
+const MOUSE_RADIUS = 220;
 
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t;
-}
-
-function microbeColor(hue: number, alpha: number): string {
-  const r = Math.round(lerp(PRIMARY.r, SECONDARY.r, hue));
-  const g = Math.round(lerp(PRIMARY.g, SECONDARY.g, hue));
-  const b = Math.round(lerp(PRIMARY.b, SECONDARY.b, hue));
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function createMicrobe(w: number, h: number): Microbe {
-  const kind: MicrobeKind = (["coccus", "bacillus", "spirillum"] as const)[
-    Math.floor(Math.random() * 3)
-  ];
+function createCell(w: number, h: number): Cell {
+  const layer = Math.random() < 0.3 ? 0 : Math.random() < 0.6 ? 1 : 2;
+  const scale = [0.5, 0.8, 1.2][layer];
   return {
     x: Math.random() * w,
     y: Math.random() * h,
-    vx: (Math.random() - 0.5) * 0.4,
-    vy: (Math.random() - 0.5) * 0.4,
-    size: kind === "spirillum" ? 3 + Math.random() * 3 : 2 + Math.random() * 4,
-    kind,
-    rotation: Math.random() * Math.PI * 2,
-    rotSpeed: (Math.random() - 0.5) * 0.01,
-    opacity: 0.15 + Math.random() * 0.35,
+    vx: (Math.random() - 0.5) * 0.25 * scale,
+    vy: (Math.random() - 0.5) * 0.25 * scale,
+    radius: (3 + Math.random() * 5) * scale,
+    membraneRadius: (5 + Math.random() * 7) * scale,
+    opacity: [0.08, 0.18, 0.35][layer],
     phase: Math.random() * Math.PI * 2,
     hue: Math.random(),
-    pulseSpeed: 0.005 + Math.random() * 0.015,
+    pulseSpeed: 0.004 + Math.random() * 0.012,
+    nucleusRatio: 0.3 + Math.random() * 0.3,
+    layer,
   };
 }
 
-/* ── 绘制不同形态的微生物 ── */
-function drawCoccus(ctx: CanvasRenderingContext2D, m: Microbe, pulse: number) {
-  const r = m.size * (0.9 + pulse * 0.1);
-  ctx.beginPath();
-  ctx.arc(m.x, m.y, r, 0, Math.PI * 2);
-  ctx.fillStyle = microbeColor(m.hue, m.opacity * (0.8 + pulse * 0.2));
-  ctx.fill();
-  // 内部高光
-  ctx.beginPath();
-  ctx.arc(m.x - r * 0.25, m.y - r * 0.25, r * 0.4, 0, Math.PI * 2);
-  ctx.fillStyle = microbeColor(m.hue, m.opacity * 0.15);
-  ctx.fill();
+function createHelix(w: number, h: number): HelixStrand {
+  return {
+    x: Math.random() * w,
+    y: Math.random() * h,
+    angle: Math.random() * Math.PI * 2,
+    length: 60 + Math.random() * 100,
+    speed: 0.002 + Math.random() * 0.003,
+    opacity: 0.04 + Math.random() * 0.06,
+    phase: Math.random() * Math.PI * 2,
+    drift: (Math.random() - 0.5) * 0.15,
+  };
 }
 
-function drawBacillus(ctx: CanvasRenderingContext2D, m: Microbe, pulse: number) {
-  const len = m.size * 2.5;
-  const w = m.size * 0.7 * (0.9 + pulse * 0.1);
-  ctx.save();
-  ctx.translate(m.x, m.y);
-  ctx.rotate(m.rotation);
-  ctx.beginPath();
-  if (ctx.roundRect) {
-    ctx.roundRect(-len / 2, -w / 2, len, w, w);
-  } else {
-    // fallback for older browsers
-    const r = w / 2;
-    ctx.moveTo(-len / 2 + r, -w / 2);
-    ctx.lineTo(len / 2 - r, -w / 2);
-    ctx.arc(len / 2 - r, 0, r, -Math.PI / 2, Math.PI / 2);
-    ctx.lineTo(-len / 2 + r, w / 2);
-    ctx.arc(-len / 2 + r, 0, r, Math.PI / 2, -Math.PI / 2);
-    ctx.closePath();
-  }
-  ctx.fillStyle = microbeColor(m.hue, m.opacity * (0.8 + pulse * 0.2));
-  ctx.fill();
-  ctx.restore();
-}
+/* ── 绘制细胞 ── */
+function drawCell(ctx: CanvasRenderingContext2D, c: Cell, pulse: number) {
+  const mr = c.membraneRadius * (0.95 + pulse * 0.05);
+  const nr = c.radius * c.nucleusRatio * (0.9 + pulse * 0.1);
 
-function drawSpirillum(ctx: CanvasRenderingContext2D, m: Microbe, pulse: number) {
-  const amp = m.size * 0.6;
-  const waveLen = m.size * 1.2;
-  const segments = 5;
-  ctx.save();
-  ctx.translate(m.x, m.y);
-  ctx.rotate(m.rotation);
+  // 细胞膜 — 半透明外环
   ctx.beginPath();
-  ctx.moveTo(-segments * waveLen / 2, 0);
-  for (let i = 0; i < segments; i++) {
-    const x0 = -segments * waveLen / 2 + i * waveLen;
-    const dir = i % 2 === 0 ? 1 : -1;
-    ctx.quadraticCurveTo(
-      x0 + waveLen / 2, dir * amp * (0.9 + pulse * 0.1),
-      x0 + waveLen, 0
-    );
-  }
-  ctx.strokeStyle = microbeColor(m.hue, m.opacity * (0.7 + pulse * 0.3));
-  ctx.lineWidth = m.size * 0.35;
-  ctx.lineCap = "round";
+  ctx.arc(c.x, c.y, mr, 0, Math.PI * 2);
+  const memColor = c.hue < 0.5
+    ? lerp3(P, S, c.hue * 2, c.opacity * 0.3)
+    : lerp3(S, TEAL, (c.hue - 0.5) * 2, c.opacity * 0.3);
+  ctx.strokeStyle = memColor;
+  ctx.lineWidth = 0.8;
   ctx.stroke();
+
+  // 细胞质 — 径向渐变填充
+  const grad = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, mr);
+  const bodyColor = c.hue < 0.5
+    ? lerp3(P, S, c.hue * 2, c.opacity * (0.6 + pulse * 0.4))
+    : lerp3(S, TEAL, (c.hue - 0.5) * 2, c.opacity * (0.6 + pulse * 0.4));
+  grad.addColorStop(0, bodyColor);
+  grad.addColorStop(0.6, lerp3(P, S, c.hue, c.opacity * 0.15));
+  grad.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, mr, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 内核
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, nr, 0, Math.PI * 2);
+  ctx.fillStyle = lerp3(P, S, c.hue, c.opacity * 0.8);
+  ctx.fill();
+}
+
+/* ── 绘制 DNA 双螺旋飘带 ── */
+function drawHelix(ctx: CanvasRenderingContext2D, h: HelixStrand, time: number) {
+  const segments = 24;
+  const amp = 8;
+  const waveLen = h.length / 4;
+  const t = time * h.speed + h.phase;
+
+  ctx.save();
+  ctx.translate(h.x, h.y);
+  ctx.rotate(h.angle);
+
+  // 两条链
+  for (let strand = 0; strand < 2; strand++) {
+    const offset = strand * Math.PI;
+    ctx.beginPath();
+    for (let i = 0; i <= segments; i++) {
+      const frac = i / segments;
+      const px = (frac - 0.5) * h.length;
+      const py = Math.sin(frac * Math.PI * 4 + t + offset) * amp;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.strokeStyle = strand === 0
+      ? lerp3(P, S, 0.3, h.opacity)
+      : lerp3(S, TEAL, 0.5, h.opacity);
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = "round";
+    ctx.stroke();
+  }
+
+  // 碱基对连接线
+  for (let i = 0; i < 8; i++) {
+    const frac = (i + 0.5) / 8;
+    const px = (frac - 0.5) * h.length;
+    const py1 = Math.sin(frac * Math.PI * 4 + t) * amp;
+    const py2 = Math.sin(frac * Math.PI * 4 + t + Math.PI) * amp;
+    ctx.beginPath();
+    ctx.moveTo(px, py1);
+    ctx.lineTo(px, py2);
+    ctx.strokeStyle = lerp3(P, S, 0.5, h.opacity * 0.5);
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+  }
+
   ctx.restore();
 }
 
@@ -139,7 +172,9 @@ const HeaderBg = () => {
     let h = 0;
     let mouse = { x: -9999, y: -9999 };
     let animId = 0;
-    const microbes: Microbe[] = [];
+    let time = 0;
+    const cells: Cell[] = [];
+    const helices: HelixStrand[] = [];
 
     const resize = () => {
       w = canvas.clientWidth;
@@ -151,10 +186,10 @@ const HeaderBg = () => {
 
     const init = () => {
       resize();
-      microbes.length = 0;
-      for (let i = 0; i < PARTICLE_COUNT; i++) {
-        microbes.push(createMicrobe(w, h));
-      }
+      cells.length = 0;
+      helices.length = 0;
+      for (let i = 0; i < CELL_COUNT; i++) cells.push(createCell(w, h));
+      for (let i = 0; i < HELIX_COUNT; i++) helices.push(createHelix(w, h));
     };
 
     const onMouseMove = (e: MouseEvent) => {
@@ -165,100 +200,117 @@ const HeaderBg = () => {
 
     const animate = () => {
       ctx.clearRect(0, 0, w, h);
+      time++;
 
-      /* ── 更新粒子 ── */
-      for (const m of microbes) {
-        // 鼠标排斥
-        const dx = m.x - mouse.x;
-        const dy = m.y - mouse.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < MOUSE_RADIUS && dist > 0) {
-          const force = (1 - dist / MOUSE_RADIUS) * MOUSE_FORCE;
-          m.vx += (dx / dist) * force;
-          m.vy += (dy / dist) * force;
-        }
+      /* ── 背景渐变光晕 ── */
+      const bgGrd = ctx.createRadialGradient(w * 0.5, h * 0.4, 0, w * 0.5, h * 0.4, Math.max(w, h) * 0.6);
+      bgGrd.addColorStop(0, "rgba(226, 63, 255, 0.025)");
+      bgGrd.addColorStop(0.3, "rgba(85, 110, 255, 0.015)");
+      bgGrd.addColorStop(0.6, "rgba(60, 200, 180, 0.008)");
+      bgGrd.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = bgGrd;
+      ctx.fillRect(0, 0, w, h);
 
-        // 缓慢漂浮
-        m.x += m.vx;
-        m.y += m.vy;
-        m.vx *= 0.99;
-        m.vy *= 0.99;
-        m.rotation += m.rotSpeed;
-        m.phase += m.pulseSpeed;
-
-        // 边界回弹（柔和）
-        if (m.x < -20) m.x = w + 20;
-        if (m.x > w + 20) m.x = -20;
-        if (m.y < -20) m.y = h + 20;
-        if (m.y > h + 20) m.y = -20;
+      /* ── 更新并绘制 DNA 螺旋 ── */
+      for (const hl of helices) {
+        hl.x += hl.drift;
+        hl.y += Math.sin(time * 0.003 + hl.phase) * 0.1;
+        hl.angle += 0.0003;
+        // 边界回弹
+        if (hl.x < -hl.length) hl.x = w + hl.length;
+        if (hl.x > w + hl.length) hl.x = -hl.length;
+        if (hl.y < -hl.length) hl.y = h + hl.length;
+        if (hl.y > h + hl.length) hl.y = -hl.length;
+        drawHelix(ctx, hl, time);
       }
 
-      /* ── 绘制网络连线 ── */
-      for (let i = 0; i < microbes.length; i++) {
-        for (let j = i + 1; j < microbes.length; j++) {
-          const a = microbes[i];
-          const b = microbes[j];
-          const dx = a.x - b.x;
-          const dy = a.y - b.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < CONNECTION_DIST) {
-            const alpha = 1 - dist / CONNECTION_DIST;
+      /* ── 更新细胞 ── */
+      for (const c of cells) {
+        // 鼠标交互 — 柔和吸引/排斥
+        const dx = c.x - mouse.x;
+        const dy = c.y - mouse.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < MOUSE_RADIUS && dist > 0) {
+          const force = (1 - dist / MOUSE_RADIUS) * 0.5;
+          c.vx += (dx / dist) * force;
+          c.vy += (dy / dist) * force;
+        }
+
+        c.x += c.vx;
+        c.y += c.vy;
+        c.vx *= 0.992;
+        c.vy *= 0.992;
+        c.phase += c.pulseSpeed;
+
+        // 边界环绕
+        if (c.x < -30) c.x = w + 30;
+        if (c.x > w + 30) c.x = -30;
+        if (c.y < -30) c.y = h + 30;
+        if (c.y > h + 30) c.y = -30;
+      }
+
+      /* ── 按景深排序绘制 ── */
+      const sorted = [...cells].sort((a, b) => a.layer - b.layer);
+
+      /* ── 网络连线 — 仅中景和前景 ── */
+      for (let i = 0; i < sorted.length; i++) {
+        const a = sorted[i];
+        if (a.layer === 0) continue;
+        for (let j = i + 1; j < sorted.length; j++) {
+          const b = sorted[j];
+          if (b.layer === 0) continue;
+          const ddx = a.x - b.x;
+          const ddy = a.y - b.y;
+          const d = Math.sqrt(ddx * ddx + ddy * ddy);
+          if (d < CONNECTION_DIST) {
+            const alpha = (1 - d / CONNECTION_DIST) * 0.08;
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
             ctx.lineTo(b.x, b.y);
-            ctx.strokeStyle = alpha > 0.5 ? NETWORK_COLOR_NEAR : NETWORK_COLOR;
-            ctx.globalAlpha = alpha * 0.5;
+            ctx.strokeStyle = `rgba(170, 183, 255, ${alpha})`;
             ctx.lineWidth = 0.5;
             ctx.stroke();
-            ctx.globalAlpha = 1;
           }
         }
       }
 
-      /* ── 绘制微生物 ── */
-      for (const m of microbes) {
-        const pulse = Math.sin(m.phase) * 0.5 + 0.5;
-        switch (m.kind) {
-          case "coccus":
-            drawCoccus(ctx, m, pulse);
-            break;
-          case "bacillus":
-            drawBacillus(ctx, m, pulse);
-            break;
-          case "spirillum":
-            drawSpirillum(ctx, m, pulse);
-            break;
-        }
+      /* ── 绘制细胞 ── */
+      for (const c of sorted) {
+        const pulse = Math.sin(c.phase) * 0.5 + 0.5;
+        drawCell(ctx, c, pulse);
       }
 
-      /* ── 中心光晕 ── */
-      const grd = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.5);
-      grd.addColorStop(0, "rgba(226, 63, 255, 0.03)");
-      grd.addColorStop(0.4, "rgba(85, 110, 255, 0.015)");
-      grd.addColorStop(1, "rgba(0, 0, 0, 0)");
-      ctx.fillStyle = grd;
-      ctx.fillRect(0, 0, w, h);
+      /* ── 前景微粒 — 极小的漂浮孢子 ── */
+      for (let i = 0; i < 30; i++) {
+        const seed = i * 7919;
+        const px = ((seed * 13 + time * 0.3) % w + w) % w;
+        const py = ((seed * 17 + time * 0.15) % h + h) % h;
+        const sz = 0.5 + (seed % 10) * 0.1;
+        const alpha = 0.05 + (seed % 5) * 0.015;
+        ctx.beginPath();
+        ctx.arc(px, py, sz, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(228, 232, 238, ${alpha})`;
+        ctx.fill();
+      }
 
       animId = requestAnimationFrame(animate);
     };
 
-    const onResize = () => { resize(); };
-
     init();
     canvas.addEventListener("mousemove", onMouseMove);
     canvas.addEventListener("mouseleave", onMouseLeave);
-    window.addEventListener("resize", onResize);
+    window.addEventListener("resize", () => resize());
     animId = requestAnimationFrame(animate);
 
     return () => {
       cancelAnimationFrame(animId);
       canvas.removeEventListener("mousemove", onMouseMove);
       canvas.removeEventListener("mouseleave", onMouseLeave);
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener("resize", resize);
     };
   }, []);
 
-  return <canvas ref={canvasRef} className={classes.canvas} />;
+  return <canvas ref={canvasRef} className={classes.canvas} aria-hidden="true" />;
 };
 
 export default HeaderBg;

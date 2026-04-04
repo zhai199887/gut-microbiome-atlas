@@ -1,6 +1,6 @@
 {
   "NC": {
-    "standard_name": "Normal Control",
+    "standard_name": "Non-disease Control",
     "standard_name_zh": "正常对照",
     "abbreviation": "NC",
     "mesh_id": "",
@@ -45,7 +45,7 @@
     "category_zh": "感染性疾病"
   },
   "UC": {
-    "standard_name": "Ulcerative colitis",
+    "standard_name": "Ulcerative Colitis",
     "standard_name_zh": "溃疡性结肠炎",
     "abbreviation": "UC",
     "mesh_id": "D003093",
@@ -63,7 +63,7 @@
     "category_zh": "代谢性疾病"
   },
   "c_difficile_infection": {
-    "standard_name": "Clostridioides difficile infection",
+    "standard_name": "Clostridioides Difficile Infection",
     "standard_name_zh": "艰难梭菌感染",
     "abbreviation": "CDI",
     "mesh_id": "D003015",
@@ -72,7 +72,7 @@
     "category_zh": "感染性疾病"
   },
   "CD": {
-    "standard_name": "Crohn's disease",
+    "standard_name": "Crohn's Disease",
     "standard_name_zh": "克罗恩病",
     "abbreviation": "CD",
     "mesh_id": "D003424",
@@ -81,7 +81,7 @@
     "category_zh": "消化系统疾病"
   },
   "colorectal_cancer": {
-    "standard_name": "Colorectal cancer",
+    "standard_name": "Colorectal Cancer",
     "standard_name_zh": "结直肠癌",
     "abbreviation": "CRC",
     "mesh_id": "D015179",
@@ -261,7 +261,7 @@
     "category_zh": "自身免疫"
   },
   "IBD": {
-    "standard_name": "Inflammatory bowel disease",
+    "standard_name": "Inflammatory Bowel Disease",
     "standard_name_zh": "炎症性肠病",
     "abbreviation": "IBD",
     "mesh_id": "D015212",
@@ -270,7 +270,7 @@
     "category_zh": "消化系统疾病"
   },
   "T2D": {
-    "standard_name": "Type 2 diabetes mellitus",
+    "standard_name": "Type 2 Diabetes Mellitus",
     "standard_name_zh": "2型糖尿病",
     "abbreviation": "T2D",
     "mesh_id": "D003924",
@@ -333,7 +333,7 @@
     "category_zh": "肝脏疾病"
   },
   "T1D": {
-    "standard_name": "Type 1 diabetes mellitus",
+    "standard_name": "Type 1 Diabetes Mellitus",
     "standard_name_zh": "1型糖尿病",
     "abbreviation": "T1D",
     "mesh_id": "D003922",
@@ -342,7 +342,7 @@
     "category_zh": "代谢性疾病"
   },
   "NAFLD": {
-    "standard_name": "Non-alcoholic fatty liver disease",
+    "standard_name": "Non-alcoholic Fatty Liver Disease",
     "standard_name_zh": "非酒精性脂肪性肝病",
     "abbreviation": "NAFLD",
     "mesh_id": "D065626",
@@ -504,7 +504,7 @@
     "category_zh": "其他"
   },
   "Gestational diabetes mellitus": {
-    "standard_name": "Gestational diabetes mellitus",
+    "standard_name": "Gestational Diabetes Mellitus",
     "standard_name_zh": "妊娠期糖尿病",
     "abbreviation": "GDM",
     "mesh_id": "D016640",
@@ -990,7 +990,7 @@
     "category_zh": "肿瘤"
   },
   "Recurrent CDI": {
-    "standard_name": "Recurrent Clostridioides difficile infection",
+    "standard_name": "Recurrent Clostridioides Difficile Infection",
     "standard_name_zh": "复发性艰难梭菌感染",
     "abbreviation": "rCDI",
     "mesh_id": "D003015",
@@ -1071,7 +1071,7 @@
     "category_zh": "血液疾病"
   },
   "T2DM": {
-    "standard_name": "Type 2 diabetes mellitus",
+    "standard_name": "Type 2 Diabetes Mellitus",
     "standard_name_zh": "2型糖尿病",
     "abbreviation": "T2DM",
     "mesh_id": "D003924",
@@ -1386,7 +1386,7 @@
     "category_zh": "消化系统疾病"
   },
   "gestational diabetes": {
-    "standard_name": "Gestational diabetes mellitus",
+    "standard_name": "Gestational Diabetes Mellitus",
     "standard_name_zh": "妊娠期糖尿病",
     "abbreviation": "GDM",
     "mesh_id": "D016640",
@@ -1656,7 +1656,7 @@
     "category_zh": "血液疾病"
   },
   "Type 1 Diabetes": {
-    "standard_name": "Type 1 diabetes mellitus",
+    "standard_name": "Type 1 Diabetes Mellitus",
     "standard_name_zh": "1型糖尿病",
     "abbreviation": "T1D",
     "mesh_id": "D003922",

@@ -668,6 +668,25 @@ def get_disease_names_zh(request: Request):
     return DISEASE_NAMES_ZH
 
 
+@app.get("/api/disease-display-names",
+         summary="Standardized display names for diseases",
+         description="Returns a mapping from raw disease keys to standardized display names with abbreviations.")
+@limiter.limit("120/minute")
+def get_disease_display_names(request: Request):
+    """Return standardized display names / 返回标准化疾病显示名称映射"""
+    result: dict[str, str] = {}
+    for key, info in DISEASE_ONTOLOGY.items():
+        std = info.get("standard_name", "")
+        abbr = info.get("abbreviation", "")
+        if std and abbr and abbr != std and abbr != key:
+            result[key] = f"{std} ({abbr})"
+        elif std and std != key:
+            result[key] = std
+        elif std:
+            result[key] = std
+    return result
+
+
 @app.post("/api/diff-analysis",
           summary="Differential analysis",
           description="Compare microbiome between two groups using Wilcoxon, t-test, LEfSe, or PERMANOVA.")

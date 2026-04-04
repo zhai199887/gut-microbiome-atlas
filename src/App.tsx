@@ -17,7 +17,11 @@ import SankeyChart from "@/sections/SankeyChart";
 // Search 已移到独立页面 /search
 import "@/components/tooltip";
 import { trackEvent } from "@/util/tracking";
+import { preloadDiseaseNames } from "@/util/diseaseNames";
 import "./App.css";
+
+// 预加载疾病显示名称映射
+preloadDiseaseNames();
 
 // Lazy-loaded pages for code splitting / 懒加载页面（代码分割）
 const PhenotypePage = lazy(() => import("@/sections/PhenotypePage"));

@@ -14,6 +14,12 @@
   --primary-light: #f19fff;
   --secondary-light: #aab7ff;
 
+  --accent: #4ecdc4;
+  --enriched: #ef4444;
+  --depleted: #3b82f6;
+  --success: #22c55e;
+  --warning: #eab308;
+
   --rounded: 5px;
   --fast: 0.25s ease;
   --shadow: 0 0 10px #00000020;

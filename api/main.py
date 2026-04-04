@@ -56,7 +56,7 @@ app = FastAPI(
     description="""
 # Gut Microbiome Atlas — RESTful API
 
-A comprehensive analysis platform for the human gut microbiome, integrating **168,464 samples** across **4,680 genera**, **69 countries**, and **217+ diseases**.
+A comprehensive analysis platform for the human gut microbiome, integrating **168,464 samples** across **4,680 genera**, **66 countries**, and **218+ diseases**.
 
 ## Features
 - **Differential Analysis**: Wilcoxon rank-sum test, t-test, LEfSe (LDA effect size), PERMANOVA
@@ -130,6 +130,47 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+
+# ── Startup warmup / 启动预热 ─────────────────────────────────────────────────
+
+@app.on_event("startup")
+def warmup_data():
+    """Pre-load data into memory at startup to avoid cold-start latency.
+    启动时预加载数据到内存，避免首次请求延迟"""
+    try:
+        if METADATA_PATH:
+            get_metadata()
+            logging.info("Metadata pre-loaded into cache")
+        if ABUNDANCE_PATH:
+            get_abundance()
+            logging.info("Abundance pre-loaded into cache")
+    except Exception as e:
+        logging.warning(f"Warmup failed (non-fatal): {e}")
+
+
+# ── Response cache for compute-heavy endpoints / 计算密集端点结果缓存 ─────────
+
+_RESULT_CACHE: dict[str, tuple[float, dict]] = {}
+_CACHE_TTL = 3600  # 1 hour
+
+def get_cached(key: str):
+    """Return cached result if exists and not expired."""
+    if key in _RESULT_CACHE:
+        ts, val = _RESULT_CACHE[key]
+        if (datetime.now().timestamp() - ts) < _CACHE_TTL:
+            return val
+        del _RESULT_CACHE[key]
+    return None
+
+def set_cached(key: str, val: dict):
+    """Store result in cache."""
+    _RESULT_CACHE[key] = (datetime.now().timestamp(), val)
+    # Evict old entries if cache too large
+    if len(_RESULT_CACHE) > 500:
+        oldest = sorted(_RESULT_CACHE, key=lambda k: _RESULT_CACHE[k][0])
+        for k in oldest[:100]:
+            del _RESULT_CACHE[k]
 
 
 # ── Disease ontology / 疾病本体映射 ───────────────────────────────────────────
@@ -956,13 +997,13 @@ def species_search(request: Request, q: str = ""):
 def species_profile(request: Request, genus: str):
     """
     Return a comprehensive profile for a given genus:
-    为给定属返回综合画像：
-    - Total sample count where genus is present / 含该属的总样本数
-    - Mean abundance by disease / 各疾病中的平均丰度
-    - Mean abundance by country / 各国家中的平均丰度
-    - Mean abundance by age group / 各年龄组中的平均丰度
-    - Mean abundance by sex / 各性别中的平均丰度
+    为给定属返回综合画像：丰度/疾病/国家/年龄/性别分布
     """
+    cache_key = f"species_profile:{genus.strip().lower()}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
     meta = get_metadata()
     abund = get_abundance()
 
@@ -1048,7 +1089,7 @@ def species_profile(request: Request, genus: str):
         })
     by_disease.sort(key=lambda x: x["mean_abundance"], reverse=True)
 
-    return {
+    result = {
         "genus": canonical_name,
         "total_samples": total_count,
         "present_samples": present_count,
@@ -1059,6 +1100,130 @@ def species_profile(request: Request, genus: str):
         "by_age_group": group_means("age_group" if "age_group" in mm.columns else "age", 10),
         "by_sex": group_means("sex", 5),
     }
+    set_cached(cache_key, result)
+    return result
+
+
+# ── Biomarker profile endpoint / 跨疾病标志物画像端点 ─────────────────────────
+
+@app.get("/api/biomarker-profile",
+         summary="Cross-disease biomarker profile",
+         description="For a given genus, compute log2 fold change vs healthy controls across all diseases.",
+         tags=["Species"])
+@limiter.limit("30/minute")
+def biomarker_profile(request: Request, genus: str, min_samples: int = 10):
+    """
+    Cross-disease biomarker profile: for a given genus, compute its differential
+    abundance (log2FC + Wilcoxon p) against healthy controls in every disease.
+    跨疾病标志物画像：计算给定属在每种疾病中相对健康对照的差异丰度
+    """
+    if not genus or not genus.strip():
+        raise HTTPException(400, "genus parameter is required")
+
+    cache_key = f"biomarker_profile:{genus.strip().lower()}:{min_samples}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+    genus = genus.strip()
+
+    meta = get_metadata()
+    abund = get_abundance()
+
+    # Find genus columns / 查找属列
+    matching_cols = [c for c in abund.columns if extract_genus(c).lower() == genus.lower()]
+    if not matching_cols:
+        raise HTTPException(404, f"Genus '{genus}' not found in abundance data")
+
+    canonical_name = extract_genus(matching_cols[0])
+
+    # Compute genus relative abundance / 计算属相对丰度
+    genus_raw = abund[matching_cols].sum(axis=1)
+    sample_totals = abund.sum(axis=1).replace(0, 1)
+    genus_rel = (genus_raw / sample_totals * 100).rename("rel_abund")
+
+    # Link metadata / 关联元数据
+    meta_keyed = meta.set_index("sample_key")
+    common = genus_rel.index.intersection(meta_keyed.index)
+    ga = genus_rel.loc[common]
+    mm = meta_keyed.loc[common]
+
+    # Get NC (healthy control) samples / 获取健康对照样本
+    INFORM_COLS = [f"inform{i}" for i in range(12)]
+    nc_mask = pd.Series(False, index=mm.index)
+    for col in INFORM_COLS:
+        if col in mm.columns:
+            nc_mask |= (mm[col].fillna("").astype(str).str.strip() == "NC")
+    nc_vals = ga.loc[nc_mask].values.astype(float)
+
+    if len(nc_vals) < min_samples:
+        raise HTTPException(400, f"Too few NC samples ({len(nc_vals)})")
+
+    nc_mean = float(np.mean(nc_vals))
+
+    # Collect disease groups / 收集疾病分组
+    disease_samples: dict[str, list] = {}
+    for col in INFORM_COLS:
+        if col not in mm.columns:
+            continue
+        for idx, val in mm[col].fillna("").astype(str).str.strip().items():
+            if val and val != "nan" and val != "" and val != "NC" and val != "unknown":
+                disease_samples.setdefault(val, []).append(idx)
+
+    # Compute log2FC and Wilcoxon p for each disease / 计算每种疾病的log2FC和Wilcoxon p
+    pseudo = 1e-6
+    results = []
+    for disease_name, sample_ids in disease_samples.items():
+        unique_ids = list(set(sample_ids))
+        valid_ids = ga.index.intersection(unique_ids)
+        if len(valid_ids) < min_samples:
+            continue
+
+        d_vals = ga.loc[valid_ids].values.astype(float)
+        d_mean = float(np.mean(d_vals))
+        log2fc = float(math.log2((d_mean + pseudo) / (nc_mean + pseudo)))
+
+        try:
+            _, p = stats.mannwhitneyu(d_vals, nc_vals, alternative="two-sided")
+            p = float(p)
+        except Exception:
+            p = 1.0
+
+        direction = "enriched" if log2fc > 0 else "depleted"
+        results.append({
+            "disease": disease_name,
+            "n_samples": len(valid_ids),
+            "mean_disease": round(d_mean, 6),
+            "mean_control": round(nc_mean, 6),
+            "log2fc": round(log2fc, 4),
+            "p_value": round(p, 8),
+            "direction": direction,
+        })
+
+    # BH FDR correction / BH FDR校正
+    if results:
+        from analysis import _bh_correction
+        p_vals = [r["p_value"] for r in results]
+        adj_p = _bh_correction(p_vals)
+        for i, r in enumerate(results):
+            r["adjusted_p"] = round(adj_p[i], 8)
+            r["significant"] = adj_p[i] < 0.05
+
+    results.sort(key=lambda x: abs(x["log2fc"]), reverse=True)
+
+    n_enriched = sum(1 for r in results if r.get("significant") and r["direction"] == "enriched")
+    n_depleted = sum(1 for r in results if r.get("significant") and r["direction"] == "depleted")
+
+    result = {
+        "genus": canonical_name,
+        "n_diseases_tested": len(results),
+        "n_enriched": n_enriched,
+        "n_depleted": n_depleted,
+        "n_control": len(nc_vals),
+        "control_mean": round(nc_mean, 6),
+        "profiles": results,
+    }
+    set_cached(cache_key, result)
+    return result
 
 
 # ── Disease ontology endpoint / 疾病本体端点 ──────────────────────────────────
@@ -1566,6 +1731,11 @@ def biomarker_discovery(request: Request, disease: str, lda_threshold: float = 2
     Discover biomarker taxa for a given disease vs healthy controls.
     发现疾病标志物：疾病组 vs 健康对照的显著差异属
     """
+    cache_key = f"biomarker_discovery:{disease.strip() if disease else ''}:{lda_threshold}:{p_threshold}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
     if not disease or not disease.strip():
         raise HTTPException(400, "disease parameter is required")
     disease = disease.strip()
@@ -1632,7 +1802,7 @@ def biomarker_discovery(request: Request, disease: str, lda_threshold: float = 2
     markers = wilcoxon_marker_test(d_filtered, c_filtered, valid_genera, p_threshold)
     markers = [m for m in markers if m["lda_score"] >= lda_threshold]
 
-    return {
+    result = {
         "disease": disease,
         "n_disease": len(d_valid),
         "n_control": len(c_valid),
@@ -1641,6 +1811,8 @@ def biomarker_discovery(request: Request, disease: str, lda_threshold: float = 2
         "p_threshold": p_threshold,
         "markers": markers[:100],
     }
+    set_cached(cache_key, result)
+    return result
 
 
 @app.get("/api/lollipop-data",
@@ -1802,6 +1974,101 @@ def chord_data(request: Request, top_diseases: int = 10, top_genera: int = 12):
         "phyla": [genus_phylum.get(g, "Unknown") for g in genus_names],
         "matrix": matrix,
     }
+
+
+@app.get("/api/species-cooccurrence",
+         summary="Species co-occurrence partners",
+         description="Top co-occurring genera for a given genus, based on Spearman correlation across healthy samples.",
+         tags=["Species"])
+@limiter.limit("30/minute")
+def species_cooccurrence(request: Request, genus: str, top_k: int = 10):
+    """
+    Return top co-occurring genera for a given genus.
+    返回给定属的 Top 共现微生物
+    """
+    if not genus or not genus.strip():
+        raise HTTPException(400, "genus parameter is required")
+
+    cache_key = f"species_cooccurrence:{genus.strip().lower()}:{top_k}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
+    meta = get_metadata()
+    abund = get_abundance()
+
+    # Find genus column(s)
+    matching_cols = [c for c in abund.columns if extract_genus(c).lower() == genus.strip().lower()]
+    if not matching_cols:
+        raise HTTPException(404, f"Genus '{genus}' not found")
+
+    canonical = extract_genus(matching_cols[0])
+
+    # Use NC samples
+    INFORM_COLS = [f"inform{i}" for i in range(12)]
+    nc_mask = pd.Series(False, index=meta.index)
+    for col in INFORM_COLS:
+        if col in meta.columns:
+            nc_mask |= (meta[col].fillna("").astype(str).str.strip() == "NC")
+    sample_keys = meta.loc[nc_mask, "sample_key"].dropna().unique()
+    valid_keys = abund.index.intersection(sample_keys)
+
+    np.random.seed(42)
+    if len(valid_keys) > 3000:
+        valid_keys = valid_keys[np.random.choice(len(valid_keys), 3000, replace=False)]
+
+    if len(valid_keys) < 20:
+        return {"genus": canonical, "partners": []}
+
+    raw = abund.loc[valid_keys].values.astype(float)
+    totals = raw.sum(axis=1, keepdims=True)
+    totals[totals == 0] = 1
+    rel = raw / totals * 100
+
+    col_names = abund.columns.tolist()
+    genus_labels = [extract_genus(c) for c in col_names]
+    unique_genera = list(dict.fromkeys(genus_labels))
+
+    # Aggregate to genus level
+    genus_matrix = np.zeros((rel.shape[0], len(unique_genera)))
+    for i, g in enumerate(unique_genera):
+        idxs = [j for j, l in enumerate(genus_labels) if l == g]
+        genus_matrix[:, i] = rel[:, idxs].sum(axis=1)
+
+    # Find target genus index
+    target_idx = None
+    for i, g in enumerate(unique_genera):
+        if g.lower() == genus.strip().lower():
+            target_idx = i
+            break
+    if target_idx is None:
+        return {"genus": canonical, "partners": []}
+
+    target_vec = genus_matrix[:, target_idx]
+    # Skip if target has no variance
+    if np.std(target_vec) == 0:
+        return {"genus": canonical, "partners": []}
+
+    partners = []
+    for i, g in enumerate(unique_genera):
+        if i == target_idx or not is_valid_genus(g):
+            continue
+        other_vec = genus_matrix[:, i]
+        if np.std(other_vec) == 0 or (other_vec > 0).sum() < 10:
+            continue
+        r, p = stats.spearmanr(target_vec, other_vec)
+        if abs(r) >= 0.2 and p < 0.05:
+            partners.append({
+                "genus": g,
+                "r": round(float(r), 4),
+                "p_value": round(float(p), 6),
+                "type": "positive" if r > 0 else "negative",
+            })
+
+    partners.sort(key=lambda x: abs(x["r"]), reverse=True)
+    result = {"genus": canonical, "partners": partners[:top_k]}
+    set_cached(cache_key, result)
+    return result
 
 
 @app.get("/api/cooccurrence",

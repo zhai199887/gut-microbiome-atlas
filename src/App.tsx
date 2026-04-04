@@ -37,6 +37,7 @@ const SearchPage = lazy(() => import("@/pages/SearchPage"));
 const ApiDocsPage = lazy(() => import("@/pages/ApiDocsPage"));
 const CitePage = lazy(() => import("@/pages/CitePage"));
 const DownloadPage = lazy(() => import("@/pages/DownloadPage"));
+const StudiesPage = lazy(() => import("@/pages/StudiesPage"));
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 
 /* ── Route-level document title / 路由级页面标题 ── */
@@ -135,6 +136,7 @@ const App = () => (
           <Route path="/api-docs" element={<ApiDocsPage />} />
           <Route path="/about" element={<CitePage />} />
           <Route path="/download" element={<DownloadPage />} />
+          <Route path="/studies" element={<StudiesPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

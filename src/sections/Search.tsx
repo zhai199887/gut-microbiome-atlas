@@ -8,6 +8,7 @@ import { renderToString } from "react-dom/server";
 import { Link } from "react-router-dom";
 import * as d3 from "d3";
 import { useI18n } from "@/i18n";
+import { cachedFetch } from "@/util/apiCache";
 import { exportTable } from "@/util/export";
 import { exportSVG, exportPNG } from "@/util/chartExport";
 import "@/components/tooltip";
@@ -33,6 +34,18 @@ interface SpeciesProfile {
   by_age_group: ProfileEntry[];
   by_sex: ProfileEntry[];
 }
+
+// Common gut genera for quick selection / 常见肠道菌属快速选择
+const COMMON_GENERA = [
+  "Bacteroides", "Prevotella", "Faecalibacterium", "Bifidobacterium",
+  "Lactobacillus", "Roseburia", "Blautia", "Ruminococcus",
+  "Akkermansia", "Clostridium", "Eubacterium", "Streptococcus",
+  "Enterococcus", "Escherichia", "Fusobacterium", "Coprococcus",
+  "Lachnospira", "Dorea", "Alistipes", "Parabacteroides",
+  "Megamonas", "Dialister", "Veillonella", "Sutterella",
+  "Haemophilus", "Klebsiella", "Collinsella", "Desulfovibrio",
+  "Megasphaera", "Phascolarctobacterium",
+];
 
 const HISTORY_KEY = "search_history";
 function getHistory(): string[] {
@@ -84,12 +97,8 @@ const Search = () => {
     setShowSuggestions(false);
     setQuery(genus);
 
-    fetch(`${API_BASE}/api/species-profile?genus=${encodeURIComponent(genus.trim())}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(r.status === 404 ? "Genus not found" : "Server error");
-        return r.json();
-      })
-      .then((data: SpeciesProfile) => {
+    cachedFetch<SpeciesProfile>(`${API_BASE}/api/species-profile?genus=${encodeURIComponent(genus.trim())}`)
+      .then((data) => {
         setProfile(data);
         saveHistory(genus.trim());
         setHistory(getHistory());
@@ -178,6 +187,23 @@ const Search = () => {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Quick genus picker / 常用菌属快速选择 */}
+      <div className={classes.quickPicker}>
+        <label className={classes.quickLabel}>{t("search.quickSelect")}</label>
+        <select
+          className={classes.quickSelect}
+          value=""
+          onChange={(e) => {
+            if (e.target.value) doSearch(e.target.value);
+          }}
+        >
+          <option value="">{t("search.selectGenus")}</option>
+          {COMMON_GENERA.map((g) => (
+            <option key={g} value={g}>{g}</option>
+          ))}
+        </select>
       </div>
 
       {/* Error / 错误信息 */}

@@ -76,7 +76,7 @@
 | **实时分析** | 168K 样本在线差异分析 | 多数平台只提供预计算结果 |
 
 **核心卖点提炼**（论文 Abstract 级）：
-> "The largest integrated human gut microbiome atlas with 168,464 samples spanning 69 countries, 218 diseases, and 4,680 genera, providing real-time differential analysis across the full human lifespan."
+> "The largest integrated human gut microbiome atlas with 168,464 samples spanning 66 countries, 218 diseases, and 4,680 genera, providing real-time differential analysis across the full human lifespan."
 
 ---
 

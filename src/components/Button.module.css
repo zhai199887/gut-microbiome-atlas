@@ -41,12 +41,12 @@
   padding: 10px 20px;
   border: none;
   background: none;
-  color: var(--off-white);
+  color: var(--white);
   white-space: nowrap;
 }
 
 .button[data-design="big"]:hover {
-  color: var(--off-white);
+  color: var(--white);
 }
 
 .button[data-design="big"]::before,

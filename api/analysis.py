@@ -37,7 +37,7 @@ def wilcoxon_marker_test(
 
         try:
             stat, p = stats.mannwhitneyu(d_vals, c_vals, alternative="two-sided")
-        except Exception:
+        except (ValueError, TypeError):
             p_values.append(1.0)
             results.append(None)
             continue

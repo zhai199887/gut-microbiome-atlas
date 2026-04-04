@@ -93,9 +93,11 @@ const LifecyclePage = () => {
           <label>{t("lifecycle.filterCountry")}</label>
           <select className={classes.select} value={country} onChange={e => setCountry(e.target.value)}>
             <option value="">{t("lifecycle.allCountries")}</option>
-            {countries.map(c => (
-              <option key={c} value={c}>{countryName(c, locale)} ({c})</option>
-            ))}
+            {countries.map(c => {
+              const display = countryName(c, locale);
+              const showCode = display !== c && c !== "unknown" && c.length <= 3;
+              return <option key={c} value={c}>{showCode ? `${display} (${c})` : display}</option>;
+            })}
           </select>
         </div>
       </div>

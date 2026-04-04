@@ -38,7 +38,7 @@ function lerp3(a: typeof P, b: typeof P, t: number, alpha: number): string {
 }
 
 /* ── 配置 ── */
-const CELL_COUNT = 45;
+const CELL_COUNT = 80;
 const HELIX_COUNT = 3;
 const CONNECTION_DIST = 180;
 const MOUSE_RADIUS = 220;

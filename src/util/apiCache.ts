@@ -15,6 +15,7 @@ const inflight = new Map<string, Promise<unknown>>();
 const STATIC_PATTERNS = [
   "/api/disease-list", "/api/disease-names-zh", "/api/filter-options",
   "/api/data-stats", "/api/project-list", "/api/health-index/reference",
+  "/api/metabolism-overview", "/api/metabolism-category-profile",
 ];
 const STATIC_TTL = 30 * 60 * 1000; // 30 minutes
 const DYNAMIC_TTL = 10 * 60 * 1000; // 10 minutes

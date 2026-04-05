@@ -92,6 +92,7 @@ If you use this API in your research, please cite:
         {"name": "Overview", "description": "Health check and system statistics"},
         {"name": "Species", "description": "Species/genus search and profiling"},
         {"name": "Disease", "description": "Disease browsing and biomarker discovery"},
+        {"name": "Metabolism", "description": "Literature-curated metabolic function browser"},
         {"name": "Analysis", "description": "Differential analysis and statistical tests"},
         {"name": "Network", "description": "Co-occurrence networks and chord diagrams"},
         {"name": "Lifecycle", "description": "Age-stratified microbiome composition"},
@@ -188,21 +189,21 @@ def warmup_data():
 
 # ── Response cache for compute-heavy endpoints / 计算密集端点结果缓存 ─────────
 
-_RESULT_CACHE: dict[str, tuple[float, dict]] = {}
+_RESULT_CACHE: dict[str, tuple[float, float, dict]] = {}
 _CACHE_TTL = 3600  # 1 hour
 
 def get_cached(key: str):
     """Return cached result if exists and not expired."""
     if key in _RESULT_CACHE:
-        ts, val = _RESULT_CACHE[key]
-        if (datetime.now().timestamp() - ts) < _CACHE_TTL:
+        ts, ttl, val = _RESULT_CACHE[key]
+        if (datetime.now().timestamp() - ts) < ttl:
             return val
         del _RESULT_CACHE[key]
     return None
 
-def set_cached(key: str, val: dict):
+def set_cached(key: str, val: dict, ttl: int | None = None):
     """Store result in cache."""
-    _RESULT_CACHE[key] = (datetime.now().timestamp(), val)
+    _RESULT_CACHE[key] = (datetime.now().timestamp(), float(ttl or _CACHE_TTL), val)
     # Evict old entries if cache too large
     if len(_RESULT_CACHE) > 500:
         oldest = sorted(_RESULT_CACHE, key=lambda k: _RESULT_CACHE[k][0])
@@ -374,6 +375,257 @@ def build_genus_phylum_map(columns: list[str]) -> dict[str, str]:
         if genus and genus not in phylum_map:
             phylum_map[genus] = phylum
     return phylum_map
+
+
+METABOLISM_MAPPING_PATH = Path(__file__).parent.parent / "public" / "data" / "metabolism_mapping.json"
+METABOLISM_INFORM_COLS = [f"inform{i}" for i in range(12)]
+METABOLISM_MIN_SAMPLES = 5
+METABOLISM_PROFILE_DISEASE_LIMIT = 30
+METABOLISM_OVERVIEW_DISEASE_LIMIT = 20
+METABOLISM_OVERVIEW_TTL = 24 * 3600
+METABOLISM_PSEUDOCOUNT = 1e-6
+
+
+@lru_cache(maxsize=1)
+def load_metabolism_mapping() -> dict:
+    """Load curated metabolism mapping JSON."""
+    with open(METABOLISM_MAPPING_PATH, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _normalize_name_list(values: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        name = str(value).strip()
+        if not name or name in seen:
+            continue
+        normalized.append(name)
+        seen.add(name)
+    return normalized
+
+
+def _metabolism_exact_names(category: dict) -> list[str]:
+    values = category.get("genus_exact_names") or category.get("taxa") or []
+    return _normalize_name_list(list(values))
+
+
+def _metabolism_disease_mask(meta: pd.DataFrame, disease: str) -> pd.Series:
+    disease_lower = disease.strip().lower()
+    mask = pd.Series(False, index=meta.index)
+    for col in METABOLISM_INFORM_COLS:
+        if col not in meta.columns:
+            continue
+        values = meta[col].fillna("").astype(str).str.strip().str.lower()
+        mask |= values == disease_lower
+    return mask
+
+
+def _metabolism_strict_nc_mask(meta: pd.DataFrame) -> pd.Series:
+    if "inform0" not in meta.columns:
+        return pd.Series(False, index=meta.index)
+
+    mask = meta["inform0"].fillna("").astype(str).str.strip().str.lower() == "nc"
+    for col in METABOLISM_INFORM_COLS[1:]:
+        if col not in meta.columns:
+            continue
+        values = meta[col].fillna("").astype(str).str.strip()
+        mask &= values == ""
+    return mask
+
+
+def _prepare_metabolism_context(meta: pd.DataFrame, abundance_df: pd.DataFrame) -> dict:
+    mapping = load_metabolism_mapping()
+    all_exact_names = sorted(
+        {
+            genus
+            for category in mapping.get("categories", [])
+            for genus in _metabolism_exact_names(category)
+        }
+    )
+
+    abundance_lookup = abundance_df.copy(deep=False)
+    abundance_lookup.index = abundance_lookup.index.astype(str)
+
+    matched_meta = meta.copy()
+    matched_meta["sample_key"] = matched_meta["sample_key"].fillna("").astype(str)
+    matched_meta = matched_meta.loc[matched_meta["sample_key"].isin(set(abundance_lookup.index))]
+    matched_meta = matched_meta.drop_duplicates(subset="sample_key").reset_index(drop=True)
+    matched_keys = matched_meta["sample_key"].tolist()
+
+    selected_columns = [
+        col
+        for col in abundance_lookup.columns
+        if extract_genus(str(col)).strip() in all_exact_names
+    ]
+
+    if not matched_keys or not selected_columns:
+        return {
+            "meta": matched_meta,
+            "genus_matrix": np.zeros((len(matched_keys), 0), dtype=float),
+            "genus_labels": [],
+            "genus_index": {},
+        }
+
+    totals = pd.Series(
+        abundance_lookup.sum(axis=1).astype(float).to_numpy(dtype=float),
+        index=abundance_lookup.index,
+    )
+    denom = totals.reindex(matched_keys).fillna(0.0).to_numpy(dtype=float, copy=True)
+    denom[denom == 0] = 1.0
+
+    raw_subset = abundance_lookup.loc[matched_keys, selected_columns].to_numpy(dtype=float)
+    rel_subset = raw_subset / denom[:, None] * 100.0
+    genus_matrix, genus_labels, _ = aggregate_by_level(rel_subset, selected_columns, "genus")
+
+    return {
+        "meta": matched_meta,
+        "genus_matrix": genus_matrix,
+        "genus_labels": genus_labels,
+        "genus_index": {label: idx for idx, label in enumerate(genus_labels)},
+    }
+
+
+def _metabolism_top_diseases(meta: pd.DataFrame, limit: int) -> list[dict]:
+    counts: dict[str, int] = {}
+    for col in METABOLISM_INFORM_COLS:
+        if col not in meta.columns:
+            continue
+        values = meta[col].fillna("").astype(str).str.strip()
+        values = values[(values != "") & (values.str.lower() != "nan")]
+        values = values[values.str.lower() != "nc"]
+        for value in values:
+            counts[value] = counts.get(value, 0) + 1
+
+    rows = [{"name": name, "sample_count": count} for name, count in counts.items()]
+    rows.sort(key=lambda item: item["sample_count"], reverse=True)
+    return rows[:limit]
+
+
+def _metabolism_category_result(category: dict, context: dict, disease_limit: int) -> dict:
+    meta = context["meta"]
+    genus_index = context["genus_index"]
+    genus_matrix = context["genus_matrix"]
+
+    exact_names = _metabolism_exact_names(category)
+    matched_genera = [name for name in exact_names if name in genus_index]
+    unmatched_genera = [name for name in exact_names if name not in genus_index]
+    if unmatched_genera:
+        logging.info(
+            "Metabolism unmatched genera for %s: %s",
+            category["id"],
+            ", ".join(unmatched_genera),
+        )
+
+    result = {
+        "category_id": category["id"],
+        "category_name_en": category.get("name_en", category["id"]),
+        "category_name_zh": category.get("name_zh", category.get("name_en", category["id"])),
+        "n_matched": len(matched_genera),
+        "matched_genera": matched_genera,
+        "unmatched_genera": unmatched_genera,
+        "control_count": 0,
+        "disease_profiles": [],
+    }
+
+    if not matched_genera or genus_matrix.size == 0:
+        result["warning"] = "No exact abundance matches found for this category"
+        return result
+
+    chosen_indices = [genus_index[name] for name in matched_genera]
+    category_scores = genus_matrix[:, chosen_indices].mean(axis=1)
+    nc_mask = _metabolism_strict_nc_mask(meta)
+    nc_scores = category_scores[nc_mask.to_numpy()]
+    result["control_count"] = int(len(nc_scores))
+
+    if len(nc_scores) < METABOLISM_MIN_SAMPLES:
+        result["warning"] = "Insufficient strict NC samples"
+        return result
+
+    rows: list[dict] = []
+    p_values: list[float] = []
+    for disease_row in _metabolism_top_diseases(meta, disease_limit):
+        disease = disease_row["name"]
+        disease_mask = _metabolism_disease_mask(meta, disease)
+        disease_scores = category_scores[disease_mask.to_numpy()]
+        if len(disease_scores) < METABOLISM_MIN_SAMPLES:
+            continue
+
+        try:
+            stat = stats.mannwhitneyu(disease_scores, nc_scores, alternative="two-sided")
+            u_stat = float(stat.statistic)
+            p_value = float(stat.pvalue)
+        except Exception:
+            u_stat = 0.0
+            p_value = 1.0
+
+        mean_disease = float(np.mean(disease_scores))
+        mean_nc = float(np.mean(nc_scores))
+        effect_size = float(1 - 2 * u_stat / (len(disease_scores) * len(nc_scores)))
+        log2fc = float(
+            math.log2(
+                (mean_disease + METABOLISM_PSEUDOCOUNT)
+                / (mean_nc + METABOLISM_PSEUDOCOUNT)
+            )
+        )
+        rows.append(
+            {
+                "disease": disease,
+                "sample_count": int(len(disease_scores)),
+                "control_count": int(len(nc_scores)),
+                "mean_disease": round(mean_disease, 6),
+                "mean_nc": round(mean_nc, 6),
+                "log2fc": round(log2fc, 6),
+                "p_value": round(p_value, 8),
+                "adjusted_p": 1.0,
+                "effect_size": round(effect_size, 6),
+                "direction": "enriched" if log2fc > 0 else ("depleted" if log2fc < 0 else "neutral"),
+            }
+        )
+        p_values.append(p_value)
+
+    adjusted = bh_correction(p_values)
+    for idx, row in enumerate(rows):
+        row["adjusted_p"] = round(float(adjusted[idx]), 8)
+
+    result["disease_profiles"] = rows
+    return result
+
+
+def _build_metabolism_overview(mapping: dict, context: dict) -> dict:
+    meta = context["meta"]
+    nc_count = int(_metabolism_strict_nc_mask(meta).sum())
+    diseases = _metabolism_top_diseases(meta, METABOLISM_OVERVIEW_DISEASE_LIMIT)
+
+    if nc_count < METABOLISM_MIN_SAMPLES:
+        return {
+            "diseases": diseases,
+            "categories": [],
+            "warning": "Insufficient strict NC samples for overview",
+            "generated_at": datetime.now().isoformat(),
+        }
+
+    categories = []
+    for category in mapping.get("categories", []):
+        profile = _metabolism_category_result(category, context, METABOLISM_OVERVIEW_DISEASE_LIMIT)
+        row_lookup = {row["disease"]: row["log2fc"] for row in profile["disease_profiles"]}
+        categories.append(
+            {
+                "category_id": category["id"],
+                "name_en": category.get("name_en", category["id"]),
+                "name_zh": category.get("name_zh", category.get("name_en", category["id"])),
+                "icon": category.get("icon", ""),
+                "n_matched": profile["n_matched"],
+                "matched_genera": profile["matched_genera"],
+                "values": [row_lookup.get(disease["name"]) for disease in diseases],
+            }
+        )
+
+    return {
+        "diseases": diseases,
+        "categories": categories,
+        "generated_at": datetime.now().isoformat(),
+    }
 
 
 # ── Pydantic models / 请求/响应模型 ────────────────────────────────────────────
@@ -1831,6 +2083,52 @@ def disease_list(request: Request, q: str = ""):
         })
         enriched.append(entry)
     return {"diseases": enriched}
+
+
+@app.get(
+    "/api/metabolism-category-profile",
+    tags=["Metabolism"],
+    summary="Metabolism category disease comparison",
+    description="Category abundance score per disease versus strict NC controls.",
+)
+@limiter.limit("60/minute")
+def metabolism_category_profile(request: Request, category_id: str):
+    """Return disease-vs-NC statistics for a curated metabolism category."""
+    mapping = load_metabolism_mapping()
+    category = next((item for item in mapping.get("categories", []) if item.get("id") == category_id), None)
+    if category is None:
+        raise HTTPException(status_code=404, detail=f"Category '{category_id}' not found")
+
+    cache_key = f"metabolism_profile:{category_id}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
+    context = _prepare_metabolism_context(get_metadata(), get_abundance())
+    result = _metabolism_category_result(category, context, METABOLISM_PROFILE_DISEASE_LIMIT)
+    set_cached(cache_key, result)
+    return result
+
+
+@app.get(
+    "/api/metabolism-overview",
+    tags=["Metabolism"],
+    summary="Metabolism overview heatmap",
+    description="15-category by top-20-disease overview matrix using category abundance scores.",
+)
+@limiter.limit("60/minute")
+def metabolism_overview(request: Request):
+    """Return overview heatmap data for the metabolism module."""
+    cache_key = "metabolism_overview"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
+    mapping = load_metabolism_mapping()
+    context = _prepare_metabolism_context(get_metadata(), get_abundance())
+    result = _build_metabolism_overview(mapping, context)
+    set_cached(cache_key, result, ttl=METABOLISM_OVERVIEW_TTL)
+    return result
 
 
 @app.get("/api/disease-profile",

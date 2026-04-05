@@ -20,10 +20,38 @@
         "Subdoligranulum",
         "Ruminococcus"
       ],
-      "key_metabolites": ["Butyrate", "Propionate", "Acetate"],
-      "related_pathways": ["Pyruvate fermentation", "Wood-Ljungdahl pathway", "Acrylate pathway"],
+      "key_metabolites": [
+        "Butyrate",
+        "Propionate",
+        "Acetate"
+      ],
+      "related_pathways": [
+        "Pyruvate fermentation",
+        "Wood-Ljungdahl pathway",
+        "Acrylate pathway"
+      ],
       "health_relevance": "Low SCFA producers are associated with IBD, colorectal cancer, obesity, and metabolic syndrome.",
-      "references": ["PMID:26963409", "PMID:27259147"]
+      "references": [
+        "PMID:26963409",
+        "PMID:27259147"
+      ],
+      "genus_exact_names": [
+        "Faecalibacterium",
+        "Roseburia",
+        "Eubacterium",
+        "Bifidobacterium",
+        "Akkermansia",
+        "Coprococcus",
+        "Butyrivibrio",
+        "Anaerostipes",
+        "Subdoligranulum",
+        "Ruminococcus"
+      ],
+      "kegg_pathway_ids": [
+        "map00650",
+        "map00620"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "bile_acid_metabolism",
@@ -42,10 +70,36 @@
         "Alistipes",
         "Collinsella"
       ],
-      "key_metabolites": ["Lithocholic acid (LCA)", "Deoxycholic acid (DCA)", "Ursodeoxycholic acid (UDCA)", "Isoursodeoxycholic acid"],
-      "related_pathways": ["BSH pathway", "bai operon (7α-dehydroxylation)", "UDCA biosynthesis"],
+      "key_metabolites": [
+        "Lithocholic acid (LCA)",
+        "Deoxycholic acid (DCA)",
+        "Ursodeoxycholic acid (UDCA)",
+        "Isoursodeoxycholic acid"
+      ],
+      "related_pathways": [
+        "BSH pathway",
+        "bai operon (7α-dehydroxylation)",
+        "UDCA biosynthesis"
+      ],
       "health_relevance": "Dysregulated bile acid metabolism is linked to cholestatic liver disease, gallstones, colorectal cancer, and T2D.",
-      "references": ["DOI:10.1038/s41575-019-0142-6"]
+      "references": [
+        "DOI:10.1038/s41575-019-0142-6"
+      ],
+      "genus_exact_names": [
+        "Clostridium",
+        "Lachnoclostridium",
+        "Blautia",
+        "Lactobacillus",
+        "Bifidobacterium",
+        "Bacteroides",
+        "Parabacteroides",
+        "Alistipes",
+        "Collinsella"
+      ],
+      "kegg_pathway_ids": [
+        "map00120"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "tryptophan_metabolism",
@@ -62,10 +116,35 @@
         "Bacteroides",
         "Fusobacterium"
       ],
-      "key_metabolites": ["Indole", "Indole-3-propionic acid (IPA)", "Tryptamine", "Indole-3-acetic acid (IAA)", "Serotonin precursors"],
-      "related_pathways": ["Tryptophanase pathway", "ArAT pathway", "Kynurenine pathway"],
+      "key_metabolites": [
+        "Indole",
+        "Indole-3-propionic acid (IPA)",
+        "Tryptamine",
+        "Indole-3-acetic acid (IAA)",
+        "Serotonin precursors"
+      ],
+      "related_pathways": [
+        "Tryptophanase pathway",
+        "ArAT pathway",
+        "Kynurenine pathway"
+      ],
       "health_relevance": "Altered tryptophan metabolism is implicated in IBS, depression, autism spectrum disorder, and inflammatory diseases.",
-      "references": ["DOI:10.1016/j.cell.2015.11.028"]
+      "references": [
+        "DOI:10.1016/j.cell.2015.11.028"
+      ],
+      "genus_exact_names": [
+        "Lactobacillus",
+        "Clostridium",
+        "Peptostreptococcus",
+        "Ruminococcus",
+        "Escherichia",
+        "Bacteroides",
+        "Fusobacterium"
+      ],
+      "kegg_pathway_ids": [
+        "map00380"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "sulfur_metabolism",
@@ -80,10 +159,30 @@
         "Desulfobacter",
         "Desulfomonas"
       ],
-      "key_metabolites": ["Hydrogen sulfide (H₂S)", "Sulfate", "Thiosulfate"],
-      "related_pathways": ["Dissimilatory sulfate reduction", "Cysteine degradation"],
+      "key_metabolites": [
+        "Hydrogen sulfide (H₂S)",
+        "Sulfate",
+        "Thiosulfate"
+      ],
+      "related_pathways": [
+        "Dissimilatory sulfate reduction",
+        "Cysteine degradation"
+      ],
       "health_relevance": "Elevated H₂S producers associated with UC, colorectal cancer, and high-fat diet consumption.",
-      "references": ["DOI:10.1136/gutjnl-2014-308656"]
+      "references": [
+        "DOI:10.1136/gutjnl-2014-308656"
+      ],
+      "genus_exact_names": [
+        "Desulfovibrio",
+        "Bilophila",
+        "Fusobacterium",
+        "Desulfobacter",
+        "Desulfomonas"
+      ],
+      "kegg_pathway_ids": [
+        "map00920"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "tmao_producers",
@@ -101,10 +200,35 @@
         "Anaerococcus",
         "Providencia"
       ],
-      "key_metabolites": ["Trimethylamine (TMA)", "Trimethylamine N-oxide (TMAO)", "Betaine aldehyde"],
-      "related_pathways": ["Choline TMA-lyase (CutC/D)", "Carnitine Rieske-type oxygenase (CntA/B)", "Betaine reductase"],
+      "key_metabolites": [
+        "Trimethylamine (TMA)",
+        "Trimethylamine N-oxide (TMAO)",
+        "Betaine aldehyde"
+      ],
+      "related_pathways": [
+        "Choline TMA-lyase (CutC/D)",
+        "Carnitine Rieske-type oxygenase (CntA/B)",
+        "Betaine reductase"
+      ],
       "health_relevance": "High TMAO levels are predictive of major adverse cardiovascular events (MACE), thrombosis, and CKD progression.",
-      "references": ["DOI:10.1038/nature10582", "DOI:10.1056/NEJMoa1109400"]
+      "references": [
+        "DOI:10.1038/nature10582",
+        "DOI:10.1056/NEJMoa1109400"
+      ],
+      "genus_exact_names": [
+        "Clostridium",
+        "Desulfovibrio",
+        "Enterococcus",
+        "Escherichia",
+        "Proteus",
+        "Klebsiella",
+        "Anaerococcus",
+        "Providencia"
+      ],
+      "kegg_pathway_ids": [
+        "map00260"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "lps_producers",
@@ -121,10 +245,31 @@
         "Pseudomonas",
         "Salmonella"
       ],
-      "key_metabolites": ["Lipopolysaccharide (LPS)", "Lipid A"],
-      "related_pathways": ["TLR4/NF-κB signaling", "NLRP3 inflammasome activation"],
+      "key_metabolites": [
+        "Lipopolysaccharide (LPS)",
+        "Lipid A"
+      ],
+      "related_pathways": [
+        "TLR4/NF-κB signaling",
+        "NLRP3 inflammasome activation"
+      ],
       "health_relevance": "Metabolic endotoxemia linked to obesity, T2D, NAFLD, and systemic inflammatory conditions.",
-      "references": ["DOI:10.1096/fj.08-100354"]
+      "references": [
+        "DOI:10.1096/fj.08-100354"
+      ],
+      "genus_exact_names": [
+        "Escherichia",
+        "Klebsiella",
+        "Enterobacter",
+        "Bacteroides",
+        "Prevotella",
+        "Pseudomonas",
+        "Salmonella"
+      ],
+      "kegg_pathway_ids": [
+        "map00540"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "folate_b12_producers",
@@ -141,10 +286,35 @@
         "Prevotella",
         "Bacteroides"
       ],
-      "key_metabolites": ["Folate (B9)", "Cobalamin (B12)", "Riboflavin (B2)", "Thiamine (B1)"],
-      "related_pathways": ["De novo folate biosynthesis", "Adenosylcobalamin biosynthesis", "One-carbon metabolism"],
+      "key_metabolites": [
+        "Folate (B9)",
+        "Cobalamin (B12)",
+        "Riboflavin (B2)",
+        "Thiamine (B1)"
+      ],
+      "related_pathways": [
+        "De novo folate biosynthesis",
+        "Adenosylcobalamin biosynthesis",
+        "One-carbon metabolism"
+      ],
       "health_relevance": "Microbial B-vitamin production impacts host epigenetics, neural tube development, and anemia susceptibility.",
-      "references": ["DOI:10.1016/j.cell.2019.08.047"]
+      "references": [
+        "DOI:10.1016/j.cell.2019.08.047"
+      ],
+      "genus_exact_names": [
+        "Bifidobacterium",
+        "Lactobacillus",
+        "Faecalibacterium",
+        "Roseburia",
+        "Akkermansia",
+        "Prevotella",
+        "Bacteroides"
+      ],
+      "kegg_pathway_ids": [
+        "map00670",
+        "map00860"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "neurotransmitter_related",
@@ -161,10 +331,36 @@
         "Clostridium",
         "Bacteroides"
       ],
-      "key_metabolites": ["GABA", "Serotonin (5-HT)", "Dopamine precursors", "Acetylcholine", "Histamine"],
-      "related_pathways": ["Glutamate decarboxylase pathway", "Tryptophan → 5-HTP → serotonin", "DOPA decarboxylase pathway"],
+      "key_metabolites": [
+        "GABA",
+        "Serotonin (5-HT)",
+        "Dopamine precursors",
+        "Acetylcholine",
+        "Histamine"
+      ],
+      "related_pathways": [
+        "Glutamate decarboxylase pathway",
+        "Tryptophan → 5-HTP → serotonin",
+        "DOPA decarboxylase pathway"
+      ],
       "health_relevance": "Gut-brain axis disruption linked to depression, anxiety, autism, Parkinson's disease, and Alzheimer's disease.",
-      "references": ["DOI:10.1038/s41593-019-0554-0"]
+      "references": [
+        "DOI:10.1038/s41593-019-0554-0"
+      ],
+      "genus_exact_names": [
+        "Lactobacillus",
+        "Bifidobacterium",
+        "Escherichia",
+        "Enterococcus",
+        "Streptococcus",
+        "Clostridium",
+        "Bacteroides"
+      ],
+      "kegg_pathway_ids": [
+        "map00380",
+        "map00650"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "mucin_degraders",
@@ -180,10 +376,33 @@
         "Clostridium",
         "Enterocloster"
       ],
-      "key_metabolites": ["N-acetylglucosamine", "Fucose", "Sialic acid", "Sulfate"],
-      "related_pathways": ["O-glycan degradation", "Mucin sulfatase pathway", "Fucosidase pathway"],
+      "key_metabolites": [
+        "N-acetylglucosamine",
+        "Fucose",
+        "Sialic acid",
+        "Sulfate"
+      ],
+      "related_pathways": [
+        "O-glycan degradation",
+        "Mucin sulfatase pathway",
+        "Fucosidase pathway"
+      ],
       "health_relevance": "Akkermansia muciniphila supports barrier integrity and metabolic health; excessive mucin degradation linked to IBD and pathogen invasion.",
-      "references": ["DOI:10.1038/s41579-022-00710-3"]
+      "references": [
+        "DOI:10.1038/s41579-022-00710-3"
+      ],
+      "genus_exact_names": [
+        "Akkermansia",
+        "Bacteroides",
+        "Ruminococcus",
+        "Bifidobacterium",
+        "Clostridium",
+        "Enterocloster"
+      ],
+      "kegg_pathway_ids": [
+        "map00534"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "amino_acid_fermenters",
@@ -200,10 +419,36 @@
         "Dialister",
         "Staphylococcus"
       ],
-      "key_metabolites": ["p-Cresol", "Phenol", "Ammonia", "Branched-chain fatty acids (isobutyrate, isovalerate)", "Hydrogen sulfide"],
-      "related_pathways": ["Stickland reaction", "Phenylalanine deamination", "Tyrosine decarboxylation"],
+      "key_metabolites": [
+        "p-Cresol",
+        "Phenol",
+        "Ammonia",
+        "Branched-chain fatty acids (isobutyrate, isovalerate)",
+        "Hydrogen sulfide"
+      ],
+      "related_pathways": [
+        "Stickland reaction",
+        "Phenylalanine deamination",
+        "Tyrosine decarboxylation"
+      ],
       "health_relevance": "Excessive amino acid fermentation linked to CKD uremic toxins (p-cresyl sulfate), hepatic encephalopathy (ammonia), and colon cancer.",
-      "references": ["DOI:10.1128/AEM.01992-14"]
+      "references": [
+        "DOI:10.1128/AEM.01992-14"
+      ],
+      "genus_exact_names": [
+        "Clostridium",
+        "Bacteroides",
+        "Enterococcus",
+        "Streptococcus",
+        "Veillonella",
+        "Dialister",
+        "Staphylococcus"
+      ],
+      "kegg_pathway_ids": [
+        "map00430",
+        "map00270"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "hydrogen_metabolism",
@@ -220,10 +465,34 @@
         "Veillonella",
         "Collinsella"
       ],
-      "key_metabolites": ["Hydrogen (H₂)", "Methane (CH₄)", "Formate", "Acetate"],
-      "related_pathways": ["Hydrogenase pathway", "Wood-Ljungdahl (reductive acetogenesis)", "Methanogenesis"],
+      "key_metabolites": [
+        "Hydrogen (H₂)",
+        "Methane (CH₄)",
+        "Formate",
+        "Acetate"
+      ],
+      "related_pathways": [
+        "Hydrogenase pathway",
+        "Wood-Ljungdahl (reductive acetogenesis)",
+        "Methanogenesis"
+      ],
       "health_relevance": "H₂ accumulation inhibits fermentation efficiency; methane producers linked to constipation-predominant IBS and slow transit.",
-      "references": ["DOI:10.1038/nrmicro.2014.94"]
+      "references": [
+        "DOI:10.1038/nrmicro.2014.94"
+      ],
+      "genus_exact_names": [
+        "Ruminococcus",
+        "Clostridium",
+        "Blautia",
+        "Roseburia",
+        "Dialister",
+        "Veillonella",
+        "Collinsella"
+      ],
+      "kegg_pathway_ids": [
+        "map00620"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "lactate_producers",
@@ -240,10 +509,34 @@
         "Anaerostipes",
         "Anaerobutyricum"
       ],
-      "key_metabolites": ["L-Lactate", "D-Lactate", "Butyrate (via cross-feeding)", "Propionate"],
-      "related_pathways": ["Bifidum shunt", "Homofermentative glycolysis", "Lactate → butyrate cross-feeding"],
+      "key_metabolites": [
+        "L-Lactate",
+        "D-Lactate",
+        "Butyrate (via cross-feeding)",
+        "Propionate"
+      ],
+      "related_pathways": [
+        "Bifidum shunt",
+        "Homofermentative glycolysis",
+        "Lactate → butyrate cross-feeding"
+      ],
       "health_relevance": "Lactate accumulation (D-lactic acidosis) is dangerous in short-bowel syndrome; balanced lactate cross-feeding supports gut health.",
-      "references": ["DOI:10.1038/ismej.2015.62"]
+      "references": [
+        "DOI:10.1038/ismej.2015.62"
+      ],
+      "genus_exact_names": [
+        "Bifidobacterium",
+        "Lactobacillus",
+        "Streptococcus",
+        "Enterococcus",
+        "Veillonella",
+        "Anaerostipes",
+        "Anaerobutyricum"
+      ],
+      "kegg_pathway_ids": [
+        "map00620"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "oxalate_degraders",
@@ -257,10 +550,29 @@
         "Faecalibacterium",
         "Enterococcus"
       ],
-      "key_metabolites": ["Oxalate", "Formate", "CO₂"],
-      "related_pathways": ["Oxalyl-CoA decarboxylase pathway", "Formyl-CoA transferase"],
+      "key_metabolites": [
+        "Oxalate",
+        "Formate",
+        "CO₂"
+      ],
+      "related_pathways": [
+        "Oxalyl-CoA decarboxylase pathway",
+        "Formyl-CoA transferase"
+      ],
       "health_relevance": "Loss of oxalate degraders linked to calcium oxalate kidney stones and enteric hyperoxaluria post-Roux-en-Y gastric bypass.",
-      "references": ["DOI:10.1128/AEM.01535-09"]
+      "references": [
+        "DOI:10.1128/AEM.01535-09"
+      ],
+      "genus_exact_names": [
+        "Lactobacillus",
+        "Bifidobacterium",
+        "Faecalibacterium",
+        "Enterococcus"
+      ],
+      "kegg_pathway_ids": [
+        "map00630"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "polysaccharide_degraders",
@@ -278,10 +590,36 @@
         "Agathobacter",
         "Fusicatenibacter"
       ],
-      "key_metabolites": ["Oligosaccharides", "Acetate", "Propionate", "Succinate"],
-      "related_pathways": ["Starch utilization system (Sus)", "Arabinoxylan degradation", "Inulin-type fructan hydrolysis"],
+      "key_metabolites": [
+        "Oligosaccharides",
+        "Acetate",
+        "Propionate",
+        "Succinate"
+      ],
+      "related_pathways": [
+        "Starch utilization system (Sus)",
+        "Arabinoxylan degradation",
+        "Inulin-type fructan hydrolysis"
+      ],
       "health_relevance": "Low fiber-degrader abundance associated with Westernized diet, reduced microbial diversity, and increased inflammatory disease risk.",
-      "references": ["DOI:10.1016/j.cell.2019.01.001"]
+      "references": [
+        "DOI:10.1016/j.cell.2019.01.001"
+      ],
+      "genus_exact_names": [
+        "Bacteroides",
+        "Parabacteroides",
+        "Roseburia",
+        "Ruminococcus",
+        "Bifidobacterium",
+        "Faecalibacterium",
+        "Agathobacter",
+        "Fusicatenibacter"
+      ],
+      "kegg_pathway_ids": [
+        "map00500",
+        "map00051"
+      ],
+      "metacyc_pathway_ids": []
     },
     {
       "id": "pathobiont_virulence",
@@ -298,10 +636,32 @@
         "Streptococcus",
         "Clostridium"
       ],
-      "key_metabolites": ["Enterotoxins", "Hemolysins", "Gelatinase", "Cytolethal distending toxin"],
-      "related_pathways": ["Type III/VI secretion systems", "Quorum sensing", "Biofilm formation"],
+      "key_metabolites": [
+        "Enterotoxins",
+        "Hemolysins",
+        "Gelatinase",
+        "Cytolethal distending toxin"
+      ],
+      "related_pathways": [
+        "Type III/VI secretion systems",
+        "Quorum sensing",
+        "Biofilm formation"
+      ],
       "health_relevance": "Bloom of pathobionts observed in antibiotic-associated diarrhea, VAP, neonatal sepsis, and post-transplant infection.",
-      "references": ["DOI:10.1038/nrmicro3552"]
+      "references": [
+        "DOI:10.1038/nrmicro3552"
+      ],
+      "genus_exact_names": [
+        "Klebsiella",
+        "Enterococcus",
+        "Staphylococcus",
+        "Shigella",
+        "Haemophilus",
+        "Streptococcus",
+        "Clostridium"
+      ],
+      "kegg_pathway_ids": [],
+      "metacyc_pathway_ids": []
     }
   ]
 }

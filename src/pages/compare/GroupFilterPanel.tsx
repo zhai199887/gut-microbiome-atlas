@@ -1,16 +1,20 @@
-/**
- * GroupFilterPanel – filter controls for one sample group
- * 组筛选面板 – 一个样本组的筛选控件
- */
-import { useEffect, useState } from "react";
-import type { GroupFilter, FilterOptions } from "./types";
-import { useI18n } from "@/i18n";
-import { countryName, AGE_GROUP_ZH, SEX_ZH } from "@/util/countries";
-import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
-import { cachedFetch } from "@/util/apiCache";
-import classes from "../ComparePage.module.css";
+import type { ChangeEvent } from "react";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+import { useI18n } from "@/i18n";
+import { AGE_GROUP_ZH, SEX_ZH, countryName } from "@/util/countries";
+import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
+
+import classes from "../ComparePage.module.css";
+import type { FilterOptions, GroupFilter, GroupSampleCount } from "./types";
+
+interface Props {
+  label: string;
+  color: string;
+  value: GroupFilter;
+  onChange: (filter: GroupFilter) => void;
+  options: FilterOptions | null;
+  sampleCount: GroupSampleCount | null;
+}
 
 const GroupFilterPanel = ({
   label,
@@ -18,76 +22,88 @@ const GroupFilterPanel = ({
   value,
   onChange,
   options,
-}: {
-  label: string;
-  color: string;
-  value: GroupFilter;
-  onChange: (f: GroupFilter) => void;
-  options: FilterOptions | null;
-}) => {
+  sampleCount,
+}: Props) => {
   const { t, locale } = useI18n();
-  const [diseaseZh, setDiseaseZh] = useState<Record<string, string>>({});
 
-  // Load disease Chinese names / 加载疾病中文名
-  useEffect(() => {
-    if (locale === "zh") {
-      cachedFetch<Record<string, string>>(`${API_BASE}/api/disease-names-zh`)
-        .then(setDiseaseZh)
-        .catch(() => {});
-    }
-  }, [locale]);
+  const setSelect = (key: keyof GroupFilter) => (event: ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
+    onChange({ ...value, [key]: event.target.value });
+  };
 
-  const set = (key: keyof GroupFilter) => (e: React.ChangeEvent<HTMLSelectElement>) =>
-    onChange({ ...value, [key]: e.target.value });
-
-  const dName = (name: string) => (locale === "zh" && diseaseZh[name]) ? diseaseZh[name] : diseaseDisplayNameI18n(name, locale);
-  const ageName = (name: string) => locale === "zh" ? (AGE_GROUP_ZH[name] ?? name.replace(/_/g, " ")) : name.replace(/_/g, " ");
-  const sexName = (name: string) => locale === "zh" ? (SEX_ZH[name] ?? name) : name;
+  const ageName = (name: string) => (
+    locale === "zh" ? (AGE_GROUP_ZH[name] ?? name.replace(/_/g, " ")) : name.replace(/_/g, " ")
+  );
+  const sexName = (name: string) => (locale === "zh" ? (SEX_ZH[name] ?? name) : name);
 
   return (
     <div className={classes.groupPanel}>
-      <h3 className={classes.groupLabel} style={{ borderColor: color, color }}>
-        {label}
-      </h3>
+      <div className={classes.groupHeader}>
+        <h3 className={classes.groupLabel} style={{ borderColor: color, color }}>
+          {label}
+        </h3>
+        <div className={classes.countBadge}>
+          {sampleCount ? `n=${sampleCount.abundance_n}` : "n=..."}
+        </div>
+      </div>
+
       <div className={classes.fieldRow}>
         <label>{t("compare.country")}</label>
-        <select value={value.country} onChange={set("country")} className={classes.select}>
+        <select value={value.country} onChange={setSelect("country")} className={classes.select}>
           <option value="">{t("compare.any")}</option>
-          {options?.countries.map((c) => {
-            const display = countryName(c, locale);
-            // Hide raw code for special values; show "code" suffix only for real ISO codes
-            const showCode = display !== c && c !== "unknown" && c.length <= 3;
-            return <option key={c} value={c}>{showCode ? `${display} (${c})` : display}</option>;
-          })}
+          {options?.countries.map((country) => (
+            <option key={country} value={country}>
+              {countryName(country, locale)}
+            </option>
+          ))}
         </select>
       </div>
+
       <div className={classes.fieldRow}>
         <label>{t("compare.disease")}</label>
-        <select value={value.disease} onChange={set("disease")} className={classes.select}>
-          <option value="">{t("compare.any")}</option>
-          {options?.diseases.slice(0, 200).map((d) => {
-            const display = dName(d);
-            return <option key={d} value={d}>{display.length > 40 ? display.slice(0, 38) + "…" : display}</option>;
-          })}
-        </select>
+        <input
+          list={`disease-list-${label}`}
+          value={value.disease}
+          onChange={setSelect("disease")}
+          className={classes.select}
+          placeholder={t("filter.searchDisease")}
+        />
+        <datalist id={`disease-list-${label}`}>
+          {options?.diseases.map((disease) => (
+            <option
+              key={disease}
+              value={disease}
+              label={diseaseDisplayNameI18n(disease, locale)}
+            />
+          ))}
+        </datalist>
       </div>
+
       <div className={classes.fieldRow}>
         <label>{t("compare.ageGroup")}</label>
-        <select value={value.age_group} onChange={set("age_group")} className={classes.select}>
+        <select value={value.age_group} onChange={setSelect("age_group")} className={classes.select}>
           <option value="">{t("compare.any")}</option>
-          {options?.age_groups.map((a) => (
-            <option key={a} value={a}>{ageName(a)}</option>
+          {options?.age_groups.map((age) => (
+            <option key={age} value={age}>
+              {ageName(age)}
+            </option>
           ))}
         </select>
       </div>
+
       <div className={classes.fieldRow}>
         <label>{t("compare.sex")}</label>
-        <select value={value.sex} onChange={set("sex")} className={classes.select}>
+        <select value={value.sex} onChange={setSelect("sex")} className={classes.select}>
           <option value="">{t("compare.any")}</option>
-          {options?.sexes.map((s) => (
-            <option key={s} value={s}>{sexName(s)}</option>
+          {options?.sexes.map((sex) => (
+            <option key={sex} value={sex}>
+              {sexName(sex)}
+            </option>
           ))}
         </select>
+      </div>
+
+      <div className={classes.groupMeta}>
+        {sampleCount ? `${sampleCount.metadata_n} metadata / ${sampleCount.abundance_n} abundance` : t("compare.previewing")}
       </div>
     </div>
   );

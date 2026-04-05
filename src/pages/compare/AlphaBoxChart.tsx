@@ -1,12 +1,22 @@
-/**
- * AlphaBoxChart – alpha diversity boxplots (Shannon + Simpson)
- * Alpha多样性箱线图
- */
 import { useEffect, useRef } from "react";
+
 import * as d3 from "d3";
+
 import { useI18n } from "@/i18n";
-import type { DiffResult } from "./types";
+
 import classes from "../ComparePage.module.css";
+import type { DiffResult } from "./types";
+
+const PANELS = [
+  { key: "shannon", titleEn: "Shannon", titleZh: "Shannon 指数" },
+  { key: "simpson", titleEn: "Simpson (1-D)", titleZh: "Simpson 指数" },
+  { key: "chao1", titleEn: "Chao1", titleZh: "Chao1 丰富度" },
+] as const;
+
+const formatP = (p: number, locale: string) => {
+  if (p < 0.001) return locale === "zh" ? "p < 0.001" : "p < 0.001";
+  return `p = ${p.toFixed(3)}`;
+};
 
 const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
   const { locale } = useI18n();
@@ -17,147 +27,162 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
 
-    const margin = { top: 35, right: 20, bottom: 40, left: 50 };
-    const W = 620, H = 360;
-    const iH = H - margin.top - margin.bottom;
+    const width = 900;
+    const height = 380;
+    const margin = { top: 48, right: 20, bottom: 56, left: 56 };
+    const panelWidth = (width - margin.left - margin.right) / 3;
+    const panelHeight = height - margin.top - margin.bottom;
 
-    svg.attr("viewBox", `0 0 ${W} ${H}`);
+    const values = PANELS.flatMap((panel) => [
+      ...result.alpha_diversity.group_a[panel.key],
+      ...result.alpha_diversity.group_b[panel.key],
+    ]);
 
-    const { group_a, group_b } = result.alpha_diversity;
-    const gA = result.summary.group_a_name;
-    const gB = result.summary.group_b_name;
-
-    const boxW = 80;
-    const positions = [
-      { x: 60,  data: group_a.shannon, color: "var(--secondary)", label: gA },
-      { x: 170, data: group_b.shannon, color: "var(--primary)", label: gB },
-      { x: 330, data: group_a.simpson, color: "var(--secondary)", label: gA },
-      { x: 440, data: group_b.simpson, color: "var(--primary)", label: gB },
-    ];
-
-    const allVals = positions.flatMap((p) => p.data);
-
-    if (allVals.length === 0) {
-      svg.attr("viewBox", `0 0 ${W} 100`);
-      svg.append("text").attr("x", 20).attr("y", 50)
-        .text(locale === "zh" ? "无 Alpha 多样性数据" : "No alpha diversity data available")
-        .attr("fill", "currentColor").attr("font-size", 13);
+    if (!values.length) {
+      svg.attr("viewBox", "0 0 900 120");
+      svg.append("text")
+        .attr("x", 20)
+        .attr("y", 60)
+        .attr("fill", "currentColor")
+        .attr("font-size", 14)
+        .text(locale === "zh" ? "暂无 Alpha 多样性数据" : "No alpha-diversity data available");
       return;
     }
 
-    const yScale = d3.scaleLinear()
-      .domain([0, d3.max(allVals) ?? 5])
-      .range([iH, 0]);
-
-    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+    const y = d3.scaleLinear()
+      .domain([0, d3.max(values) ?? 1])
+      .nice()
+      .range([panelHeight, 0]);
 
     const drawBox = (
-      grp: d3.Selection<SVGGElement, unknown, null, undefined>,
-      vals: number[], cx: number, color: string,
-    ): { lower: number; upper: number } => {
-      const sorted = [...vals].sort((a, b) => a - b);
+      group: d3.Selection<SVGGElement, unknown, null, undefined>,
+      xCenter: number,
+      points: number[],
+      color: string,
+    ) => {
+      const sorted = [...points].sort((a, b) => a - b);
       const q1 = d3.quantile(sorted, 0.25) ?? 0;
-      const median = d3.quantile(sorted, 0.5) ?? 0;
+      const q2 = d3.quantile(sorted, 0.5) ?? 0;
       const q3 = d3.quantile(sorted, 0.75) ?? 0;
       const iqr = q3 - q1;
-      const lower = Math.max(sorted[0]!, q1 - 1.5 * iqr);
-      const upper = Math.min(sorted[sorted.length - 1]!, q3 + 1.5 * iqr);
+      const lower = Math.max(sorted[0] ?? 0, q1 - 1.5 * iqr);
+      const upper = Math.min(sorted.at(-1) ?? 0, q3 + 1.5 * iqr);
+      const boxWidth = 56;
 
-      grp.append("rect")
-        .attr("x", cx - boxW / 2).attr("y", yScale(q3))
-        .attr("width", boxW).attr("height", Math.abs(yScale(q1) - yScale(q3)))
-        .attr("fill", color).attr("opacity", 0.3)
-        .attr("stroke", color).attr("stroke-width", 1.5);
+      group.append("line")
+        .attr("x1", xCenter)
+        .attr("x2", xCenter)
+        .attr("y1", y(lower))
+        .attr("y2", y(upper))
+        .attr("stroke", color)
+        .attr("stroke-width", 1.4)
+        .attr("stroke-dasharray", "3,3");
 
-      grp.append("line")
-        .attr("x1", cx - boxW / 2).attr("x2", cx + boxW / 2)
-        .attr("y1", yScale(median)).attr("y2", yScale(median))
-        .attr("stroke", color).attr("stroke-width", 2.5);
+      group.append("rect")
+        .attr("x", xCenter - boxWidth / 2)
+        .attr("y", y(q3))
+        .attr("width", boxWidth)
+        .attr("height", Math.max(1, y(q1) - y(q3)))
+        .attr("rx", 4)
+        .attr("fill", color)
+        .attr("opacity", 0.24)
+        .attr("stroke", color)
+        .attr("stroke-width", 1.3);
 
-      for (const [y1, y2] of [[yScale(q1), yScale(lower)], [yScale(q3), yScale(upper)]]) {
-        grp.append("line")
-          .attr("x1", cx).attr("x2", cx)
-          .attr("y1", y1!).attr("y2", y2!)
-          .attr("stroke", color).attr("stroke-width", 1.5).attr("stroke-dasharray", "3,2");
-      }
+      group.append("line")
+        .attr("x1", xCenter - boxWidth / 2)
+        .attr("x2", xCenter + boxWidth / 2)
+        .attr("y1", y(q2))
+        .attr("y2", y(q2))
+        .attr("stroke", color)
+        .attr("stroke-width", 2.2);
 
-      return { lower, upper };
-    };
-
-    const drawOutliers = (
-      grp: d3.Selection<SVGGElement, unknown, null, undefined>,
-      vals: number[], cx: number, color: string,
-      lower: number, upper: number,
-    ) => {
-      const outliers = vals.filter((v) => v < lower || v > upper);
-      grp.selectAll(`.out${cx}`)
+      const outliers = sorted.filter((value) => value < lower || value > upper);
+      group.selectAll(`.outlier-${xCenter}`)
         .data(outliers)
         .join("circle")
-        .attr("class", `out${cx}`)
-        .attr("cx", (_, i) => cx + ((i % 3) - 1) * 3)
-        .attr("cy", (v) => yScale(v))
-        .attr("r", 2.5)
-        .attr("fill", "none")
-        .attr("stroke", color)
+        .attr("cx", (_, index) => xCenter + ((index % 3) - 1) * 4)
+        .attr("cy", (value) => y(value))
+        .attr("r", 2.6)
+        .attr("fill", color)
         .attr("opacity", 0.55);
     };
 
-    const fA_sh = drawBox(g, group_a.shannon, 60, "var(--secondary)");
-    drawOutliers(g, group_a.shannon, 60, "var(--secondary)", fA_sh.lower, fA_sh.upper);
-    const fB_sh = drawBox(g, group_b.shannon, 170, "var(--primary)");
-    drawOutliers(g, group_b.shannon, 170, "var(--primary)", fB_sh.lower, fB_sh.upper);
-    const fA_si = drawBox(g, group_a.simpson, 330, "var(--secondary)");
-    drawOutliers(g, group_a.simpson, 330, "var(--secondary)", fA_si.lower, fA_si.upper);
-    const fB_si = drawBox(g, group_b.simpson, 440, "var(--primary)");
-    drawOutliers(g, group_b.simpson, 440, "var(--primary)", fB_si.lower, fB_si.upper);
+    PANELS.forEach((panel, panelIndex) => {
+      const panelGroup = svg.append("g")
+        .attr("transform", `translate(${margin.left + panelIndex * panelWidth},${margin.top})`);
 
-    // Y axis
-    g.append("g").call(d3.axisLeft(yScale).ticks(5)).attr("font-size", 11);
-    svg.append("text")
-      .attr("transform", `translate(14,${H / 2}) rotate(-90)`)
-      .attr("text-anchor", "middle").attr("fill", "currentColor")
-      .attr("font-size", 11).text(locale === "zh" ? "多样性指数" : "Diversity Index");
+      const xA = panelWidth * 0.3;
+      const xB = panelWidth * 0.7;
+      const groupAValues = result.alpha_diversity.group_a[panel.key];
+      const groupBValues = result.alpha_diversity.group_b[panel.key];
 
-    // Panel titles
-    svg.append("text").attr("x", margin.left + 115).attr("y", 22)
-      .attr("text-anchor", "middle").attr("fill", "currentColor")
-      .attr("font-size", 13).attr("font-weight", 600).text(locale === "zh" ? "Shannon 指数" : "Shannon Index");
-    svg.append("text").attr("x", margin.left + 385).attr("y", 22)
-      .attr("text-anchor", "middle").attr("fill", "currentColor")
-      .attr("font-size", 13).attr("font-weight", 600).text(locale === "zh" ? "Simpson 指数 (1-D)" : "Simpson Index (1-D)");
+      if (panelIndex === 0) {
+        panelGroup.append("g").call(d3.axisLeft(y).ticks(5)).attr("font-size", 11);
+      }
 
-    // X labels
-    for (const pos of positions) {
-      svg.append("text")
-        .attr("x", pos.x + margin.left).attr("y", margin.top + iH + 18)
-        .attr("text-anchor", "middle").attr("fill", pos.color)
+      drawBox(panelGroup, xA, groupAValues, "var(--secondary)");
+      drawBox(panelGroup, xB, groupBValues, "var(--primary)");
+
+      panelGroup.append("text")
+        .attr("x", panelWidth / 2)
+        .attr("y", -16)
+        .attr("text-anchor", "middle")
+        .attr("fill", "currentColor")
+        .attr("font-size", 13)
+        .attr("font-weight", 600)
+        .text(locale === "zh" ? panel.titleZh : panel.titleEn);
+
+      panelGroup.append("text")
+        .attr("x", xA)
+        .attr("y", panelHeight + 24)
+        .attr("text-anchor", "middle")
+        .attr("fill", "var(--secondary)")
         .attr("font-size", 10)
-        .text(pos.label.length > 12 ? pos.label.slice(0, 11) + "…" : pos.label);
-    }
+        .text(result.summary.group_a_name.length > 12 ? `${result.summary.group_a_name.slice(0, 11)}...` : result.summary.group_a_name);
 
-    // Divider
-    svg.append("line")
-      .attr("x1", margin.left + 250).attr("x2", margin.left + 250)
-      .attr("y1", margin.top).attr("y2", margin.top + iH)
-      .attr("stroke", "var(--gray)").attr("stroke-dasharray", "4,3").attr("opacity", 0.5);
+      panelGroup.append("text")
+        .attr("x", xB)
+        .attr("y", panelHeight + 24)
+        .attr("text-anchor", "middle")
+        .attr("fill", "var(--primary)")
+        .attr("font-size", 10)
+        .text(result.summary.group_b_name.length > 12 ? `${result.summary.group_b_name.slice(0, 11)}...` : result.summary.group_b_name);
 
-    // Legend
-    const legendX = margin.left + 470;
-    const legendY = margin.top + 20;
-    const legendItems = [
-      { color: "var(--secondary)", label: gA.length > 10 ? gA.slice(0, 9) + "…" : gA },
-      { color: "var(--primary)",   label: gB.length > 10 ? gB.slice(0, 9) + "…" : gB },
-    ];
-    legendItems.forEach(({ color, label }, i) => {
-      svg.append("rect")
-        .attr("x", legendX).attr("y", legendY + i * 18 - 9)
-        .attr("width", 10).attr("height", 10)
-        .attr("fill", color).attr("opacity", 0.7).attr("rx", 2);
-      svg.append("text")
-        .attr("x", legendX + 14).attr("y", legendY + i * 18)
-        .attr("font-size", 10).attr("fill", color).text(label);
+      const bracketY = 18;
+      panelGroup.append("path")
+        .attr("d", `M ${xA} ${bracketY} V ${bracketY - 8} H ${xB} V ${bracketY}`)
+        .attr("fill", "none")
+        .attr("stroke", "var(--light-gray)")
+        .attr("stroke-width", 1.1);
+      panelGroup.append("text")
+        .attr("x", panelWidth / 2)
+        .attr("y", bracketY - 12)
+        .attr("text-anchor", "middle")
+        .attr("fill", "var(--light-gray)")
+        .attr("font-size", 10)
+        .text(formatP(result.alpha_pvalues[panel.key], locale));
+
+      if (panelIndex < PANELS.length - 1) {
+        svg.append("line")
+          .attr("x1", margin.left + (panelIndex + 1) * panelWidth)
+          .attr("x2", margin.left + (panelIndex + 1) * panelWidth)
+          .attr("y1", margin.top)
+          .attr("y2", height - margin.bottom)
+          .attr("stroke", "var(--dark-gray)")
+          .attr("stroke-dasharray", "4,4");
+      }
     });
-  }, [result, locale]);
+
+    svg.append("text")
+      .attr("transform", `translate(16,${height / 2}) rotate(-90)`)
+      .attr("text-anchor", "middle")
+      .attr("fill", "currentColor")
+      .attr("font-size", 12)
+      .text(locale === "zh" ? "多样性指数" : "Diversity Index");
+
+    svg.attr("viewBox", `0 0 ${width} ${height}`);
+  }, [locale, result]);
 
   return <svg ref={svgRef} className={`compare-chart ${classes.chart}`} />;
 };

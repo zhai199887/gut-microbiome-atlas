@@ -11,6 +11,8 @@ import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
 import { exportTable } from "@/util/export";
 import { exportSVG, exportPNG } from "@/util/chartExport";
+import { diseaseShortNameI18n } from "@/util/diseaseNames";
+import { countryName, AGE_GROUP_ZH, SEX_ZH } from "@/util/countries";
 import "@/components/tooltip";
 import classes from "./Search.module.css";
 
@@ -229,7 +231,7 @@ export default Search;
 // ── Species profile visualization / 物种画像可视化 ──────────────────────────
 
 const SpeciesProfileView = ({ profile }: { profile: SpeciesProfile }) => {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const diseaseRef = useRef<SVGSVGElement>(null);
   const countryRef = useRef<SVGSVGElement>(null);
   const ageRef = useRef<SVGSVGElement>(null);
@@ -237,20 +239,20 @@ const SpeciesProfileView = ({ profile }: { profile: SpeciesProfile }) => {
   // Draw disease bar chart / 绘制疾病丰度柱状图
   useEffect(() => {
     if (!diseaseRef.current || profile.by_disease.length === 0) return;
-    drawBarChart(diseaseRef.current, profile.by_disease.slice(0, 20), "var(--primary)");
-  }, [profile]);
+    drawBarChart(diseaseRef.current, profile.by_disease.slice(0, 20), "var(--primary)", locale, "disease");
+  }, [profile, locale]);
 
   // Draw country bar chart / 绘制国家丰度柱状图
   useEffect(() => {
     if (!countryRef.current || profile.by_country.length === 0) return;
-    drawBarChart(countryRef.current, profile.by_country.slice(0, 20), "var(--secondary)");
-  }, [profile]);
+    drawBarChart(countryRef.current, profile.by_country.slice(0, 20), "var(--secondary)", locale, "country");
+  }, [profile, locale]);
 
   // Draw age group bar chart / 绘制年龄组丰度柱状图
   useEffect(() => {
     if (!ageRef.current || profile.by_age_group.length === 0) return;
-    drawBarChart(ageRef.current, profile.by_age_group, "#4ecdc4");
-  }, [profile]);
+    drawBarChart(ageRef.current, profile.by_age_group, "#4ecdc4", locale, "age");
+  }, [profile, locale]);
 
   const exportSearchCsv = () => {
     const allData = [
@@ -293,7 +295,7 @@ const SpeciesProfileView = ({ profile }: { profile: SpeciesProfile }) => {
             <span className={classes.statLabel}>{t("search.prevalence")}</span>
           </div>
           <div className={classes.statCard}>
-            <span className={classes.statValue}>{(profile.mean_abundance * 100).toFixed(4)}%</span>
+            <span className={classes.statValue}>{profile.mean_abundance.toFixed(4)}%</span>
             <span className={classes.statLabel}>{t("search.meanAbundance")}</span>
           </div>
         </div>
@@ -344,7 +346,7 @@ const SpeciesProfileView = ({ profile }: { profile: SpeciesProfile }) => {
                 {profile.by_sex.map((s) => (
                   <tr key={s.name}>
                     <td>{s.name}</td>
-                    <td>{(s.mean_abundance * 100).toFixed(4)}%</td>
+                    <td>{s.mean_abundance.toFixed(4)}%</td>
                     <td>{(s.prevalence * 100).toFixed(1)}%</td>
                     <td>{s.sample_count.toLocaleString("en")}</td>
                   </tr>
@@ -360,12 +362,22 @@ const SpeciesProfileView = ({ profile }: { profile: SpeciesProfile }) => {
 
 // ── D3 horizontal bar chart / D3 水平柱状图 ─────────────────────────────────
 
-function drawBarChart(svgEl: SVGSVGElement, data: ProfileEntry[], color: string) {
+const translateLabel = (name: string, locale: string, type: string): string => {
+  if (type === "disease") return diseaseShortNameI18n(name, locale, 40);
+  if (type === "country") return countryName(name, locale);
+  if (type === "age") return locale === "zh" ? (AGE_GROUP_ZH[name] ?? name.replace(/_/g, " ")) : name.replace(/_/g, " ");
+  if (type === "sex") return locale === "zh" ? (SEX_ZH[name] ?? name) : name;
+  return name;
+};
+
+function drawBarChart(svgEl: SVGSVGElement, data: ProfileEntry[], color: string, locale = "en", nameType = "") {
   const svg = d3.select(svgEl);
   svg.selectAll("*").remove();
 
-  const margin = { top: 10, right: 60, bottom: 30, left: 130 };
-  const W = 520, H = Math.max(180, data.length * 22 + margin.top + margin.bottom);
+  const isDisease = nameType === "disease";
+  const leftM = isDisease ? 280 : 180;
+  const margin = { top: 10, right: 80, bottom: 30, left: leftM };
+  const W = 900, H = Math.max(180, data.length * 26 + margin.top + margin.bottom);
   svg.attr("viewBox", `0 0 ${W} ${H}`);
 
   const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
@@ -380,7 +392,6 @@ function drawBarChart(svgEl: SVGSVGElement, data: ProfileEntry[], color: string)
     .range([0, iH])
     .padding(0.2);
 
-  // Resolve CSS variable to hex / 将 CSS 变量解析为十六进制
   const rootStyles = getComputedStyle(document.documentElement);
   const resolvedColor = color.startsWith("var(")
     ? rootStyles.getPropertyValue(color.slice(4, -1)).trim() || "#e23fff"
@@ -400,33 +411,34 @@ function drawBarChart(svgEl: SVGSVGElement, data: ProfileEntry[], color: string)
     .attr("data-tooltip", (d) =>
       renderToString(
         <div className="tooltip-table">
-          <span>Name</span><span>{d.name}</span>
-          <span>Abundance</span><span>{(d.mean_abundance * 100).toFixed(4)}%</span>
-          <span>Prevalence</span><span>{(d.prevalence * 100).toFixed(1)}%</span>
-          <span>Samples</span><span>{d.sample_count.toLocaleString("en")}</span>
+          <span>{locale === "zh" ? "名称" : "Name"}</span><span>{translateLabel(d.name, locale, nameType)}</span>
+          <span>{locale === "zh" ? "平均丰度" : "Abundance"}</span><span>{d.mean_abundance.toFixed(4)}%</span>
+          <span>{locale === "zh" ? "检出率" : "Prevalence"}</span><span>{(d.prevalence * 100).toFixed(1)}%</span>
+          <span>{locale === "zh" ? "样本数" : "Samples"}</span><span>{d.sample_count.toLocaleString("en")}</span>
         </div>
       )
     );
 
-  // Value labels / 数值标签
   g.selectAll(".val-label")
     .data(data)
     .join("text")
     .attr("x", (d) => xScale(d.mean_abundance) + 4)
     .attr("y", (d) => (yScale(d.name) ?? 0) + yScale.bandwidth() / 2 + 1)
     .attr("dominant-baseline", "middle")
-    .attr("font-size", 9)
+    .attr("font-size", 10)
     .attr("fill", "currentColor")
-    .text((d) => `${(d.mean_abundance * 100).toFixed(3)}%`);
+    .text((d) => `${d.mean_abundance.toFixed(3)}%`);
 
-  // Y axis / Y轴
   g.append("g")
-    .call(d3.axisLeft(yScale).tickFormat((d) => d.length > 16 ? d.slice(0, 14) + "…" : d))
-    .attr("font-size", 10);
+    .call(d3.axisLeft(yScale).tickFormat((d) => {
+      const translated = translateLabel(d, locale, nameType);
+      const limit = isDisease ? 38 : 24;
+      return translated.length > limit ? translated.slice(0, limit - 2) + "…" : translated;
+    }))
+    .attr("font-size", 11);
 
-  // X axis / X轴
   g.append("g")
     .attr("transform", `translate(0,${iH})`)
-    .call(d3.axisBottom(xScale).ticks(4).tickFormat((d) => `${(Number(d) * 100).toFixed(2)}%`))
-    .attr("font-size", 9);
+    .call(d3.axisBottom(xScale).ticks(4).tickFormat((d) => `${Number(d).toFixed(2)}%`))
+    .attr("font-size", 10);
 }

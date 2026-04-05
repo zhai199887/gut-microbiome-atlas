@@ -1,206 +1,248 @@
-/**
- * CooccurrencePanel.tsx — 共现网络面板（嵌入 NetworkPage Tab）
- * 从 CooccurrencePage.tsx 提取核心逻辑，去掉 page wrapper
- */
-import { useEffect, useRef, useState } from "react";
-import * as d3 from "d3";
+import { useEffect, useMemo, useRef, useState } from "react";
+
 import { useI18n } from "@/i18n";
-import { exportTable } from "@/util/export";
-import { exportSVG, exportPNG } from "@/util/chartExport";
-import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import { cachedFetch } from "@/util/apiCache";
-import classes from "../CooccurrencePage.module.css";
+import { exportPNG, exportSVG } from "@/util/chartExport";
+import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
+import { exportTable } from "@/util/export";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-
-interface CoNode { id: string; mean_abundance: number; x?: number; y?: number; fx?: number | null; fy?: number | null; }
-interface CoEdge { source: string | CoNode; target: string | CoNode; r: number; p_value: number; type: string; }
-interface CoData { nodes: CoNode[]; edges: CoEdge[]; n_samples: number; n_genera: number; n_edges: number; }
-interface DiseaseItem { name: string; sample_count: number; }
+import NetworkEdgeTable from "./NetworkEdgeTable";
+import styles from "./NetworkPanel.module.css";
+import NetworkTopologyTable from "./NetworkTopologyTable";
+import { drawCooccurrenceGraph } from "./graphUtils";
+import type { CoData, ColorMode, DiseaseItem, NetworkMethod } from "./types";
+import { API_BASE } from "./types";
 
 const CooccurrencePanel = () => {
-  const { t, locale } = useI18n();
+  const { locale } = useI18n();
+  const svgRef = useRef<SVGSVGElement>(null);
+
   const [diseases, setDiseases] = useState<DiseaseItem[]>([]);
-  const [diseaseZh, setDiseaseZh] = useState<Record<string, string>>({});
   const [disease, setDisease] = useState("");
   const [minR, setMinR] = useState(0.3);
+  const [method, setMethod] = useState<NetworkMethod>("spearman");
+  const [colorMode, setColorMode] = useState<ColorMode>("phylum");
   const [data, setData] = useState<CoData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const svgRef = useRef<SVGSVGElement>(null);
 
-  const dName = (n: string) => (locale === "zh" && diseaseZh[n]) ? diseaseZh[n] : diseaseDisplayNameI18n(n, locale);
-
-  // 加载疾病列表 + 中文名
   useEffect(() => {
-    cachedFetch<{ diseases: string[] }>(`${API_BASE}/api/disease-list`)
-      .then(d => setDiseases(d.diseases ?? []))
-      .catch(() => {});
-    cachedFetch<Record<string, string>>(`${API_BASE}/api/disease-names-zh`)
-      .then(setDiseaseZh)
+    cachedFetch<{ diseases: DiseaseItem[] }>(`${API_BASE}/api/disease-list`)
+      .then((payload) => setDiseases(payload.diseases ?? []))
       .catch(() => {});
   }, []);
 
-  // 加载共现网络数据
   useEffect(() => {
     setLoading(true);
     setError("");
-    const params = new URLSearchParams({ min_r: String(minR), top_genera: "40" });
+    const params = new URLSearchParams({
+      min_r: String(minR),
+      top_genera: "45",
+      method,
+      fdr_threshold: "0.05",
+    });
     if (disease) params.set("disease", disease);
-    cachedFetch<CoData>(`${API_BASE}/api/cooccurrence?${params}`)
-      .then((d) => setData(d))
-      .catch((err) => setError((err as Error).message ?? "Failed to load co-occurrence data"))
-      .finally(() => setLoading(false));
-  }, [disease, minR]);
 
-  // 绘制共现网络
+    cachedFetch<CoData>(`${API_BASE}/api/cooccurrence?${params}`)
+      .then((payload) => setData(payload))
+      .catch((unknownError) => {
+        setError(unknownError instanceof Error ? unknownError.message : String(unknownError));
+      })
+      .finally(() => setLoading(false));
+  }, [disease, method, minR]);
+
   useEffect(() => {
-    if (!svgRef.current || !data) return;
-    drawCooccurrence(svgRef.current, data);
-  }, [data]);
+    if (!svgRef.current || !data) return undefined;
+    return drawCooccurrenceGraph(svgRef.current, data, { locale, colorMode });
+  }, [colorMode, data, locale]);
+
+  const availableMethods = data?.available_methods ?? { spearman: true, sparcc: true };
+  const methodNote = useMemo(() => {
+    if (data?.method_note) return data.method_note;
+    if (!availableMethods.sparcc) {
+      return locale === "zh"
+        ? "SparCC 依赖在当前 Windows 运行环境里不可用，当前仅开放 Spearman 真正计算。"
+        : "SparCC is unavailable in the current Windows runtime, so only the real Spearman workflow is enabled.";
+    }
+    return "";
+  }, [availableMethods.sparcc, data?.method_note, locale]);
+
+  const exportEdges = () => {
+    if (!data) return;
+    exportTable(
+      data.edges.map((edge) => ({
+        Source: typeof edge.source === "string" ? edge.source : edge.source.id,
+        Target: typeof edge.target === "string" ? edge.target : edge.target.id,
+        R: edge.r,
+        P_value: edge.p_value,
+        Adjusted_p: edge.adjusted_p,
+        Type: edge.type,
+        Method: edge.method,
+      })),
+      `network_edges_${Date.now()}`,
+    );
+  };
 
   return (
-    <div>
-      {/* 控件：疾病选择器 + 最小相关系数 */}
-      <div className={classes.controls}>
-        <div className={classes.field}>
-          <label>{t("cooccurrence.disease")}</label>
-          <select className={classes.select} value={disease} onChange={e => setDisease(e.target.value)}>
-            <option value="">{t("cooccurrence.healthy")}</option>
-            {diseases.slice(0, 100).map(d => (
-              <option key={d.name} value={d.name}>{dName(d.name)}</option>
+    <div className={styles.workspace}>
+      <div className={styles.toolbar}>
+        <div className={styles.field}>
+          <label>{locale === "zh" ? "疾病背景" : "Disease context"}</label>
+          <input
+            list="network-disease-list"
+            className={styles.input}
+            value={disease}
+            onChange={(event) => setDisease(event.target.value)}
+            placeholder={locale === "zh" ? "留空表示健康对照" : "Leave blank for healthy controls"}
+          />
+          <datalist id="network-disease-list">
+            {diseases.map((item) => (
+              <option key={item.name} value={item.name} label={diseaseDisplayNameI18n(item.name, locale)} />
+            ))}
+          </datalist>
+        </div>
+
+        <div className={styles.field}>
+          <label>{locale === "zh" ? "最小 |r|" : "Min |r|"}</label>
+          <select className={styles.select} value={minR} onChange={(event) => setMinR(Number(event.target.value))}>
+            {[0.2, 0.3, 0.4, 0.5].map((value) => (
+              <option key={value} value={value}>{value}</option>
             ))}
           </select>
         </div>
-        <div className={classes.field}>
-          <label>{t("cooccurrence.minR")}</label>
-          <select className={classes.select} value={minR} onChange={e => setMinR(Number(e.target.value))}>
-            <option value={0.2}>0.2</option>
-            <option value={0.3}>0.3</option>
-            <option value={0.4}>0.4</option>
-            <option value={0.5}>0.5</option>
-          </select>
+
+        <div className={styles.field}>
+          <label>{locale === "zh" ? "计算方法" : "Method"}</label>
+          <div className={styles.btnGroup}>
+            <button
+              type="button"
+              className={styles.toggleBtn}
+              data-active={method === "spearman"}
+              onClick={() => setMethod("spearman")}
+            >
+              Spearman
+            </button>
+            <button
+              type="button"
+              className={styles.toggleBtn}
+              data-active={method === "sparcc"}
+              disabled={!availableMethods.sparcc}
+              data-tooltip={methodNote || undefined}
+              onClick={() => setMethod("sparcc")}
+            >
+              SparCC
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.field}>
+          <label>{locale === "zh" ? "节点着色" : "Node color"}</label>
+          <div className={styles.btnGroup}>
+            <button
+              type="button"
+              className={styles.toggleBtn}
+              data-active={colorMode === "phylum"}
+              onClick={() => setColorMode("phylum")}
+            >
+              {locale === "zh" ? "按门" : "Phylum"}
+            </button>
+            <button
+              type="button"
+              className={styles.toggleBtn}
+              data-active={colorMode === "community"}
+              onClick={() => setColorMode("community")}
+            >
+              {locale === "zh" ? "按群落" : "Community"}
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.field}>
+          <label>{locale === "zh" ? "导出" : "Export"}</label>
+          <div className={styles.btnGroup}>
+            <button type="button" className={styles.actionBtn} onClick={exportEdges}>{locale === "zh" ? "CSV" : "CSV"}</button>
+            <button type="button" className={styles.actionBtn} onClick={() => svgRef.current && exportSVG(svgRef.current, `network_${Date.now()}`)}>SVG</button>
+            <button type="button" className={styles.actionBtn} onClick={() => svgRef.current && exportPNG(svgRef.current, `network_${Date.now()}`)}>PNG</button>
+          </div>
         </div>
       </div>
 
-      {loading && <div className={classes.loading}>{t("cooccurrence.computing")}</div>}
-      {error && <div className={classes.loading} style={{ color: "#ff6b6b" }}>{error}</div>}
+      {methodNote ? <p className={styles.note}>{methodNote}</p> : null}
+      {error ? <div className={styles.error}>{error}</div> : null}
+      {loading ? <div className={styles.loading}>{locale === "zh" ? "正在计算共现网络..." : "Computing co-occurrence network..."}</div> : null}
 
-      {data && (
+      {data ? (
         <>
-          <div className={classes.graphContainer}>
-            <svg ref={svgRef} />
-          </div>
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-            <button onClick={() => {
-              if (!data) return;
-              exportTable(
-                data.edges.map((e) => ({
-                  Source: typeof e.source === "string" ? e.source : e.source.id,
-                  Target: typeof e.target === "string" ? e.target : e.target.id,
-                  Correlation: e.r,
-                  P_value: e.p_value,
-                })),
-                `cooccurrence_${Date.now()}`,
-              );
-            }} style={{ fontSize: "0.8rem", padding: "0.3rem 0.8rem", cursor: "pointer", border: "1px solid #dee2e6", borderRadius: "4px", background: "white" }}>{t("export.csv")}</button>
-            <button onClick={() => { const svg = svgRef.current; if (svg) exportSVG(svg, `cooccurrence_${Date.now()}`); }} style={{ fontSize: "0.8rem", padding: "0.3rem 0.8rem", cursor: "pointer", border: "1px solid #dee2e6", borderRadius: "4px", background: "white" }}>{t("export.svg")}</button>
-            <button onClick={() => { const svg = svgRef.current; if (svg) exportPNG(svg, `cooccurrence_${Date.now()}`); }} style={{ fontSize: "0.8rem", padding: "0.3rem 0.8rem", cursor: "pointer", border: "1px solid #dee2e6", borderRadius: "4px", background: "white" }}>{t("export.png")}</button>
-          </div>
-          <div className={classes.legend}>
-            <div className={classes.legendItem}>
-              <span className={classes.legendDot} style={{ background: "#4ecdc4" }} />
-              <span>{t("cooccurrence.positive")}</span>
+          <div className={styles.statsGrid}>
+            <div className={styles.statCard}>
+              <div className={styles.statValue}>{data.n_genera}</div>
+              <div className={styles.statLabel}>{locale === "zh" ? "节点数" : "Nodes"}</div>
             </div>
-            <div className={classes.legendItem}>
-              <span className={classes.legendDot} style={{ background: "#ff6b6b" }} />
-              <span>{t("cooccurrence.negative")}</span>
+            <div className={styles.statCard}>
+              <div className={styles.statValue}>{data.n_edges}</div>
+              <div className={styles.statLabel}>{locale === "zh" ? "边数" : "Edges"}</div>
+            </div>
+            <div className={styles.statCard}>
+              <div className={styles.statValue}>{data.network_density.toFixed(3)}</div>
+              <div className={styles.statLabel}>{locale === "zh" ? "网络密度" : "Density"}</div>
+            </div>
+            <div className={styles.statCard}>
+              <div className={styles.statValue}>{data.n_communities}</div>
+              <div className={styles.statLabel}>{locale === "zh" ? "群落数" : "Modules"}</div>
+            </div>
+            <div className={styles.statCard}>
+              <div className={styles.statValue}>{data.hub_nodes.length}</div>
+              <div className={styles.statLabel}>{locale === "zh" ? "枢纽节点" : "Hubs"}</div>
+            </div>
+            <div className={styles.statCard}>
+              <div className={styles.statValue}>{data.positive_edge_count}/{data.negative_edge_count}</div>
+              <div className={styles.statLabel}>{locale === "zh" ? "正/负相关边" : "Positive / negative"}</div>
             </div>
           </div>
-          <div className={classes.stats}>
-            <span>{data.n_genera} {t("cooccurrence.genera")}</span>
-            <span>{data.n_edges} {t("cooccurrence.edges")}</span>
-            <span>{data.n_samples} {t("cooccurrence.samples")}</span>
+
+          <div className={styles.contentGrid}>
+            <div className={styles.graphCard}>
+              <div className={styles.graphHead}>
+                <div>
+                  <h3 className={styles.cardTitle}>
+                    {locale === "zh" ? "共现网络" : "Co-occurrence network"}
+                  </h3>
+                  <p className={styles.cardSubtle}>
+                    {locale === "zh"
+                      ? `${data.disease}，${data.n_samples} 个样本，FDR ≤ ${data.fdr_threshold}`
+                      : `${data.disease}, ${data.n_samples} samples, FDR ≤ ${data.fdr_threshold}`}
+                  </p>
+                </div>
+              </div>
+
+              <div className={styles.graphContainer}>
+                <svg ref={svgRef} />
+              </div>
+
+              <div className={styles.legend}>
+                <div className={styles.legendItem}>
+                  <span className={styles.legendDot} style={{ background: "#4ecdc4" }} />
+                  <span>{locale === "zh" ? "正相关边" : "Positive edge"}</span>
+                </div>
+                <div className={styles.legendItem}>
+                  <span className={styles.legendDot} style={{ background: "#ff6b6b" }} />
+                  <span>{locale === "zh" ? "负相关边" : "Negative edge"}</span>
+                </div>
+                <div className={styles.legendItem}>
+                  <span className={styles.hubRing} />
+                  <span>{locale === "zh" ? "枢纽节点" : "Hub node"}</span>
+                </div>
+              </div>
+            </div>
+
+            <NetworkTopologyTable nodes={data.nodes} />
           </div>
+
+          <NetworkEdgeTable edges={data.edges} />
         </>
-      )}
+      ) : null}
     </div>
   );
 };
 
 export default CooccurrencePanel;
-
-// ── D3 共现网络力导向图 ──────────────────────────────────────────────────────
-
-function drawCooccurrence(svgEl: SVGSVGElement, data: CoData) {
-  const svg = d3.select(svgEl);
-  svg.selectAll("*").remove();
-
-  const container = svgEl.parentElement!;
-  const W = container.clientWidth;
-  const H = container.clientHeight || 700;
-  svg.attr("viewBox", `0 0 ${W} ${H}`);
-
-  const nodes: CoNode[] = data.nodes.map(n => ({ ...n }));
-  const edges: CoEdge[] = data.edges.map(e => ({ ...e }));
-
-  const maxAbund = d3.max(nodes, n => n.mean_abundance) ?? 1;
-  const nodeRadius = d3.scaleLinear().domain([0, maxAbund]).range([5, 20]);
-
-  const g = svg.append("g");
-  const zoom = d3.zoom<SVGSVGElement, unknown>()
-    .scaleExtent([0.3, 4])
-    .on("zoom", (event) => g.attr("transform", event.transform));
-  svg.call(zoom);
-
-  const link = g.append("g")
-    .selectAll("line")
-    .data(edges)
-    .join("line")
-    .attr("stroke", d => d.type === "positive" ? "#4ecdc4" : "#ff6b6b")
-    .attr("stroke-opacity", d => Math.min(Math.abs(d.r), 0.8))
-    .attr("stroke-width", d => Math.abs(d.r) * 3);
-
-  const node = g.append("g")
-    .selectAll("circle")
-    .data(nodes)
-    .join("circle")
-    .attr("r", d => nodeRadius(d.mean_abundance))
-    .attr("fill", "#4ecdc4")
-    .attr("opacity", 0.8)
-    .attr("stroke", "rgba(255,255,255,0.2)")
-    .attr("stroke-width", 1)
-    .attr("cursor", "pointer")
-    .call(
-      d3.drag<SVGCircleElement, CoNode>()
-        .on("start", (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-        .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; })
-        .on("end", (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
-    );
-
-  const label = g.append("g")
-    .selectAll("text")
-    .data(nodes)
-    .join("text")
-    .text(d => d.id.length > 16 ? d.id.slice(0, 14) + "\u2026" : d.id)
-    .attr("font-size", 10)
-    .attr("font-style", "italic")
-    .attr("fill", "currentColor")
-    .attr("text-anchor", "middle")
-    .attr("dy", d => -(nodeRadius(d.mean_abundance) + 6))
-    .style("pointer-events", "none")
-    .style("text-shadow", "0 1px 4px rgba(0,0,0,0.9)");
-
-  const simulation = d3.forceSimulation(nodes)
-    .force("link", d3.forceLink(edges).id((d: any) => d.id).distance(100).strength(0.2))
-    .force("charge", d3.forceManyBody().strength(-150))
-    .force("center", d3.forceCenter(W / 2, H / 2))
-    .force("collision", d3.forceCollide().radius((d: any) => nodeRadius(d.mean_abundance) + 8))
-    .on("tick", () => {
-      link
-        .attr("x1", (d: any) => d.source.x).attr("y1", (d: any) => d.source.y)
-        .attr("x2", (d: any) => d.target.x).attr("y2", (d: any) => d.target.y);
-      node.attr("cx", (d: any) => d.x).attr("cy", (d: any) => d.y);
-      label.attr("x", (d: any) => d.x).attr("y", (d: any) => d.y);
-    });
-}

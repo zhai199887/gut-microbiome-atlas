@@ -28,7 +28,16 @@ from starlette.responses import RedirectResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from analysis import wilcoxon_marker_test, spearman_cooccurrence, sample_similarity_search
+from analysis import (
+    NETWORK_METHOD_NOTES,
+    available_network_methods,
+    compare_network_edges,
+    compute_network_topology,
+    fastspar_cooccurrence,
+    sample_similarity_search,
+    spearman_cooccurrence,
+    wilcoxon_marker_test,
+)
 from compare_utils import aggregate_by_level, relative_abundance_matrix, run_compare_analysis, run_spearman_analysis
 from disease_utils import build_disease_profile, build_disease_studies, build_lollipop_result, log2fc_interval
 
@@ -1900,6 +1909,157 @@ def disease_studies(request: Request, disease: str):
     return result
 
 
+def _select_network_sample_keys(meta: pd.DataFrame, abund: pd.DataFrame, disease: str, max_samples: int) -> np.ndarray:
+    """Select disease-specific or NC sample keys that exist in abundance data."""
+    INFORM_COLS = [f"inform{i}" for i in range(12)]
+    target = disease.strip()
+
+    mask = pd.Series(False, index=meta.index)
+    for col in INFORM_COLS:
+        if col not in meta.columns:
+            continue
+        values = meta[col].fillna("").astype(str).str.strip()
+        if target:
+            mask |= values == target
+        else:
+            mask |= values.str.upper() == "NC"
+
+    sample_keys = meta.loc[mask, "sample_key"].dropna().unique()
+    valid_keys = abund.index.intersection(sample_keys).to_numpy()
+    if len(valid_keys) < 10:
+        raise HTTPException(400, "Too few samples for correlation analysis")
+
+    np.random.seed(42)
+    if len(valid_keys) > max_samples:
+        idx = np.random.choice(len(valid_keys), max_samples, replace=False)
+        valid_keys = valid_keys[idx]
+    return valid_keys
+
+
+def _build_genus_matrix(
+    abund: pd.DataFrame,
+    valid_keys: np.ndarray,
+    top_genera: int,
+) -> tuple[np.ndarray, np.ndarray, list[str], dict[str, str], dict[str, float]]:
+    """Aggregate abundance columns to genus-level count and relative-abundance matrices."""
+    raw = abund.loc[valid_keys].values.astype(float)
+    totals = raw.sum(axis=1, keepdims=True)
+    totals[totals == 0] = 1
+    rel = raw / totals * 100
+
+    genus_indices: dict[str, list[int]] = {}
+    genus_phylum: dict[str, str] = {}
+    for idx, col_name in enumerate(abund.columns.tolist()):
+        genus = extract_genus(col_name)
+        if not is_valid_genus(genus):
+            continue
+        genus_indices.setdefault(genus, []).append(idx)
+        genus_phylum.setdefault(genus, extract_phylum(col_name))
+
+    genus_means: list[tuple[str, float]] = []
+    for genus, idxs in genus_indices.items():
+        genus_means.append((genus, float(rel[:, idxs].sum(axis=1).mean())))
+
+    genus_means.sort(key=lambda item: item[1], reverse=True)
+    top_names = [name for name, _mean in genus_means[:top_genera]]
+
+    genus_count_matrix = np.zeros((len(valid_keys), len(top_names)))
+    genus_rel_matrix = np.zeros((len(valid_keys), len(top_names)))
+    mean_map: dict[str, float] = {}
+    for col_idx, genus in enumerate(top_names):
+        count_values = raw[:, genus_indices[genus]].sum(axis=1)
+        rel_values = rel[:, genus_indices[genus]].sum(axis=1)
+        genus_count_matrix[:, col_idx] = count_values
+        genus_rel_matrix[:, col_idx] = rel_values
+        mean_map[genus] = float(rel_values.mean())
+
+    top_phylum = {genus: genus_phylum.get(genus, "Other") for genus in top_names}
+    return genus_count_matrix, genus_rel_matrix, top_names, top_phylum, mean_map
+
+
+def _build_cooccurrence_result(
+    meta: pd.DataFrame,
+    abund: pd.DataFrame,
+    disease: str,
+    min_r: float,
+    top_genera: int,
+    max_samples: int,
+    method: str,
+    fdr_threshold: float,
+) -> dict:
+    """Build a fully decorated co-occurrence network payload for the frontend."""
+    methods = available_network_methods()
+    if not methods.get(method, False):
+        if method == "sparcc":
+            raise HTTPException(
+                400,
+                "SparCC is unavailable because the FastSpar wrappers under E:\\tools\\fastspar are missing or not executable.",
+            )
+        raise HTTPException(400, NETWORK_METHOD_NOTES.get(method, "Unsupported network method"))
+
+    valid_keys = _select_network_sample_keys(meta, abund, disease, max_samples)
+    genus_count_matrix, genus_rel_matrix, top_names, phylum_map, mean_map = _build_genus_matrix(abund, valid_keys, top_genera)
+
+    try:
+        if method == "sparcc":
+            correlation_result = fastspar_cooccurrence(
+                genus_count_matrix,
+                top_names,
+                phylum_map=phylum_map,
+                min_prevalence=0.1,
+                min_abs_r=min_r,
+                fdr_threshold=fdr_threshold,
+                max_pairs=500,
+            )
+        else:
+            correlation_result = spearman_cooccurrence(
+                genus_rel_matrix,
+                top_names,
+                phylum_map=phylum_map,
+                min_prevalence=0.1,
+                min_abs_r=min_r,
+                fdr_threshold=fdr_threshold,
+                max_pairs=500,
+            )
+    except RuntimeError as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+    topology = compute_network_topology(correlation_result["taxa"], correlation_result["edges"])
+
+    nodes = []
+    for taxon in correlation_result["taxa"]:
+        name = taxon["taxon"]
+        nodes.append({
+            "id": name,
+            "mean_abundance": round(mean_map.get(name, taxon["mean_abundance"]), 4),
+            "prevalence": taxon["prevalence"],
+            "phylum": taxon["phylum"],
+            "degree": topology["degree"].get(name, 0),
+            "betweenness": topology["betweenness"].get(name, 0.0),
+            "community": topology["community"].get(name, 0),
+            "is_hub": name in topology["hub_nodes"],
+        })
+
+    return {
+        "disease": disease or "Healthy (NC)",
+        "n_samples": int(len(valid_keys)),
+        "n_genera": len(nodes),
+        "n_edges": len(correlation_result["edges"]),
+        "min_r": min_r,
+        "method": correlation_result["method"],
+        "method_note": correlation_result["method_note"],
+        "available_methods": methods,
+        "fdr_threshold": fdr_threshold,
+        "hub_nodes": topology["hub_nodes"],
+        "n_communities": topology["n_communities"],
+        "network_density": topology["network_density"],
+        "positive_edge_count": topology["positive_edge_count"],
+        "negative_edge_count": topology["negative_edge_count"],
+        "nodes": nodes,
+        "edges": correlation_result["edges"],
+    }
+
+
 @app.get("/api/network",
          summary="Disease-genus network",
          description="Force-directed graph data showing associations between diseases and genera.")
@@ -2527,93 +2687,86 @@ def cooccurrence_network(
     min_r: float = 0.3,
     top_genera: int = 50,
     max_samples: int = 3000,
+    method: str = "spearman",
+    fdr_threshold: float = 0.05,
 ):
     """
     Compute genus co-occurrence network based on Spearman correlation.
     基于 Spearman 相关性计算属共现网络
     """
-    cache_key = f"cooccurrence:{disease}:{min_r}:{top_genera}"
+    cache_key = f"cooccurrence:{disease}:{min_r}:{top_genera}:{max_samples}:{method}:{fdr_threshold}"
     cached = get_cached(cache_key)
     if cached:
         return cached
     meta = get_metadata()
     abund = get_abundance()
-
-    INFORM_COLS = [f"inform{i}" for i in range(12)]
-
-    if disease and disease.strip():
-        mask = pd.Series(False, index=meta.index)
-        for col in INFORM_COLS:
-            if col in meta.columns:
-                mask |= (meta[col].fillna("").astype(str).str.strip() == disease.strip())
-        sample_keys = meta.loc[mask, "sample_key"].dropna().unique()
-    else:
-        mask = pd.Series(False, index=meta.index)
-        for col in INFORM_COLS:
-            if col in meta.columns:
-                mask |= (meta[col].fillna("").astype(str).str.strip() == "NC")
-        sample_keys = meta.loc[mask, "sample_key"].dropna().unique()
-
-    valid_keys = abund.index.intersection(sample_keys)
-    if len(valid_keys) < 10:
-        raise HTTPException(400, "Too few samples for correlation analysis")
-
-    np.random.seed(42)
-    if len(valid_keys) > max_samples:
-        valid_keys = valid_keys[np.random.choice(len(valid_keys), max_samples, replace=False)]
-
-    raw = abund.loc[valid_keys].values.astype(float)
-    totals = raw.sum(axis=1, keepdims=True)
-    totals[totals == 0] = 1
-    rel = raw / totals * 100
-
-    col_names = abund.columns.tolist()
-    genus_labels = [extract_genus(c) for c in col_names]
-    unique_genera = list(dict.fromkeys(genus_labels))
-
-    valid_genera = [g for g in unique_genera if is_valid_genus(g)]
-
-    genus_means = []
-    genus_indices: dict[str, list[int]] = {}
-    for g in valid_genera:
-        idxs = [j for j, l in enumerate(genus_labels) if l == g]
-        genus_indices[g] = idxs
-        mean_val = float(rel[:, idxs].sum(axis=1).mean())
-        genus_means.append((g, mean_val))
-
-    genus_means.sort(key=lambda x: x[1], reverse=True)
-    top_genera_names = [g[0] for g in genus_means[:top_genera]]
-
-    genus_matrix = np.zeros((len(valid_keys), len(top_genera_names)))
-    for i, g in enumerate(top_genera_names):
-        genus_matrix[:, i] = rel[:, genus_indices[g]].sum(axis=1)
-
-    edges = spearman_cooccurrence(
-        genus_matrix, top_genera_names,
-        min_prevalence=0.1, min_abs_r=min_r, max_pairs=500
+    result = _build_cooccurrence_result(
+        meta=meta,
+        abund=abund,
+        disease=disease,
+        min_r=min_r,
+        top_genera=top_genera,
+        max_samples=max_samples,
+        method=method,
+        fdr_threshold=fdr_threshold,
     )
+    set_cached(cache_key, result)
+    return result
 
-    node_set = set()
-    for e in edges:
-        node_set.add(e["source"])
-        node_set.add(e["target"])
 
-    nodes = []
-    for g in top_genera_names:
-        if g in node_set:
-            nodes.append({
-                "id": g,
-                "mean_abundance": round(float(genus_matrix[:, top_genera_names.index(g)].mean()), 4),
-            })
+@app.get("/api/network-compare",
+         summary="Disease vs healthy co-occurrence comparison",
+         description="Compare disease-specific and healthy control microbial co-occurrence networks.",
+         tags=["Network"])
+@limiter.limit("20/minute")
+def network_compare(
+    request: Request,
+    disease: str,
+    min_r: float = 0.3,
+    top_genera: int = 50,
+    max_samples: int = 3000,
+    method: str = "spearman",
+    fdr_threshold: float = 0.05,
+):
+    """Compare disease and healthy-control co-occurrence networks."""
+    if not disease or not disease.strip():
+        raise HTTPException(400, "disease parameter is required")
 
+    disease = disease.strip()
+    cache_key = f"network_compare:{disease}:{min_r}:{top_genera}:{max_samples}:{method}:{fdr_threshold}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
+    meta = get_metadata()
+    abund = get_abundance()
+    disease_network = _build_cooccurrence_result(
+        meta=meta,
+        abund=abund,
+        disease=disease,
+        min_r=min_r,
+        top_genera=top_genera,
+        max_samples=max_samples,
+        method=method,
+        fdr_threshold=fdr_threshold,
+    )
+    control_network = _build_cooccurrence_result(
+        meta=meta,
+        abund=abund,
+        disease="",
+        min_r=min_r,
+        top_genera=top_genera,
+        max_samples=max_samples,
+        method=method,
+        fdr_threshold=fdr_threshold,
+    )
+    comparison = compare_network_edges(disease_network["edges"], control_network["edges"])
     result = {
-        "disease": disease or "Healthy (NC)",
-        "n_samples": len(valid_keys),
-        "n_genera": len(nodes),
-        "n_edges": len(edges),
-        "min_r": min_r,
-        "nodes": nodes,
-        "edges": edges,
+        "disease": disease,
+        "method": method,
+        "disease_network": disease_network,
+        "control_network": control_network,
+        **comparison,
     }
     set_cached(cache_key, result)
     return result

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, type ReactNode } from "react";
-import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import {
   loadAbundance,
   loadGeoData,
@@ -47,6 +47,8 @@ const ROUTE_TITLES: Record<string, string> = {
   "/compare": "Differential Analysis",
   "/disease": "Disease Browser",
   "/network": "Network Visualization",
+  "/cooccurrence": "Network Visualization",
+  "/chord": "Network Visualization",
   "/metabolism": "Metabolism Pathway",
   "/similarity": "Sample Similarity",
   "/lifecycle": "Lifecycle Atlas",
@@ -128,6 +130,8 @@ const App = () => (
           <Route path="/compare" element={<ComparePage />} />
           <Route path="/disease" element={<DiseasePage />} />
           <Route path="/network" element={<NetworkPage />} />
+          <Route path="/cooccurrence" element={<Navigate to="/network" replace />} />
+          <Route path="/chord" element={<Navigate to="/network" replace />} />
           <Route path="/metabolism" element={<MetabolismPage />} />
           <Route path="/species/:taxon" element={<SpeciesPage />} />
           <Route path="/similarity" element={<SimilarityPage />} />

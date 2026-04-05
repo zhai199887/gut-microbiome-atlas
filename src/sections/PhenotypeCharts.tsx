@@ -46,12 +46,12 @@ const PhenotypeCharts = () => {
         </div>
         <div className="sub-section">
           <h3>{t("home.top20Diseases")}</h3>
-          <svg id="disease-chart" className="chart" viewBox="-200 -20 700 560" style={{ minHeight: 420 }} />
+          <svg id="disease-chart" className="chart" viewBox="-240 -20 760 560" style={{ minHeight: 420 }} />
         </div>
       </div>
       <div className="sub-section" style={{ marginTop: "1.5rem" }}>
         <h3>{t("home.heatmapTitle")}</h3>
-        <svg id="heatmap" className="chart" viewBox="-160 -80 960 490" />
+        <svg id="heatmap" className="chart" viewBox="-160 -80 960 540" />
       </div>
     </section>
   );
@@ -149,8 +149,8 @@ const drawDiseaseChart = (diseaseCounts: Record<string, number>, activeDiseases:
         <span>{locale === "zh" ? "\u6837\u672c\u6570" : "Samples"}</span><span>{formatNumber(count, false)}</span>
       </div>,
     ));
-  svg.append("g").call(d3.axisLeft(yScale).tickFormat((d) => dName(d, locale, 22))).attr("font-size", "13px");
-  svg.append("g").attr("transform", `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(4).tickFormat((d) => formatNumber(Number(d)))).attr("font-size", "12px");
+  svg.append("g").call(d3.axisLeft(yScale).tickFormat((d) => dName(d, locale, 30))).attr("font-size", "13px");
+  svg.append("g").attr("transform", `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(4).tickFormat((d) => formatNumber(Number(d)))).attr("font-size", "13px");
 };
 
 const drawHeatmap = (
@@ -226,9 +226,9 @@ const drawHeatmap = (
     .on("mouseleave", () => { highlightAge = null; highlightDisease = null; updateHighlight(); });
 
   svg.append("g").attr("transform", `translate(0,${H})`)
-    .call(d3.axisBottom(xScale).tickFormat((d) => dName(d, locale, 12)))
-    .attr("font-size", "11px")
-    .selectAll("text").attr("transform", "rotate(-30)").attr("text-anchor", "end")
+    .call(d3.axisBottom(xScale).tickFormat((d) => dName(d, locale, 20)))
+    .attr("font-size", "12px")
+    .selectAll("text").attr("transform", "rotate(-35)").attr("text-anchor", "end")
     .style("cursor", "pointer")
     .on("click", (_, d) => { highlightDisease = highlightDisease === d ? null : (d as string); highlightAge = null; updateHighlight(); });
 

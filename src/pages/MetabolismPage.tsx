@@ -331,10 +331,10 @@ const CategoryDetail = ({
         )
       );
 
-    g.append("g").call(d3.axisLeft(yScale)).attr("font-size", 11);
+    g.append("g").call(d3.axisLeft(yScale)).attr("font-size", 12);
     g.append("g")
-      .call(d3.axisTop(xScale).tickFormat((d) => diseaseShortNameI18n(d as string, locale, 14)))
-      .attr("font-size", 10)
+      .call(d3.axisTop(xScale).tickFormat((d) => diseaseShortNameI18n(d as string, locale, 20)))
+      .attr("font-size", 11)
       .selectAll("text")
       .attr("transform", "rotate(-40)")
       .attr("text-anchor", "start");

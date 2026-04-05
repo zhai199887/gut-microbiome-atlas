@@ -414,14 +414,12 @@ const DISEASE_ZH: Record<string, string> = {
 };
 
 /**
- * 获取疾病的标准化显示名称
- * - 有映射 → 返回全称（如 "Inflammatory Bowel Disease (IBD)"）
+ * 获取疾病的标准化显示名称（仅全称，不附加缩写括号）
+ * - 有映射 → 返回标准全称（如 "Colorectal Cancer"）
  * - 无映射 → 返回原始 key，下划线替换为空格，首字母大写
  */
 export function diseaseDisplayName(key: string): string {
-  let name = displayMap && displayMap[key] ? displayMap[key] : key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  // Strip trailing abbreviations like (CRC), (HSCT), (CDI), (AML), (HEU)
-  name = name.replace(/\s*\([A-Z][A-Za-z0-9/]{0,10}\)\s*$/, "").trim();
+  const name = displayMap && displayMap[key] ? displayMap[key] : key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   return name;
 }
 

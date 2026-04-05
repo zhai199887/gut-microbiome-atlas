@@ -419,8 +419,10 @@ const DISEASE_ZH: Record<string, string> = {
  * - 无映射 → 返回原始 key，下划线替换为空格，首字母大写
  */
 export function diseaseDisplayName(key: string): string {
-  if (displayMap && displayMap[key]) return displayMap[key];
-  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  let name = displayMap && displayMap[key] ? displayMap[key] : key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  // Strip trailing abbreviations like (CRC), (HSCT), (CDI), (AML), (HEU)
+  name = name.replace(/\s*\([A-Z][A-Za-z0-9/]{0,10}\)\s*$/, "").trim();
+  return name;
 }
 
 // Build normalized lookup for fuzzy matching (once)

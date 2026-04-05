@@ -51,7 +51,8 @@ const PhenotypeCharts = () => {
       </div>
       <div className="sub-section" style={{ marginTop: "1.5rem" }}>
         <h3>{t("home.heatmapTitle")}</h3>
-        <svg id="heatmap" className="chart" viewBox="-160 -80 960 540" />
+        {/* viewBox: left=-160(y轴标签), top=-80(列头), width=1100(图+图例), height=580(含旋转标签) */}
+        <svg id="heatmap" className="chart" viewBox="-160 -80 1100 580" />
       </div>
     </section>
   );
@@ -149,8 +150,8 @@ const drawDiseaseChart = (diseaseCounts: Record<string, number>, activeDiseases:
         <span>{locale === "zh" ? "\u6837\u672c\u6570" : "Samples"}</span><span>{formatNumber(count, false)}</span>
       </div>,
     ));
-  svg.append("g").call(d3.axisLeft(yScale).tickFormat((d) => dName(d, locale, 30))).attr("font-size", "13px");
-  svg.append("g").attr("transform", `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(4).tickFormat((d) => formatNumber(Number(d)))).attr("font-size", "13px");
+  svg.append("g").call(d3.axisLeft(yScale).tickFormat((d) => dName(d, locale, 30))).attr("font-size", "14px");
+  svg.append("g").attr("transform", `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(4).tickFormat((d) => formatNumber(Number(d)))).attr("font-size", "14px");
 };
 
 const drawHeatmap = (
@@ -161,8 +162,13 @@ const drawHeatmap = (
   const svg = d3.select<SVGSVGElement, unknown>("#heatmap");
   if (!svg.node()) return;
   svg.selectAll("*").remove();
-  const W = 780, H = 320;
+
+  // Layout constants / 布局常量
+  const W = 800, H = 320;
+  const LEGEND_W = 14;
+  const LEGEND_GAP = 30;   // gap between heatmap and legend
   const primary = getCssVariable("--primary");
+
   const ages = AGE_ORDER.filter((a) => crossData.some((r) => r.age_group === a));
   const filteredData = crossData.filter((d) => diseases.includes(d.disease));
   const xScale = d3.scaleBand().domain(diseases).range([0, W]).padding(0.05);
@@ -217,34 +223,76 @@ const drawHeatmap = (
     .attr("role", "graphics-symbol")
     .attr("data-tooltip", (d) => renderToString(
       <div className="tooltip-table">
-        <span>{locale === "zh" ? "\u5e74\u9f84\u7ec4" : "Age Group"}</span><span>{ageName(d.age_group, locale)}</span>
-        <span>{locale === "zh" ? "\u75be\u75c5" : "Disease"}</span><span>{dName(d.disease, locale, 30)}</span>
-        <span>{locale === "zh" ? "\u6837\u672c\u6570" : "Samples"}</span><span>{formatNumber(d.count, false)}</span>
+        <span>{locale === "zh" ? "年龄组" : "Age Group"}</span><span>{ageName(d.age_group, locale)}</span>
+        <span>{locale === "zh" ? "疾病" : "Disease"}</span><span>{dName(d.disease, locale, 50)}</span>
+        <span>{locale === "zh" ? "样本数" : "Samples"}</span><span>{formatNumber(d.count, false)}</span>
       </div>,
     ))
     .on("mouseenter", (_, d) => { highlightAge = d.age_group; highlightDisease = d.disease; updateHighlight(); })
     .on("mouseleave", () => { highlightAge = null; highlightDisease = null; updateHighlight(); });
 
-  svg.append("g").attr("transform", `translate(0,${H})`)
-    .call(d3.axisBottom(xScale).tickFormat((d) => dName(d, locale, 20)))
-    .attr("font-size", "12px")
-    .selectAll("text").attr("transform", "rotate(-35)").attr("text-anchor", "end")
+  // X axis — full disease name, rotated -45°, anchor "end"
+  // 疾病名不截断（最长40字符），旋转-45°便于阅读
+  svg.append("g")
+    .attr("transform", `translate(0,${H})`)
+    .call(d3.axisBottom(xScale).tickFormat((d) => dName(d, locale, 40)))
+    .attr("font-size", "11px")
+    .selectAll("text")
+    .attr("transform", "rotate(-45)")
+    .attr("text-anchor", "end")
+    .attr("dx", "-0.5em")
+    .attr("dy", "0.1em")
     .style("cursor", "pointer")
-    .on("click", (_, d) => { highlightDisease = highlightDisease === d ? null : (d as string); highlightAge = null; updateHighlight(); });
+    .on("click", (_, d) => {
+      highlightDisease = highlightDisease === d ? null : (d as string);
+      highlightAge = null;
+      updateHighlight();
+    });
 
+  // Y axis — age group labels
   svg.append("g")
     .call(d3.axisLeft(yScale).tickFormat((d) => ageName(d, locale)))
-    .attr("font-size", "13px")
+    .attr("font-size", "14px")
     .selectAll("text").style("cursor", "pointer")
-    .on("click", (_, d) => { highlightAge = highlightAge === d ? null : (d as string); highlightDisease = null; updateHighlight(); });
+    .on("click", (_, d) => {
+      highlightAge = highlightAge === d ? null : (d as string);
+      highlightDisease = null;
+      updateHighlight();
+    });
 
-  const legendW = 200, legendH = 10, legendY = H + 55;
+  // ── Legend: vertical gradient bar on the RIGHT side ─────────────────────
+  // 图例：垂直渐变色条，放在热图右侧 LEGEND_GAP 像素处
+  const legendX = W + LEGEND_GAP;
   const defs = svg.append("defs");
-  const grad = defs.append("linearGradient").attr("id", "heatmap-gradient").attr("x1", "0%").attr("x2", "100%");
+  const grad = defs.append("linearGradient")
+    .attr("id", "heatmap-gradient")
+    .attr("x1", "0%").attr("x2", "0%")
+    .attr("y1", "100%").attr("y2", "0%");
   grad.append("stop").attr("offset", "0%").attr("stop-color", "#1a1a2e");
   grad.append("stop").attr("offset", "100%").attr("stop-color", primary);
-  svg.append("rect").attr("x", W / 2 - legendW / 2).attr("y", legendY).attr("width", legendW).attr("height", legendH).attr("fill", "url(#heatmap-gradient)").attr("rx", 3);
-  svg.append("text").attr("x", W / 2 - legendW / 2).attr("y", legendY + legendH + 14).attr("font-size", 10).attr("fill", "var(--light-gray)").text("0");
-  svg.append("text").attr("x", W / 2 + legendW / 2).attr("y", legendY + legendH + 14).attr("text-anchor", "end").attr("font-size", 10).attr("fill", "var(--light-gray)").text(formatNumber(maxVal));
-  svg.append("text").attr("x", W / 2).attr("y", legendY + legendH + 14).attr("text-anchor", "middle").attr("font-size", 10).attr("fill", "var(--light-gray)").text(locale === "zh" ? "\u6837\u672c\u6570" : "Samples");
+
+  svg.append("rect")
+    .attr("x", legendX).attr("y", 0)
+    .attr("width", LEGEND_W).attr("height", H)
+    .attr("fill", "url(#heatmap-gradient)").attr("rx", 3);
+
+  // Legend labels: max at top, 0 at bottom, "Samples" label in middle
+  svg.append("text")
+    .attr("x", legendX + LEGEND_W + 6).attr("y", 8)
+    .attr("dominant-baseline", "middle")
+    .attr("font-size", 11).attr("fill", "var(--light-gray)")
+    .text(formatNumber(maxVal));
+
+  svg.append("text")
+    .attr("x", legendX + LEGEND_W + 6).attr("y", H / 2)
+    .attr("dominant-baseline", "middle")
+    .attr("font-size", 11).attr("fill", "var(--light-gray)")
+    .attr("transform", `rotate(-90,${legendX + LEGEND_W + 40},${H / 2})`)
+    .text(locale === "zh" ? "样本数" : "Samples");
+
+  svg.append("text")
+    .attr("x", legendX + LEGEND_W + 6).attr("y", H)
+    .attr("dominant-baseline", "auto")
+    .attr("font-size", 11).attr("fill", "var(--light-gray)")
+    .text("0");
 };

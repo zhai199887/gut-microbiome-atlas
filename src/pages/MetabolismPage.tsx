@@ -446,16 +446,16 @@ const CategoryDetail = ({
             // 如果是DOI或PMID格式，转为可点击链接
             const doiMatch = r.match(/10\.\d{4,}\/[^\s.,;)]+/);
             const pmidMatch = r.match(/PMID[:\s]*(\d+)/i);
-            if (doiMatch) {
+            if (pmidMatch) {
               return (
-                <a key={r} href={`https://doi.org/${doiMatch[0]}`}
+                <a key={r} href={`https://pubmed.ncbi.nlm.nih.gov/${pmidMatch[1]}`}
                   target="_blank" rel="noreferrer" className={classes.ref}>
                   {r}
                 </a>
               );
-            } else if (pmidMatch) {
+            } else if (doiMatch) {
               return (
-                <a key={r} href={`https://pubmed.ncbi.nlm.nih.gov/${pmidMatch[1]}`}
+                <a key={r} href={`https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(doiMatch[0])}%5Bdoi%5D`}
                   target="_blank" rel="noreferrer" className={classes.ref}>
                   {r}
                 </a>

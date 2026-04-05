@@ -432,8 +432,10 @@ function drawBarChart(
   svg.selectAll("*").remove();
 
   const isDisease = nameType === "disease";
-  const margin = { top: 10, right: 80, bottom: 30, left: isDisease ? 220 : 180 };
-  const W = 800, H = Math.max(200, data.length * 24 + margin.top + margin.bottom);
+  const isCountry = nameType === "country";
+  const leftM = isDisease ? 260 : isCountry ? 200 : 180;
+  const margin = { top: 10, right: 80, bottom: 30, left: leftM };
+  const W = 1000, H = Math.max(200, data.length * 26 + margin.top + margin.bottom);
   svg.attr("viewBox", `0 0 ${W} ${H}`);
 
   const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
@@ -487,10 +489,10 @@ function drawBarChart(
   g.append("g")
     .call(d3.axisLeft(yScale).tickFormat((d) => {
       const translated = translateName(d, locale, nameType);
-      const limit = isDisease ? 28 : 24;
+      const limit = isDisease ? 34 : isCountry ? 28 : 24;
       return translated.length > limit ? translated.slice(0, limit - 2) + "…" : translated;
     }))
-    .attr("font-size", 10);
+    .attr("font-size", 11);
 
   g.append("g")
     .attr("transform", `translate(0,${iH})`)

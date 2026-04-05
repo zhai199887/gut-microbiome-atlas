@@ -1,7 +1,7 @@
 /**
  * MetabolismPage.tsx
- * Browse microbiota by metabolic function category
- * 按代谢功能分类浏览微生物组成
+ * Browse literature-curated metabolic roles without overstating pathway activity
+ * 浏览文献策展的代谢功能关联，不伪装成功能活性测量
  */
 import { useEffect, useRef, useState } from "react";
 import { renderToString } from "react-dom/server";
@@ -9,56 +9,238 @@ import { Link } from "react-router-dom";
 import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 import { useData } from "@/data";
+import { cachedFetch } from "@/util/apiCache";
 import { diseaseShortNameI18n } from "@/util/diseaseNames";
 import "@/components/tooltip";
+import CategoryDiseasePanel from "./metabolism/CategoryDiseasePanel";
+import MetabolismOverviewHeatmap from "./metabolism/MetabolismOverviewHeatmap";
+import type {
+  CategoryProfileResult,
+  MetabolismCategory,
+  MetabolismMapping,
+  MetabolismOverviewResult,
+} from "./metabolism/types";
 import classes from "./MetabolismPage.module.css";
 
-// ── Types / 类型定义 ──────────────────────────────────────────────────────────
+type SortMode = "default" | "taxa_count" | "alpha";
+type DetailTab = "profile" | "disease-context";
 
-interface MetabolismCategory {
-  id: string;
-  name_en: string;
-  name_zh: string;
-  icon: string;
-  description: string;
-  taxa: string[];
-  key_metabolites: string[];
-  related_pathways: string[];
-  health_relevance: string;
-  references: string[];
+interface DiseaseListResponse {
+  diseases: Array<{
+    name: string;
+    count?: number;
+  }>;
 }
 
-interface MetabolismMapping {
-  version: string;
-  last_updated: string;
-  categories: MetabolismCategory[];
+interface MatchResult {
+  genera: string[];
+  fallback: boolean;
 }
 
-// ── Main component / 主组件 ───────────────────────────────────────────────────
+const OVERVIEW_CACHE_KEY = "/api/metabolism-overview";
+const HEATMAP_DISEASE_LIMIT = 18;
+
+const normalize = (value: string) => value.trim().toLowerCase();
+
+const matchesCategorySearch = (category: MetabolismCategory, query: string): boolean => {
+  const q = normalize(query);
+  if (!q) {
+    return true;
+  }
+
+  const fields = [
+    category.name_en,
+    category.name_zh,
+    ...category.taxa,
+    ...(category.genus_exact_names ?? []),
+    ...category.key_metabolites,
+    ...category.related_pathways,
+    ...(category.kegg_pathway_ids ?? []),
+    ...(category.metacyc_pathway_ids ?? []),
+  ];
+
+  return fields.some((field) => normalize(field).includes(q));
+};
+
+const sortCategories = (
+  categories: MetabolismCategory[],
+  sortMode: SortMode,
+  locale: "en" | "zh",
+): MetabolismCategory[] => {
+  const list = [...categories];
+  if (sortMode === "taxa_count") {
+    list.sort(
+      (a, b) =>
+        (b.genus_exact_names?.length ?? b.taxa.length) -
+        (a.genus_exact_names?.length ?? a.taxa.length),
+    );
+    return list;
+  }
+
+  if (sortMode === "alpha") {
+    list.sort((a, b) => {
+      const aName = locale === "zh" ? a.name_zh : a.name_en;
+      const bName = locale === "zh" ? b.name_zh : b.name_en;
+      return aName.localeCompare(bName, locale === "zh" ? "zh-CN" : "en");
+    });
+  }
+
+  return list;
+};
+
+const buildPathwayLinks = (category: MetabolismCategory) =>
+  category.related_pathways.map((pathway, index) => ({
+    label: pathway,
+    keggId: category.kegg_pathway_ids?.[index] ?? "",
+    metacycId: category.metacyc_pathway_ids?.[index] ?? "",
+  }));
+
+const resolveCategoryGenera = (
+  category: MetabolismCategory,
+  abundance?: ReturnType<typeof useData.getState>["abundance"],
+): MatchResult => {
+  if (!abundance) {
+    return { genera: [], fallback: false };
+  }
+
+  const abundanceLookup = new Map(
+    abundance.genera.map((genus) => [normalize(genus), genus]),
+  );
+
+  const exactMatches = (category.genus_exact_names ?? [])
+    .map((name) => abundanceLookup.get(normalize(name)) ?? "")
+    .filter(Boolean);
+
+  if (exactMatches.length > 0) {
+    return { genera: Array.from(new Set(exactMatches)), fallback: false };
+  }
+
+  const fallbackMatches = abundance.genera.filter((genus) =>
+    category.taxa.some((taxon) => {
+      const genusLower = normalize(genus);
+      const taxonLower = normalize(taxon);
+      return genusLower.includes(taxonLower) || taxonLower.includes(genusLower);
+    }),
+  );
+
+  return { genera: Array.from(new Set(fallbackMatches)), fallback: fallbackMatches.length > 0 };
+};
+
+const getAverageAbundance = (
+  genus: string,
+  abundance: NonNullable<ReturnType<typeof useData.getState>["abundance"]>,
+) => {
+  const values = Object.values(abundance.by_disease).map((row) => row[genus] ?? 0);
+  return d3.mean(values) ?? 0;
+};
+
+const getHeatmapDiseases = (
+  abundance: NonNullable<ReturnType<typeof useData.getState>["abundance"]>,
+  diseaseOrder: string[],
+) => {
+  const available = new Set(Object.keys(abundance.by_disease));
+  const ordered = diseaseOrder.filter((disease) => available.has(disease));
+  const remainder = Object.keys(abundance.by_disease).filter((disease) => !ordered.includes(disease));
+  return [...ordered, ...remainder].slice(0, HEATMAP_DISEASE_LIMIT);
+};
+
+const getPhylumColorScale = (abundance?: ReturnType<typeof useData.getState>["abundance"]) => {
+  const phyla = Array.from(
+    new Set(
+      Object.values(abundance?.phylum_map ?? {}).filter(Boolean),
+    ),
+  );
+  return d3.scaleOrdinal<string, string>(d3.schemeTableau10).domain(phyla);
+};
 
 const MetabolismPage = () => {
   const { t, locale } = useI18n();
+  const abundance = useData((state) => state.abundance);
   const [mapping, setMapping] = useState<MetabolismMapping | null>(null);
-  const [fetchError, setFetchError] = useState(false);
-  const [selected, setSelected] = useState<MetabolismCategory | null>(null);
+  const [fetchError, setFetchError] = useState<string>("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const abundance = useData((s) => s.abundance);
+  const [sortMode, setSortMode] = useState<SortMode>("default");
+  const [tab, setTab] = useState<DetailTab>("profile");
+  const [overview, setOverview] = useState<MetabolismOverviewResult | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState("");
+  const [diseaseOrder, setDiseaseOrder] = useState<string[]>([]);
+  const [profileResults, setProfileResults] = useState<Record<string, CategoryProfileResult>>({});
+  const [profileLoading, setProfileLoading] = useState<Record<string, boolean>>({});
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetch("/data/metabolism_mapping.json")
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
       })
       .then((data: MetabolismMapping) => {
         setMapping(data);
-        setSelected(data.categories[0] ?? null);
+        setSelectedCategoryId(data.categories[0]?.id ?? null);
       })
-      .catch(() => {
-        setFetchError(true);
+      .catch((error: Error) => {
+        setFetchError(error.message || "Failed to load metabolism mapping");
         setMapping({ version: "error", last_updated: "", categories: [] });
       });
   }, []);
+
+  useEffect(() => {
+    setOverviewLoading(true);
+    cachedFetch<MetabolismOverviewResult>(OVERVIEW_CACHE_KEY)
+      .then((data) => {
+        setOverview(data);
+        setOverviewError("");
+      })
+      .catch((error: Error) => {
+        setOverviewError(error.message || "Failed to load metabolism overview");
+      })
+      .finally(() => {
+        setOverviewLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    cachedFetch<DiseaseListResponse>("/api/disease-list")
+      .then((data) => {
+        setDiseaseOrder(data.diseases.map((item) => item.name));
+      })
+      .catch(() => {
+        setDiseaseOrder([]);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (
+      !selectedCategoryId ||
+      profileResults[selectedCategoryId] ||
+      profileLoading[selectedCategoryId] ||
+      profileErrors[selectedCategoryId]
+    ) {
+      return;
+    }
+
+    setProfileLoading((prev) => ({ ...prev, [selectedCategoryId]: true }));
+    cachedFetch<CategoryProfileResult>(
+      `/api/metabolism-category-profile?category_id=${encodeURIComponent(selectedCategoryId)}`,
+    )
+      .then((data) => {
+        setProfileResults((prev) => ({ ...prev, [selectedCategoryId]: data }));
+        setProfileErrors((prev) => ({ ...prev, [selectedCategoryId]: "" }));
+      })
+      .catch((error: Error) => {
+        setProfileErrors((prev) => ({
+          ...prev,
+          [selectedCategoryId]: error.message || "Failed to load category profile",
+        }));
+      })
+      .finally(() => {
+        setProfileLoading((prev) => ({ ...prev, [selectedCategoryId]: false }));
+      });
+  }, [profileErrors, profileLoading, profileResults, selectedCategoryId]);
 
   if (!mapping) {
     return (
@@ -68,106 +250,173 @@ const MetabolismPage = () => {
     );
   }
 
-  if (fetchError) {
-    return (
-      <div className={classes.page}>
-        <div className={classes.header}>
-          <Link to="/" className={classes.back}>{t("metabolism.back")}</Link>
-          <h1>{t("metabolism.title")}</h1>
-        </div>
-        <div className={classes.errorBanner}>
-          {t("metabolism.loadError")}
-        </div>
-      </div>
-    );
-  }
-
-  // Find which category a taxon belongs to / 查找某物种属于哪个代谢类别
-  const taxonToCategories = (taxon: string): MetabolismCategory[] =>
-    mapping.categories.filter((c) =>
-      c.taxa.some((t) => t.toLowerCase().includes(taxon.toLowerCase())),
-    );
-
-  // Search highlighting / 搜索高亮
-  const searchResults = search.trim()
-    ? taxonToCategories(search.trim())
-    : [];
+  const visibleCategories = sortCategories(
+    mapping.categories.filter((category) => matchesCategorySearch(category, search)),
+    sortMode,
+    locale,
+  );
+  const selectedCategory = selectedCategoryId
+    ? mapping.categories.find((category) => category.id === selectedCategoryId) ?? null
+    : null;
+  const selectedProfile = selectedCategoryId ? profileResults[selectedCategoryId] : undefined;
+  const selectedProfileError = selectedCategoryId ? profileErrors[selectedCategoryId] : "";
+  const selectedProfileLoading = selectedCategoryId ? profileLoading[selectedCategoryId] : false;
 
   return (
     <div className={classes.page}>
-      {/* Header / 页面标题 */}
       <div className={classes.header}>
         <Link to="/" className={classes.back}>{t("metabolism.back")}</Link>
         <h1>{t("metabolism.title")}</h1>
         <p>{t("metabolism.subtitle")}</p>
+        <div className={classes.disclaimer}>
+          {t("metabolism.disclaimer")}
+        </div>
 
-        {/* Species search / 物种搜索 */}
         <div className={classes.searchBox}>
           <input
             type="text"
             placeholder={t("metabolism.searchPlaceholder")}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) => setSearch(event.target.value)}
             className={classes.searchInput}
           />
-          {search && searchResults.length > 0 && (
-            <div className={classes.searchResults}>
-              <p className={classes.searchHint}>
-                <b>{search}</b> {locale === "zh" ? "存在于：" : "found in:"}
-              </p>
-              {searchResults.map((c) => (
-                <button
-                  key={c.id}
-                  className={classes.searchResultItem}
-                  onClick={() => { setSelected(c); setSearch(""); }}
-                >
-                  {c.icon} {c.name_en}
-                </button>
-              ))}
-            </div>
-          )}
-          {search && searchResults.length === 0 && (
-            <div className={classes.searchResults}>
-              <p className={classes.searchHint}>
-                {locale === "zh" ? <>未找到 "<b>{search}</b>" 相关类别</> : <>No category found for "<b>{search}</b>"</>}
-              </p>
-            </div>
-          )}
         </div>
+
+        {fetchError && (
+          <div className={classes.errorBanner}>
+            {t("metabolism.loadError")} <code>{fetchError}</code>
+          </div>
+        )}
       </div>
 
       <div className={classes.layout}>
-        {/* Left panel: category cards / 左侧：类别卡片 */}
         <aside className={classes.sidebar}>
           <h3 className={classes.sideTitle}>{t("metabolism.categories")}</h3>
-          {mapping.categories.map((cat) => {
-            const isHighlighted = search
-              ? cat.taxa.some((t) => t.toLowerCase().includes(search.toLowerCase()))
-              : false;
+          <div className={classes.sidebarControls}>
+            <button
+              type="button"
+              className={classes.globalOverviewButton}
+              data-active={selectedCategoryId === null}
+              onClick={() => {
+                setSelectedCategoryId(null);
+                setTab("profile");
+              }}
+            >
+              {t("metabolism.globalOverview")}
+            </button>
 
-            return (
-              <button
-                key={cat.id}
-                className={classes.categoryCard}
-                data-active={selected?.id === cat.id}
-                data-highlighted={isHighlighted}
-                onClick={() => setSelected(cat)}
+            <label className={classes.sortLabel}>
+              <span>{t("metabolism.sortBy")}</span>
+              <select
+                value={sortMode}
+                onChange={(event) => setSortMode(event.target.value as SortMode)}
+                className={classes.sortSelect}
               >
-                <span className={classes.catIcon}>{cat.icon}</span>
-                <div className={classes.catInfo}>
-                  <span className={classes.catName}>{locale === "zh" ? cat.name_zh : cat.name_en}</span>
-                  {locale === "en" && <span className={classes.catZh}>{cat.name_zh}</span>}
-                  <span className={classes.catCount}>{cat.taxa.length} {t("metabolism.genera")}</span>
-                </div>
-              </button>
-            );
-          })}
+                <option value="default">{t("metabolism.sortDefault")}</option>
+                <option value="taxa_count">{t("metabolism.sortTaxaCount")}</option>
+                <option value="alpha">{t("metabolism.sortAlpha")}</option>
+              </select>
+            </label>
+          </div>
+
+          {visibleCategories.length === 0 && (
+            <div className={classes.emptyState}>
+              {t("metabolism.noCategory")} <b>{search}</b>
+            </div>
+          )}
+
+          {visibleCategories.map((category) => (
+            <button
+              key={category.id}
+              type="button"
+              className={classes.categoryCard}
+              data-active={selectedCategoryId === category.id}
+              onClick={() => {
+                setSelectedCategoryId(category.id);
+                setTab("profile");
+              }}
+            >
+              <span className={classes.catIcon}>{category.icon}</span>
+              <div className={classes.catInfo}>
+                <span className={classes.catName}>
+                  {locale === "zh" ? category.name_zh : category.name_en}
+                </span>
+                {locale === "en" && <span className={classes.catZh}>{category.name_zh}</span>}
+                <span className={classes.catCount}>
+                  {(category.genus_exact_names?.length ?? category.taxa.length)} {t("metabolism.genera")}
+                </span>
+              </div>
+            </button>
+          ))}
         </aside>
 
-        {/* Right panel: details / 右侧：详细信息 */}
         <main className={classes.detail}>
-          {selected && (
-            <CategoryDetail category={selected} abundance={abundance} />
+          {selectedCategory === null ? (
+            <>
+              {overviewLoading && (
+                <div className={classes.loading}>{t("metabolism.loading")}</div>
+              )}
+              {overviewError && (
+                <div className={classes.errorBanner}>
+                  {overviewError}
+                </div>
+              )}
+              {overview && (
+                <MetabolismOverviewHeatmap
+                  data={overview}
+                  onSelectCategory={(categoryId) => {
+                    setSelectedCategoryId(categoryId);
+                    setTab("profile");
+                  }}
+                />
+              )}
+            </>
+          ) : (
+            <div className={classes.detailPanel}>
+              <div className={classes.tabBar}>
+                <button
+                  type="button"
+                  className={classes.tabButton}
+                  data-active={tab === "profile"}
+                  onClick={() => setTab("profile")}
+                >
+                  {t("metabolism.tabProfile")}
+                </button>
+                <button
+                  type="button"
+                  className={classes.tabButton}
+                  data-active={tab === "disease-context"}
+                  onClick={() => setTab("disease-context")}
+                >
+                  {t("metabolism.tabDiseaseContext")}
+                </button>
+              </div>
+
+              {tab === "profile" ? (
+                <CategoryDetail
+                  category={selectedCategory}
+                  abundance={abundance}
+                  diseaseOrder={diseaseOrder}
+                  profileResult={selectedProfile}
+                  profileLoading={selectedProfileLoading}
+                />
+              ) : (
+                <>
+                  {selectedProfileLoading && (
+                    <div className={classes.loading}>{t("metabolism.loading")}</div>
+                  )}
+                  {selectedProfileError && (
+                    <div className={classes.errorBanner}>{selectedProfileError}</div>
+                  )}
+                  {selectedProfile && (
+                    <CategoryDiseasePanel
+                      category={selectedCategory}
+                      result={selectedProfile}
+                    />
+                  )}
+                </>
+              )}
+            </div>
           )}
         </main>
       </div>
@@ -175,297 +424,386 @@ const MetabolismPage = () => {
   );
 };
 
-// ── Category detail component / 类别详情组件 ─────────────────────────────────
-
 const CategoryDetail = ({
   category,
   abundance,
+  diseaseOrder,
+  profileResult,
+  profileLoading,
 }: {
   category: MetabolismCategory;
-  abundance: ReturnType<typeof useData.getState>["abundance"];
+  abundance?: ReturnType<typeof useData.getState>["abundance"];
+  diseaseOrder: string[];
+  profileResult?: CategoryProfileResult;
+  profileLoading: boolean;
 }) => {
   const { t, locale } = useI18n();
   const barRef = useRef<SVGSVGElement>(null);
   const heatRef = useRef<SVGSVGElement>(null);
+  const matchResult = resolveCategoryGenera(category, abundance);
+  const pathwayLinks = buildPathwayLinks(category);
 
-  // Draw abundance bar chart for taxa in this category
-  // 绘制该类别下各物种的平均丰度柱状图
   useEffect(() => {
-    if (!barRef.current || !abundance) return;
-    const svg = d3.select(barRef.current);
-    svg.selectAll("*").remove();
-
-    // Find genera present in abundance data / 在丰度数据中查找该类别的属
-    const availableGenera = abundance.genera.filter((g) =>
-      category.taxa.some((t) =>
-        g.toLowerCase().includes(t.toLowerCase()) ||
-        t.toLowerCase().includes(g.toLowerCase()),
-      ),
-    );
-
-    if (availableGenera.length === 0) {
-      svg.attr("viewBox", "0 0 480 60");
-      svg.append("text").attr("x", 10).attr("y", 30)
-        .text("No abundance data available for this category")
-        .attr("fill", "currentColor").attr("font-size", 12);
+    if (!barRef.current || !abundance) {
       return;
     }
 
-    // Compute average abundance across all diseases
-    // 计算跨所有疾病的平均丰度
-    const avgAbundance = availableGenera.map((genus) => {
-      const allVals = Object.values(abundance.by_disease).map(
-        (d) => d[genus] ?? 0,
-      );
-      return { genus, avg: d3.mean(allVals) ?? 0 };
-    }).sort((a, b) => b.avg - a.avg);
+    const svg = d3.select(barRef.current);
+    svg.selectAll("*").remove();
 
-    const margin = { top: 10, right: 20, bottom: 40, left: 180 };
-    const W = 640, H = Math.max(150, avgAbundance.length * 28 + 50);
-    svg.attr("viewBox", `0 0 ${W} ${H}`);
-    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+    if (matchResult.genera.length === 0) {
+      svg.attr("viewBox", "0 0 720 72");
+      svg.append("text")
+        .attr("x", 12)
+        .attr("y", 38)
+        .attr("fill", "currentColor")
+        .attr("font-size", 13)
+        .text(t("metabolism.noAbundance"));
+      return;
+    }
 
-    const iW = W - margin.left - margin.right;
-    const iH = H - margin.top - margin.bottom;
+    const phylumColors = getPhylumColorScale(abundance);
+    const rows = matchResult.genera
+      .map((genus) => ({
+        genus,
+        mean: getAverageAbundance(genus, abundance),
+        phylum: abundance.phylum_map?.[genus] ?? "Unassigned",
+      }))
+      .sort((a, b) => b.mean - a.mean);
+
+    const width = 860;
+    const rowHeight = 30;
+    const margin = { top: 18, right: 40, bottom: 42, left: 240 };
+    const height = Math.max(180, margin.top + margin.bottom + rows.length * rowHeight);
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
 
     const xScale = d3.scaleLinear()
-      .domain([0, d3.max(avgAbundance, (d) => d.avg) ?? 0.01])
-      .range([0, iW]);
+      .domain([0, d3.max(rows, (row) => row.mean) ?? 0.01])
+      .nice()
+      .range([0, innerWidth]);
     const yScale = d3.scaleBand()
-      .domain(avgAbundance.map((d) => d.genus))
-      .range([0, iH])
+      .domain(rows.map((row) => row.genus))
+      .range([0, innerHeight])
       .padding(0.2);
 
-    g.selectAll(".bar")
-      .data(avgAbundance)
+    svg.attr("viewBox", `0 0 ${width} ${height}`);
+    const chart = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    chart.selectAll(".bar")
+      .data(rows)
       .join("rect")
-      .attr("class", "bar")
       .attr("x", 0)
-      .attr("y", (d) => yScale(d.genus) ?? 0)
-      .attr("width", (d) => xScale(d.avg))
+      .attr("y", (row) => yScale(row.genus) ?? 0)
+      .attr("width", (row) => xScale(row.mean))
       .attr("height", yScale.bandwidth())
-      .attr("fill", "var(--secondary)")
-      .attr("opacity", 0.8)
+      .attr("rx", 5)
+      .attr("fill", (row) => phylumColors(row.phylum))
+      .attr("opacity", 0.88)
       .attr("role", "graphics-symbol")
-      .attr("data-tooltip", (d) =>
+      .attr("data-tooltip", (row) =>
         renderToString(
           <div className="tooltip-table">
-            <span>{locale === "zh" ? "属" : "Genus"}</span><span>{d.genus}</span>
-            <span>{locale === "zh" ? "平均丰度" : "Avg. Abundance"}</span><span>{(d.avg * 100).toFixed(4)}%</span>
-          </div>
+            <span>{locale === "zh" ? "属" : "Genus"}</span>
+            <span>{row.genus}</span>
+            <span>{locale === "zh" ? "门" : "Phylum"}</span>
+            <span>{row.phylum}</span>
+            <span>{locale === "zh" ? "平均丰度" : "Mean abundance"}</span>
+            <span>{(row.mean * 100).toFixed(3)}%</span>
+          </div>,
         )
       );
 
-    g.append("g").call(d3.axisLeft(yScale))
+    chart.append("g")
+      .call(d3.axisLeft(yScale))
+      .attr("font-size", 12);
+    chart.append("g")
+      .attr("transform", `translate(0,${innerHeight})`)
+      .call(
+        d3.axisBottom(xScale)
+          .ticks(5)
+          .tickFormat((tick) => `${(Number(tick) * 100).toFixed(2)}%`),
+      )
       .attr("font-size", 11);
-    g.append("g").attr("transform", `translate(0,${iH})`)
-      .call(d3.axisBottom(xScale).ticks(4).tickFormat((d) => `${(Number(d) * 100).toFixed(2)}%`))
-      .attr("font-size", 10);
-  }, [category, abundance, locale]);
+  }, [abundance, locale, matchResult.genera, t]);
 
-  // Draw disease heatmap / 绘制疾病分布热图
   useEffect(() => {
-    if (!heatRef.current || !abundance) return;
+    if (!heatRef.current || !abundance) {
+      return;
+    }
+
     const svg = d3.select(heatRef.current);
     svg.selectAll("*").remove();
 
-    const availableGenera = abundance.genera.filter((g) =>
-      category.taxa.some((t) =>
-        g.toLowerCase().includes(t.toLowerCase()) ||
-        t.toLowerCase().includes(g.toLowerCase()),
-      ),
-    );
-
-    // Top 10 diseases by sample count / 前10种疾病
-    const diseases = Object.keys(abundance.by_disease).slice(0, 12);
-    if (availableGenera.length === 0 || diseases.length === 0) return;
-
-    const margin = { top: 120, right: 20, bottom: 20, left: 140 };
-    const cellW = 65, cellH = 24;
-    const W = cellW * diseases.length + margin.left + margin.right;
-    const H = cellH * availableGenera.length + margin.top + margin.bottom;
-    svg.attr("viewBox", `0 0 ${W} ${H}`);
-
-    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
-
-    // Build data / 构建数据矩阵
-    const flatData: { genus: string; disease: string; val: number }[] = [];
-    for (const genus of availableGenera) {
-      for (const disease of diseases) {
-        flatData.push({ genus, disease, val: abundance.by_disease[disease]?.[genus] ?? 0 });
-      }
+    const genera = matchResult.genera;
+    const diseases = getHeatmapDiseases(abundance, diseaseOrder);
+    if (genera.length === 0 || diseases.length === 0) {
+      return;
     }
 
-    const maxVal = d3.max(flatData, (d) => d.val) ?? 0.01;
-
-    // d3.interpolate runs at JS time — CSS variables must be resolved via getComputedStyle
-    // d3.interpolate在JS执行时运行，CSS变量需通过getComputedStyle提前解析
     const rootStyles = getComputedStyle(document.documentElement);
     const colorBlack = rootStyles.getPropertyValue("--black").trim() || "#101829";
     const colorPrimary = rootStyles.getPropertyValue("--primary").trim() || "#e23fff";
 
+    const cells = genera.flatMap((genus) =>
+      diseases.map((disease) => ({
+        genus,
+        disease,
+        value: abundance.by_disease[disease]?.[genus] ?? 0,
+      })),
+    );
+
+    const maxValue = d3.max(cells, (cell) => cell.value) ?? 0.01;
     const colorScale = d3.scaleSequential()
-      .domain([0, maxVal])
+      .domain([0, maxValue])
       .interpolator(d3.interpolate(colorBlack, colorPrimary));
 
-    const xScale = d3.scaleBand().domain(diseases).range([0, cellW * diseases.length]).padding(0.05);
-    const yScale = d3.scaleBand().domain(availableGenera).range([0, cellH * availableGenera.length]).padding(0.05);
+    const cellWidth = 56;
+    const cellHeight = 28;
+    const margin = { top: 140, right: 24, bottom: 26, left: 220 };
+    const width = margin.left + margin.right + diseases.length * cellWidth;
+    const height = margin.top + margin.bottom + genera.length * cellHeight;
 
-    g.selectAll(".cell")
-      .data(flatData)
+    const xScale = d3.scaleBand()
+      .domain(diseases)
+      .range([0, diseases.length * cellWidth])
+      .padding(0.08);
+    const yScale = d3.scaleBand()
+      .domain(genera)
+      .range([0, genera.length * cellHeight])
+      .padding(0.08);
+
+    svg.attr("viewBox", `0 0 ${width} ${height}`);
+    const chart = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    chart.selectAll(".cell")
+      .data(cells)
       .join("rect")
-      .attr("class", "cell")
-      .attr("x", (d) => xScale(d.disease) ?? 0)
-      .attr("y", (d) => yScale(d.genus) ?? 0)
+      .attr("x", (cell) => xScale(cell.disease) ?? 0)
+      .attr("y", (cell) => yScale(cell.genus) ?? 0)
       .attr("width", xScale.bandwidth())
       .attr("height", yScale.bandwidth())
-      .attr("fill", (d) => colorScale(d.val))
+      .attr("rx", 4)
+      .attr("fill", (cell) => colorScale(cell.value))
       .attr("role", "graphics-symbol")
-      .attr("data-tooltip", (d) =>
+      .attr("data-tooltip", (cell) =>
         renderToString(
           <div className="tooltip-table">
-            <span>{locale === "zh" ? "属" : "Genus"}</span><span>{d.genus}</span>
-            <span>{locale === "zh" ? "疾病" : "Disease"}</span><span>{diseaseShortNameI18n(d.disease, locale, 30)}</span>
-            <span>{locale === "zh" ? "丰度" : "Abundance"}</span><span>{(d.val * 100).toFixed(4)}%</span>
-          </div>
+            <span>{locale === "zh" ? "属" : "Genus"}</span>
+            <span>{cell.genus}</span>
+            <span>{locale === "zh" ? "疾病" : "Disease"}</span>
+            <span>{diseaseShortNameI18n(cell.disease, locale, 36)}</span>
+            <span>{locale === "zh" ? "丰度" : "Abundance"}</span>
+            <span>{(cell.value * 100).toFixed(3)}%</span>
+          </div>,
         )
       );
 
-    g.append("g").call(d3.axisLeft(yScale)).attr("font-size", 12);
-    g.append("g")
-      .call(d3.axisTop(xScale).tickFormat((d) => diseaseShortNameI18n(d as string, locale, 20)))
+    chart.append("g")
+      .call(d3.axisLeft(yScale))
+      .attr("font-size", 12);
+    chart.append("g")
+      .call(
+        d3.axisTop(xScale)
+          .tickFormat((tick) => diseaseShortNameI18n(String(tick), locale, 18)),
+      )
       .attr("font-size", 11)
       .selectAll("text")
       .attr("transform", "rotate(-40)")
       .attr("text-anchor", "start");
 
-    // Color legend bar / 色阶图例
-    const legendW = Math.min(cellW * diseases.length, 200);
-    const legendH = 10;
-    const legendY = cellH * availableGenera.length + 10;
+    const legendWidth = Math.min(diseases.length * cellWidth, 200);
+    const legendY = genera.length * cellHeight + 12;
     const defs = svg.append("defs");
-    const gradId = `heatGrad-${category.id}`;
-    const grad = defs.append("linearGradient").attr("id", gradId)
-      .attr("x1", "0%").attr("x2", "100%");
-    // Use already-resolved hex values (CSS variables not valid in SVG export context)
-    // 使用已解析的十六进制值（CSS变量在SVG导出时无法解析）
-    grad.append("stop").attr("offset", "0%").attr("stop-color", colorBlack);
-    grad.append("stop").attr("offset", "100%").attr("stop-color", colorPrimary);
+    const gradientId = `metabolismHeatmap-${category.id}`;
+    const gradient = defs.append("linearGradient")
+      .attr("id", gradientId)
+      .attr("x1", "0%")
+      .attr("x2", "100%");
+    gradient.append("stop").attr("offset", "0%").attr("stop-color", colorBlack);
+    gradient.append("stop").attr("offset", "100%").attr("stop-color", colorPrimary);
 
-    g.append("rect")
-      .attr("x", 0).attr("y", legendY)
-      .attr("width", legendW).attr("height", legendH)
-      .attr("fill", `url(#${gradId})`).attr("rx", 2);
-    g.append("text").attr("x", 0).attr("y", legendY + legendH + 11)
-      .attr("font-size", 8).attr("fill", "currentColor").text("0%");
-    g.append("text").attr("x", legendW).attr("y", legendY + legendH + 11)
-      .attr("text-anchor", "end").attr("font-size", 8).attr("fill", "currentColor")
-      .text(`${(maxVal * 100).toFixed(2)}%`);
-    g.append("text").attr("x", legendW / 2).attr("y", legendY + legendH + 11)
-      .attr("text-anchor", "middle").attr("font-size", 8).attr("fill", "var(--light-gray)")
-      .text(locale === "zh" ? "平均丰度" : "Mean Abundance");
-  }, [category, abundance, locale]);
+    chart.append("rect")
+      .attr("x", 0)
+      .attr("y", legendY)
+      .attr("width", legendWidth)
+      .attr("height", 12)
+      .attr("rx", 4)
+      .attr("fill", `url(#${gradientId})`);
+    chart.append("text")
+      .attr("x", 0)
+      .attr("y", legendY + 28)
+      .attr("font-size", 10)
+      .attr("fill", "currentColor")
+      .text("0%");
+    chart.append("text")
+      .attr("x", legendWidth)
+      .attr("y", legendY + 28)
+      .attr("text-anchor", "end")
+      .attr("font-size", 10)
+      .attr("fill", "currentColor")
+      .text(`${(maxValue * 100).toFixed(2)}%`);
+  }, [abundance, category.id, diseaseOrder, locale, matchResult.genera]);
 
   return (
-    <div className={classes.detailPanel}>
-      {/* Category header / 类别标题 */}
+    <>
       <div className={classes.catHeader}>
         <span className={classes.detailIcon}>{category.icon}</span>
         <div>
-          <h2 className={classes.detailName}>{locale === "zh" ? category.name_zh : category.name_en}</h2>
+          <h2 className={classes.detailName}>
+            {locale === "zh" ? category.name_zh : category.name_en}
+          </h2>
           {locale === "en" && <p className={classes.detailZh}>{category.name_zh}</p>}
         </div>
       </div>
 
       <p className={classes.detailDesc}>{category.description}</p>
 
-      {/* Taxa list — each genus links to its Species page / 物种列表，每个属名链接到物种详情页 */}
+      <div className={classes.summaryRow}>
+        <div className={classes.summaryCard}>
+          <span className={classes.summaryLabel}>{t("metabolism.matchedGenera")}</span>
+          <strong>{profileResult?.n_matched ?? matchResult.genera.length}</strong>
+        </div>
+        <div className={classes.summaryCard}>
+          <span className={classes.summaryLabel}>{t("metabolism.strictNc")}</span>
+          <strong>{profileResult?.control_count ?? "—"}</strong>
+        </div>
+        <div className={classes.summaryCard}>
+          <span className={classes.summaryLabel}>{t("metabolism.testedDiseases")}</span>
+          <strong>{profileResult?.disease_profiles.length ?? "—"}</strong>
+        </div>
+        <div className={classes.summaryCard}>
+          <span className={classes.summaryLabel}>{t("metabolism.fallbackMatch")}</span>
+          <strong>{matchResult.fallback ? (locale === "zh" ? "是" : "Yes") : (locale === "zh" ? "否" : "No")}</strong>
+        </div>
+      </div>
+
       <div className={classes.infoBlock}>
         <h4>{t("metabolism.memberGenera")} ({category.taxa.length})</h4>
         <div className={classes.taxaGrid}>
-          {category.taxa.map((t) => (
+          {category.taxa.map((taxon) => (
             <Link
-              key={t}
-              to={`/species/${encodeURIComponent(t)}`}
+              key={taxon}
+              to={`/species/${encodeURIComponent(taxon)}`}
               className={classes.taxonTag}
-              title={`View ${t} species detail`}
+              title={`View ${taxon} species detail`}
             >
-              <i>{t}</i>
+              <i>{taxon}</i>
             </Link>
           ))}
         </div>
       </div>
 
-      {/* Metabolites / 代谢物 */}
       <div className={classes.infoBlock}>
         <h4>{t("metabolism.keyMetabolites")}</h4>
         <div className={classes.metaboliteList}>
-          {category.key_metabolites.map((m) => (
-            <span key={m} className={classes.metaboliteTag}>{m}</span>
+          {category.key_metabolites.map((metabolite) => (
+            <span key={metabolite} className={classes.metaboliteTag}>{metabolite}</span>
           ))}
         </div>
       </div>
 
-      {/* Pathways / 通路 */}
       <div className={classes.infoBlock}>
         <h4>{t("metabolism.relatedPathways")}</h4>
         <div className={classes.pathwayList}>
-          {category.related_pathways.map((p) => (
-            <span key={p} className={classes.pathwayTag}>{p}</span>
+          {pathwayLinks.map((pathway) => (
+            <span key={`${category.id}-${pathway.label}`} className={classes.pathwayTag}>
+              {pathway.label}
+              <span className={classes.pathwayLinks}>
+                {pathway.keggId && (
+                  <a
+                    href={`https://www.kegg.jp/pathway/${pathway.keggId}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className={classes.externalLink}
+                    title={`View ${pathway.keggId} in KEGG`}
+                  >
+                    {t("metabolism.pathway.kegg")}
+                  </a>
+                )}
+                {pathway.metacycId && (
+                  <a
+                    href={`https://metacyc.org/META/NEW-IMAGE?type=PATHWAY&object=${pathway.metacycId}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className={classes.externalLink}
+                    title={`View ${pathway.metacycId} in MetaCyc`}
+                  >
+                    {t("metabolism.pathway.metacyc")}
+                  </a>
+                )}
+              </span>
+            </span>
           ))}
         </div>
       </div>
 
-      {/* Health relevance / 临床意义 */}
       <div className={classes.relevanceBlock}>
         <h4>{t("metabolism.clinicalRelevance")}</h4>
         <p>{category.health_relevance}</p>
       </div>
 
-      {/* Abundance charts (only if data loaded) / 丰度图表 */}
-      {abundance && (
-        <>
-          <div className={classes.chartBlock}>
+      <div className={classes.chartBlock}>
+        <div className={classes.chartHeaderRow}>
+          <div>
             <h4>{t("metabolism.avgAbundance")}</h4>
-            <svg ref={barRef} className={classes.metaChart} />
+            <p className={classes.subtleText}>{t("metabolism.profileNote")}</p>
           </div>
+        </div>
+        {profileLoading && <p className={classes.subtleText}>{t("metabolism.loading")}</p>}
+        {matchResult.fallback && (
+          <p className={classes.subtleText}>{t("metabolism.fallbackMatch")}</p>
+        )}
+        <svg ref={barRef} className={classes.metricChart} />
+      </div>
 
-          <div className={classes.chartBlock}>
+      <div className={classes.chartBlock}>
+        <div className={classes.chartHeaderRow}>
+          <div>
             <h4>{t("metabolism.heatmap")}</h4>
-            <svg ref={heatRef} className={classes.metaChart} />
+            <p className={classes.subtleText}>{t("metabolism.heatmapNote")}</p>
           </div>
-        </>
-      )}
+        </div>
+        <svg ref={heatRef} className={classes.metricChart} />
+      </div>
 
-      {/* References / 参考文献 */}
       {category.references.length > 0 && (
         <div className={classes.refBlock}>
           <h4>{t("metabolism.references")}</h4>
-          {category.references.map((r) => {
-            // If reference looks like a DOI or PubMed ID, make it a link
-            // 如果是DOI或PMID格式，转为可点击链接
-            const doiMatch = r.match(/10\.\d{4,}\/[^\s.,;)]+/);
-            const pmidMatch = r.match(/PMID[:\s]*(\d+)/i);
+          {category.references.map((reference) => {
+            const doiMatch = reference.match(/10\.\d{4,}\/[\w.\-\/]+/);
+            const pmidMatch = reference.match(/PMID[:\s]*(\d+)/i);
             if (pmidMatch) {
               return (
-                <a key={r} href={`https://pubmed.ncbi.nlm.nih.gov/${pmidMatch[1]}`}
-                  target="_blank" rel="noreferrer" className={classes.ref}>
-                  {r}
-                </a>
-              );
-            } else if (doiMatch) {
-              return (
-                <a key={r} href={`https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(doiMatch[0])}%5Bdoi%5D`}
-                  target="_blank" rel="noreferrer" className={classes.ref}>
-                  {r}
+                <a
+                  key={reference}
+                  href={`https://pubmed.ncbi.nlm.nih.gov/${pmidMatch[1]}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={classes.ref}
+                >
+                  {reference}
                 </a>
               );
             }
-            return <span key={r} className={classes.ref}>{r}</span>;
+            if (doiMatch) {
+              return (
+                <a
+                  key={reference}
+                  href={`https://doi.org/${doiMatch[0]}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={classes.ref}
+                >
+                  {reference}
+                </a>
+              );
+            }
+            return <span key={reference} className={classes.ref}>{reference}</span>;
           })}
         </div>
       )}
-    </div>
+    </>
   );
 };
 

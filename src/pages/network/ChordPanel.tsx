@@ -120,8 +120,8 @@ function drawChord(svgEl: SVGSVGElement, data: ChordData, dName: (n: string) => 
     }
   }
 
-  const size = 600;
-  const outerRadius = size / 2 - 80;
+  const size = 800;
+  const outerRadius = size / 2 - 140;
   const innerRadius = outerRadius - 20;
 
   svg.attr("viewBox", `0 0 ${size} ${size}`);
@@ -177,7 +177,7 @@ function drawChord(svgEl: SVGSVGElement, data: ChordData, dName: (n: string) => 
     .attr("font-style", d => d.index >= diseases.length ? "italic" : "normal")
     .text(d => {
       const name = nameOf(d.index);
-      return name.length > 18 ? name.slice(0, 16) + "\u2026" : name;
+      return name.length > 28 ? name.slice(0, 26) + "\u2026" : name;
     });
 
   const ribbons = g.selectAll(".ribbon")

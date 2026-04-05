@@ -280,8 +280,8 @@ const CategoryDetail = ({
     const diseases = Object.keys(abundance.by_disease).slice(0, 12);
     if (availableGenera.length === 0 || diseases.length === 0) return;
 
-    const margin = { top: 90, right: 20, bottom: 20, left: 140 };
-    const cellW = 60, cellH = 24;
+    const margin = { top: 120, right: 20, bottom: 20, left: 140 };
+    const cellW = 65, cellH = 24;
     const W = cellW * diseases.length + margin.left + margin.right;
     const H = cellH * availableGenera.length + margin.top + margin.bottom;
     svg.attr("viewBox", `0 0 ${W} ${H}`);

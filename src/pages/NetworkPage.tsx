@@ -232,9 +232,9 @@ function drawNetwork(svgEl: SVGSVGElement, rawData: NetworkData, dName: (n: stri
     .join("text")
     .text((d) => {
       const label = d.type === "disease" ? dName(d.id) : d.id;
-      return label.length > 14 ? label.slice(0, 12) + "\u2026" : label;
+      return label.length > 22 ? label.slice(0, 20) + "\u2026" : label;
     })
-    .attr("font-size", (d) => d.type === "disease" ? 11 : 9)
+    .attr("font-size", (d) => d.type === "disease" ? 12 : 10)
     .attr("font-style", (d) => d.type === "genus" ? "italic" : "normal")
     .attr("font-weight", (d) => d.type === "disease" ? 600 : 400)
     .attr("fill", "currentColor")

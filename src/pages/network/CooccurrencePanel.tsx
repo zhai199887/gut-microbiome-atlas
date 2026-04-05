@@ -138,7 +138,7 @@ function drawCooccurrence(svgEl: SVGSVGElement, data: CoData) {
 
   const container = svgEl.parentElement!;
   const W = container.clientWidth;
-  const H = container.clientHeight || 550;
+  const H = container.clientHeight || 700;
   svg.attr("viewBox", `0 0 ${W} ${H}`);
 
   const nodes: CoNode[] = data.nodes.map(n => ({ ...n }));
@@ -182,8 +182,8 @@ function drawCooccurrence(svgEl: SVGSVGElement, data: CoData) {
     .selectAll("text")
     .data(nodes)
     .join("text")
-    .text(d => d.id.length > 12 ? d.id.slice(0, 10) + "\u2026" : d.id)
-    .attr("font-size", 9)
+    .text(d => d.id.length > 16 ? d.id.slice(0, 14) + "\u2026" : d.id)
+    .attr("font-size", 10)
     .attr("font-style", "italic")
     .attr("fill", "currentColor")
     .attr("text-anchor", "middle")

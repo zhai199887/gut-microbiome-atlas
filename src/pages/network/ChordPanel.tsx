@@ -1,24 +1,17 @@
-/**
- * ChordPanel.tsx — 弦图面板（嵌入 NetworkPage Tab）
- * 从 ChordPage.tsx 提取核心逻辑，去掉 page wrapper
- */
 import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
+
 import { useI18n } from "@/i18n";
-import { exportSVG, exportPNG } from "@/util/chartExport";
-import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import { cachedFetch } from "@/util/apiCache";
-import classes from "../ChordPage.module.css";
+import { exportPNG, exportSVG } from "@/util/chartExport";
+import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
+import { phylumColor } from "@/util/phylumColors";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+import styles from "./NetworkPanel.module.css";
+import { API_BASE } from "./types";
 
-const PHYLUM_COLORS: Record<string, string> = {
-  Bacillota: "#e74c3c", Bacteroidota: "#3498db", Actinomycetota: "#2ecc71",
-  Pseudomonadota: "#f39c12", Verrucomicrobiota: "#9b59b6",
-  Fusobacteriota: "#1abc9c", Euryarchaeota: "#e67e22",
-};
 const DISEASE_COLOR = "#ff6b6b";
-const DEFAULT_GENUS_COLOR = "#95a5a6";
+const DEFAULT_GENUS_COLOR = "#94a3b8";
 
 interface ChordData {
   diseases: string[];
@@ -28,164 +21,175 @@ interface ChordData {
 }
 
 const ChordPanel = () => {
-  const { t, locale } = useI18n();
+  const { locale } = useI18n();
+  const svgRef = useRef<SVGSVGElement>(null);
   const [topDiseases, setTopDiseases] = useState(10);
   const [topGenera, setTopGenera] = useState(12);
   const [data, setData] = useState<ChordData | null>(null);
-  const [diseaseZh, setDiseaseZh] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const svgRef = useRef<SVGSVGElement>(null);
 
-  const dName = (n: string) => (locale === "zh" && diseaseZh[n]) ? diseaseZh[n] : diseaseDisplayNameI18n(n, locale);
-
-  // 加载中文疾病名
-  useEffect(() => {
-    cachedFetch<Record<string, string>>(`${API_BASE}/api/disease-names-zh`)
-      .then(setDiseaseZh)
-      .catch(() => {});
-  }, []);
-
-  // 加载弦图数据
   useEffect(() => {
     setLoading(true);
     setError("");
     cachedFetch<ChordData>(`${API_BASE}/api/chord-data?top_diseases=${topDiseases}&top_genera=${topGenera}`)
-      .then((d) => setData(d))
-      .catch((err) => setError((err as Error).message ?? "Failed to load chord data"))
+      .then((payload) => setData(payload))
+      .catch((unknownError) => setError(unknownError instanceof Error ? unknownError.message : String(unknownError)))
       .finally(() => setLoading(false));
   }, [topDiseases, topGenera]);
 
-  // 绘制弦图
   useEffect(() => {
     if (!svgRef.current || !data) return;
-    drawChord(svgRef.current, data, dName);
-  }, [data, locale, diseaseZh]);
+    drawChord(svgRef.current, data, locale);
+  }, [data, locale]);
 
   return (
-    <div>
-      {/* 控件 */}
-      <div className={classes.controls}>
-        <div className={classes.field}>
-          <label>{t("chord.topDiseases")}</label>
-          <select className={classes.select} value={topDiseases} onChange={e => setTopDiseases(Number(e.target.value))}>
-            {[5, 8, 10, 12, 15].map(n => <option key={n} value={n}>{n}</option>)}
+    <div className={styles.workspace}>
+      <div className={styles.toolbar}>
+        <div className={styles.field}>
+          <label>{locale === "zh" ? "Top 疾病数" : "Top diseases"}</label>
+          <select className={styles.select} value={topDiseases} onChange={(event) => setTopDiseases(Number(event.target.value))}>
+            {[5, 8, 10, 12, 15].map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
           </select>
         </div>
-        <div className={classes.field}>
-          <label>{t("chord.topGenera")}</label>
-          <select className={classes.select} value={topGenera} onChange={e => setTopGenera(Number(e.target.value))}>
-            {[8, 10, 12, 15, 20].map(n => <option key={n} value={n}>{n}</option>)}
+        <div className={styles.field}>
+          <label>{locale === "zh" ? "Top 菌属数" : "Top genera"}</label>
+          <select className={styles.select} value={topGenera} onChange={(event) => setTopGenera(Number(event.target.value))}>
+            {[8, 10, 12, 15, 20].map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
           </select>
+        </div>
+        <div className={styles.field}>
+          <label>{locale === "zh" ? "导出" : "Export"}</label>
+          <div className={styles.btnGroup}>
+            <button type="button" className={styles.actionBtn} onClick={() => svgRef.current && exportSVG(svgRef.current, `network_chord_${Date.now()}`)}>SVG</button>
+            <button type="button" className={styles.actionBtn} onClick={() => svgRef.current && exportPNG(svgRef.current, `network_chord_${Date.now()}`)}>PNG</button>
+          </div>
         </div>
       </div>
 
-      {loading && <div className={classes.loading}>{t("search.searching")}</div>}
-      {error && <div className={classes.loading} style={{ color: "#ff6b6b" }}>{error}</div>}
+      {loading ? <div className={styles.loading}>{locale === "zh" ? "正在构建弦图..." : "Building chord diagram..."}</div> : null}
+      {error ? <div className={styles.error}>{error}</div> : null}
 
-      {data && (
-        <>
-          <div className={classes.chordContainer}>
-            <svg ref={svgRef} className={classes.chordSvg} />
+      {data ? (
+        <div className={styles.graphCard}>
+          <div className={styles.graphHead}>
+            <div>
+              <h3 className={styles.cardTitle}>{locale === "zh" ? "疾病 × 菌属弦图" : "Disease × genus chord diagram"}</h3>
+              <p className={styles.cardSubtle}>
+                {locale === "zh"
+                  ? "悬停弧段或弦查看名称与权重。"
+                  : "Hover arcs or ribbons to inspect names and weights."}
+              </p>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-            <button onClick={() => { const svg = svgRef.current; if (svg) exportSVG(svg, `chord_${Date.now()}`); }} style={{ fontSize: "0.8rem", padding: "0.3rem 0.8rem", cursor: "pointer", border: "1px solid #dee2e6", borderRadius: "4px", background: "white" }}>{t("export.svg")}</button>
-            <button onClick={() => { const svg = svgRef.current; if (svg) exportPNG(svg, `chord_${Date.now()}`); }} style={{ fontSize: "0.8rem", padding: "0.3rem 0.8rem", cursor: "pointer", border: "1px solid #dee2e6", borderRadius: "4px", background: "white" }}>{t("export.png")}</button>
+          <div className={styles.graphContainer}>
+            <svg ref={svgRef} />
           </div>
-          <p className={classes.hint}>{t("chord.hovering")}</p>
-        </>
-      )}
+        </div>
+      ) : null}
     </div>
   );
 };
 
 export default ChordPanel;
 
-// ── D3 Chord Diagram / D3 弦图 ───────────────────────────────────────────────
-
-function drawChord(svgEl: SVGSVGElement, data: ChordData, dName: (n: string) => string) {
+function drawChord(svgEl: SVGSVGElement, data: ChordData, locale: string) {
   const svg = d3.select(svgEl);
   svg.selectAll("*").remove();
 
   const { diseases, genera, phyla, matrix } = data;
-  const n = diseases.length + genera.length;
+  const total = diseases.length + genera.length;
+  const fullMatrix: number[][] = Array.from({ length: total }, () => Array(total).fill(0));
 
-  const fullMatrix: number[][] = Array.from({ length: n }, () => Array(n).fill(0));
-
-  for (let i = 0; i < diseases.length; i++) {
-    for (let j = 0; j < genera.length; j++) {
-      const val = matrix[i]?.[j] ?? 0;
-      fullMatrix[i][diseases.length + j] = val;
-      fullMatrix[diseases.length + j][i] = val;
+  for (let i = 0; i < diseases.length; i += 1) {
+    for (let j = 0; j < genera.length; j += 1) {
+      const value = matrix[i]?.[j] ?? 0;
+      fullMatrix[i][diseases.length + j] = value;
+      fullMatrix[diseases.length + j][i] = value;
     }
   }
 
-  const size = 800;
+  const size = 880;
   const outerRadius = size / 2 - 140;
-  const innerRadius = outerRadius - 20;
+  const innerRadius = outerRadius - 24;
 
   svg.attr("viewBox", `0 0 ${size} ${size}`);
-  const g = svg.append("g").attr("transform", `translate(${size / 2},${size / 2})`);
+  const g = svg.append("g").attr("transform", `translate(${size / 2}, ${size / 2})`);
 
   const chord = d3.chord().padAngle(0.04).sortSubgroups(d3.descending);
   const chords = chord(fullMatrix);
-
   const arc = d3.arc<d3.ChordGroup>().innerRadius(innerRadius).outerRadius(outerRadius);
   const ribbon = d3.ribbon<d3.Chord, d3.ChordSubgroup>().radius(innerRadius);
 
-  const colorOf = (i: number) => {
-    if (i < diseases.length) return DISEASE_COLOR;
-    return PHYLUM_COLORS[phyla[i - diseases.length]] ?? DEFAULT_GENUS_COLOR;
+  const colorOf = (index: number) => {
+    if (index < diseases.length) return DISEASE_COLOR;
+    return phylumColor(phyla[index - diseases.length]) ?? DEFAULT_GENUS_COLOR;
   };
 
-  const nameOf = (i: number) => {
-    if (i < diseases.length) return dName(diseases[i]);
-    return genera[i - diseases.length];
-  };
+  const nameOf = (index: number) => (
+    index < diseases.length
+      ? diseaseDisplayNameI18n(diseases[index], locale)
+      : genera[index - diseases.length]
+  );
 
   const groups = g.selectAll(".arc")
     .data(chords.groups)
     .join("g")
     .attr("class", "arc");
 
-  groups.append("path")
-    .attr("d", arc as any)
-    .attr("fill", d => colorOf(d.index))
-    .attr("stroke", "rgba(0,0,0,0.3)")
-    .style("cursor", "pointer")
-    .on("mouseover", function (_event, d) {
-      ribbons.style("opacity", r =>
-        r.source.index === d.index || r.target.index === d.index ? 0.8 : 0.05
-      );
-    })
-    .on("mouseout", () => {
-      ribbons.style("opacity", 0.6);
-    });
-
-  groups.append("text")
-    .each(d => { (d as any).angle = (d.startAngle + d.endAngle) / 2; })
-    .attr("dy", "0.35em")
-    .attr("transform", d => {
-      const angle = ((d as any).angle * 180) / Math.PI - 90;
-      const flip = (d as any).angle > Math.PI;
-      return `rotate(${angle}) translate(${outerRadius + 10}) ${flip ? "rotate(180)" : ""}`;
-    })
-    .attr("text-anchor", d => (d as any).angle > Math.PI ? "end" : "start")
-    .attr("font-size", 12)
-    .attr("fill", "currentColor")
-    .attr("font-weight", 500)
-    .attr("font-style", d => d.index >= diseases.length ? "italic" : "normal")
-    .text(d => {
-      const name = nameOf(d.index);
-      return name.length > 28 ? name.slice(0, 26) + "\u2026" : name;
-    });
-
   const ribbons = g.selectAll(".ribbon")
     .data(chords)
     .join("path")
     .attr("class", "ribbon")
     .attr("d", ribbon as any)
-    .attr("fill", d => colorOf(d.source.index))
-    .attr("opacity", 0.6)
+    .attr("fill", (item) => colorOf(item.source.index))
+    .attr("opacity", 0.62)
     .attr("stroke", "none");
+
+  groups.append("path")
+    .attr("d", arc as any)
+    .attr("fill", (item) => colorOf(item.index))
+    .attr("stroke", "rgba(0,0,0,0.3)")
+    .style("cursor", "pointer")
+    .on("mouseover", (_event, item) => {
+      ribbons.style("opacity", (ribbonItem) => (
+        ribbonItem.source.index === item.index || ribbonItem.target.index === item.index ? 0.85 : 0.06
+      ));
+    })
+    .on("mouseout", () => {
+      ribbons.style("opacity", 0.62);
+    })
+    .append("title")
+    .text((item) => {
+      const totalValue = d3.sum(fullMatrix[item.index] ?? []);
+      return `${nameOf(item.index)}\n${locale === "zh" ? "总权重" : "Total weight"}: ${totalValue.toFixed(3)}`;
+    });
+
+  groups.append("text")
+    .each((item) => { (item as any).angle = (item.startAngle + item.endAngle) / 2; })
+    .attr("dy", "0.35em")
+    .attr("transform", (item) => {
+      const angle = ((item as any).angle * 180) / Math.PI - 90;
+      const flip = (item as any).angle > Math.PI;
+      return `rotate(${angle}) translate(${outerRadius + 12}) ${flip ? "rotate(180)" : ""}`;
+    })
+    .attr("text-anchor", (item) => ((item as any).angle > Math.PI ? "end" : "start"))
+    .attr("font-size", 12)
+    .attr("fill", "currentColor")
+    .attr("font-style", (item) => (item.index >= diseases.length ? "italic" : "normal"))
+    .text((item) => {
+      const label = nameOf(item.index);
+      return label.length > 26 ? `${label.slice(0, 24)}...` : label;
+    });
+
+  ribbons.append("title")
+    .text((item) => {
+      const left = nameOf(item.source.index);
+      const right = nameOf(item.target.index);
+      return `${left} ↔ ${right}\n${locale === "zh" ? "权重" : "Weight"}: ${item.source.value.toFixed(3)}`;
+    });
 }

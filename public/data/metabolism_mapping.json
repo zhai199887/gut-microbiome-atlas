@@ -23,7 +23,7 @@
       "key_metabolites": ["Butyrate", "Propionate", "Acetate"],
       "related_pathways": ["Pyruvate fermentation", "Wood-Ljungdahl pathway", "Acrylate pathway"],
       "health_relevance": "Low SCFA producers are associated with IBD, colorectal cancer, obesity, and metabolic syndrome.",
-      "references": ["DOI:10.1038/nrmicro.2016.8", "DOI:10.1016/j.cell.2016.05.041"]
+      "references": ["PMID:26963409", "PMID:27259147"]
     },
     {
       "id": "bile_acid_metabolism",

@@ -316,9 +316,9 @@ const BiomarkerProfile = ({ genus }: { genus: string }) => {
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
 
-    const margin = { top: 20, right: 80, bottom: 30, left: 200 };
+    const margin = { top: 40, right: 80, bottom: 30, left: 260 };
     const barH = 18;
-    const W = 800;
+    const W = 900;
     const H = Math.max(200, display.length * (barH + 4) + margin.top + margin.bottom);
     svg.attr("viewBox", `0 0 ${W} ${H}`);
 
@@ -376,8 +376,8 @@ const BiomarkerProfile = ({ genus }: { genus: string }) => {
 
     // Y axis
     g.append("g")
-      .call(d3.axisLeft(yScale).tickFormat((d) => diseaseShortNameI18n(d, locale, 28)))
-      .attr("font-size", 9);
+      .call(d3.axisLeft(yScale).tickFormat((d) => diseaseShortNameI18n(d, locale, 36)))
+      .attr("font-size", 10);
 
     // X axis
     g.append("g")
@@ -433,7 +433,7 @@ function drawBarChart(
 
   const isDisease = nameType === "disease";
   const isCountry = nameType === "country";
-  const leftM = isDisease ? 260 : isCountry ? 200 : 180;
+  const leftM = isDisease ? 300 : isCountry ? 200 : 180;
   const margin = { top: 10, right: 80, bottom: 30, left: leftM };
   const W = 1000, H = Math.max(200, data.length * 26 + margin.top + margin.bottom);
   svg.attr("viewBox", `0 0 ${W} ${H}`);
@@ -489,7 +489,7 @@ function drawBarChart(
   g.append("g")
     .call(d3.axisLeft(yScale).tickFormat((d) => {
       const translated = translateName(d, locale, nameType);
-      const limit = isDisease ? 34 : isCountry ? 28 : 24;
+      const limit = isDisease ? 40 : isCountry ? 28 : 24;
       return translated.length > limit ? translated.slice(0, limit - 2) + "…" : translated;
     }))
     .attr("font-size", 11);

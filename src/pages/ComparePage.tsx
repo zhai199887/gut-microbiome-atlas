@@ -1,65 +1,89 @@
-/**
- * ComparePage.tsx
- * Differential microbiome analysis between two sample groups
- * 两组样本间的差异微生物组分析页面（主组件，图表已拆分为子组件）
- */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useI18n } from "@/i18n";
-import { exportTable } from "@/util/export";
-import { exportSVG, exportPNG } from "@/util/chartExport";
-import { cachedFetch } from "@/util/apiCache";
-import "@/components/tooltip";
-import classes from "./ComparePage.module.css";
 
-// Sub-components / 子组件
-import GroupFilterPanel from "./compare/GroupFilterPanel";
-import DiffBarChart from "./compare/DiffBarChart";
-import VolcanoChart from "./compare/VolcanoChart";
+import { useI18n } from "@/i18n";
+import "@/components/tooltip";
+import { cachedFetch } from "@/util/apiCache";
+import { exportPNG, exportSVG } from "@/util/chartExport";
+import { exportTable } from "@/util/export";
+
+import classes from "./ComparePage.module.css";
 import AlphaBoxChart from "./compare/AlphaBoxChart";
 import BetaPCoAChart from "./compare/BetaPCoAChart";
 import CrossStudyPanel from "./compare/CrossStudyPanel";
-
-// Types & constants / 类型与常量
-import type { GroupFilter, DiffResult, FilterOptions, Tab } from "./compare/types";
-import { API_BASE, TAXONOMY_LEVELS, METHODS } from "./compare/types";
-
-// ── Main component / 主组件 ───────────────────────────────────────────────────
+import DiffBarChart from "./compare/DiffBarChart";
+import DiffHeatmap from "./compare/DiffHeatmap";
+import GroupFilterPanel from "./compare/GroupFilterPanel";
+import SpearmanChart from "./compare/SpearmanChart";
+import StackedBarChart from "./compare/StackedBarChart";
+import VolcanoChart from "./compare/VolcanoChart";
+import {
+  API_BASE,
+  METHODS,
+  TAXONOMY_LEVELS,
+  type DiffResult,
+  type FilterOptions,
+  type GroupFilter,
+  type SampleCountResult,
+  type SpearmanResult,
+  type Tab,
+  type TaxonomyLevel,
+} from "./compare/types";
 
 const ComparePage = () => {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
   const [filterLoading, setFilterLoading] = useState(true);
-
   const [groupA, setGroupA] = useState<GroupFilter>({ country: "", disease: "", age_group: "", sex: "" });
   const [groupB, setGroupB] = useState<GroupFilter>({ country: "", disease: "", age_group: "", sex: "" });
-  const [taxLevel, setTaxLevel] = useState<"genus" | "phylum">("genus");
-  const [method, setMethod] = useState<string>("wilcoxon");
-
+  const [sampleCounts, setSampleCounts] = useState<SampleCountResult | null>(null);
+  const [sampleCountLoading, setSampleCountLoading] = useState(false);
+  const [taxLevel, setTaxLevel] = useState<TaxonomyLevel>("genus");
+  const [method, setMethod] = useState<(typeof METHODS)[number]>("wilcoxon");
   const [result, setResult] = useState<DiffResult | null>(null);
+  const [spearman, setSpearman] = useState<SpearmanResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [spearmanLoading, setSpearmanLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("bar");
 
-  // Load filter options on mount / 挂载时加载筛选选项
   useEffect(() => {
     cachedFetch<FilterOptions>(`${API_BASE}/api/filter-options`)
-      .then((data) => {
-        setFilterOptions(data);
-        setFilterLoading(false);
-      })
-      .catch(() => {
-        setFilterLoading(false);
-        setError(t("compare.backendError"));
-      });
-  }, []);
+      .then((data) => setFilterOptions(data))
+      .catch(() => setError(t("compare.backendError")))
+      .finally(() => setFilterLoading(false));
+  }, [t]);
+
+  useEffect(() => {
+    if (filterLoading) return;
+    setSampleCountLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/estimate-sample-count`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            group_a_filter: groupA,
+            group_b_filter: groupB,
+          }),
+        });
+        if (!response.ok) return;
+        setSampleCounts(await response.json());
+      } catch {
+        // Ignore preview errors and keep the workspace usable.
+      } finally {
+        setSampleCountLoading(false);
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [filterLoading, groupA, groupB]);
 
   const runAnalysis = async () => {
     setLoading(true);
     setError(null);
     setResult(null);
     try {
-      const res = await fetch(`${API_BASE}/api/diff-analysis`, {
+      const response = await fetch(`${API_BASE}/api/diff-analysis`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -69,84 +93,95 @@ const ComparePage = () => {
           method,
         }),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        const detail: string = err.detail ?? "Analysis failed";
-        // Translate backend error messages for i18n
-        if (detail.includes("no samples match")) {
-          const group = detail.startsWith("Group A") ? "A" : "B";
-          throw new Error(t("compare.noSamples", { group }));
-        }
-        throw new Error(detail);
+
+      if (!response.ok) {
+        const payload = await response.json();
+        throw new Error(payload.detail ?? "Analysis failed");
       }
-      const data: DiffResult = await res.json();
+
+      const data: DiffResult = await response.json();
       setResult(data);
       setActiveTab("bar");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+
+      setSpearmanLoading(true);
+      setSpearman(null);
+      const corrResponse = await fetch(`${API_BASE}/api/spearman-analysis`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          group_a_filter: groupA,
+          group_b_filter: groupB,
+          taxonomy_level: taxLevel,
+          max_taxa: 16,
+        }),
+      });
+      if (corrResponse.ok) {
+        setSpearman(await corrResponse.json());
+      }
+    } catch (unknownError) {
+      setError(unknownError instanceof Error ? unknownError.message : String(unknownError));
     } finally {
       setLoading(false);
+      setSpearmanLoading(false);
     }
   };
 
-  // Export result CSV / 导出结果CSV
   const exportCsv = () => {
     if (!result) return;
     exportTable(
-      result.diff_taxa.map((t) => ({
-        Taxon: t.taxon,
-        Mean_A: t.mean_a,
-        Mean_B: t.mean_b,
-        Log2FC: t.log2fc,
-        P_value: t.p_value,
-        Adjusted_P: t.adjusted_p,
-        Effect_size: t.effect_size,
+      result.diff_taxa.map((taxon) => ({
+        Taxon: taxon.taxon,
+        Phylum: taxon.phylum,
+        Mean_A_Percent: taxon.mean_a,
+        Mean_B_Percent: taxon.mean_b,
+        Prevalence_A: taxon.prevalence_a,
+        Prevalence_B: taxon.prevalence_b,
+        Log2FC: taxon.log2fc,
+        P_Value: taxon.p_value,
+        Adjusted_P: taxon.adjusted_p,
+        Effect_Size: taxon.effect_size,
       })),
-      `diff_analysis_${Date.now()}`,
+      `compare_${taxLevel}_${Date.now()}`,
     );
   };
 
-  // Export current chart as SVG / 导出当前图表SVG
   const exportSvgChart = () => {
-    const svgEl = document.querySelector<SVGSVGElement>(".compare-chart");
-    if (svgEl) exportSVG(svgEl, `chart_${activeTab}_${Date.now()}`);
+    const svgElement = document.querySelector<SVGSVGElement>(".compare-chart");
+    if (svgElement) exportSVG(svgElement, `compare_${activeTab}_${Date.now()}`);
   };
 
   const exportPngChart = () => {
-    const svgEl = document.querySelector<SVGSVGElement>(".compare-chart");
-    if (svgEl) exportPNG(svgEl, `chart_${activeTab}_${Date.now()}`);
+    const svgElement = document.querySelector<SVGSVGElement>(".compare-chart");
+    if (svgElement) exportPNG(svgElement, `compare_${activeTab}_${Date.now()}`);
   };
 
-  // All available methods / 所有可选统计方法
-  const ALL_METHODS = ["wilcoxon", "t-test", "lefse", "permanova"] as const;
-
-  // Tabs including LEfSe & PERMANOVA / 包含 LEfSe 和 PERMANOVA 的标签
-  const TABS: [Tab, string][] = [
-    ["bar", t("compare.tab.bar")],
-    ["volcano", t("compare.tab.volcano")],
-    ["alpha", t("compare.tab.alpha")],
-    ["beta", t("compare.tab.beta")],
-  ];
-
-  // Add LEfSe and PERMANOVA tabs when those methods are selected
-  if (result?.lefse_results) {
-    TABS.push(["lefse", t("compare.tab.lefse")]);
-  }
-  if (result?.permanova) {
-    TABS.push(["permanova", t("compare.tab.permanova")]);
-  }
-  // crossstudy tab is always available (independent of pair-wise results)
+  const tabs = useMemo(() => {
+    const nextTabs: Array<[Tab, string]> = [
+      ["bar", t("compare.tab.bar")],
+      ["volcano", t("compare.tab.volcano")],
+      ["alpha", t("compare.tab.alpha")],
+      ["beta", t("compare.tab.beta")],
+      ["composition", locale === "zh" ? "组成结构" : "Composition"],
+      ["heatmap", locale === "zh" ? "差异热图" : "Heatmap"],
+      ["correlation", locale === "zh" ? "Spearman" : "Spearman"],
+    ];
+    if (result?.lefse_results) nextTabs.push(["lefse", t("compare.tab.lefse")]);
+    if (result?.permanova) nextTabs.push(["permanova", t("compare.tab.permanova")]);
+    return nextTabs;
+  }, [locale, result?.lefse_results, result?.permanova, t]);
 
   return (
     <div className={classes.page}>
-      {/* Navigation / 导航栏 */}
       <div className={classes.nav}>
         <Link to="/" className={classes.back}>{t("compare.back")}</Link>
         <h1 className={classes.title}>{t("compare.title")}</h1>
-        <span className={classes.subtitle}>{t("compare.subtitle")}</span>
+        <span className={classes.subtitle}>
+          {locale === "zh"
+            ? "按真实样本规模预估、双组差异、alpha/beta 多样性、组成结构和跨研究证据逐层查看。"
+            : "Inspect sample size, differential taxa, alpha/beta diversity, composition, and cross-study evidence in one workspace."}
+        </span>
       </div>
 
-      {/* Filter panel / 筛选面板 */}
       <section className={classes.filterSection}>
         {filterLoading ? (
           <p className={classes.hint}>{t("compare.loading")}</p>
@@ -158,6 +193,7 @@ const ComparePage = () => {
               value={groupA}
               onChange={setGroupA}
               options={filterOptions}
+              sampleCount={sampleCounts?.group_a ?? null}
             />
             <GroupFilterPanel
               label={t("compare.groupB")}
@@ -165,202 +201,195 @@ const ComparePage = () => {
               value={groupB}
               onChange={setGroupB}
               options={filterOptions}
+              sampleCount={sampleCounts?.group_b ?? null}
             />
           </div>
         )}
 
-        {/* Method controls / 方法控制 */}
         <div className={classes.controls}>
           <div className={classes.control}>
             <label>{t("compare.taxLevel")}</label>
             <div className={classes.btnGroup}>
-              {TAXONOMY_LEVELS.map((l) => (
+              {TAXONOMY_LEVELS.map((level) => (
                 <button
-                  key={l}
+                  key={level}
+                  type="button"
                   className={classes.ctrlBtn}
-                  data-active={taxLevel === l}
-                  onClick={() => setTaxLevel(l)}
+                  data-active={taxLevel === level}
+                  onClick={() => setTaxLevel(level)}
                 >
-                  {l}
+                  {level}
                 </button>
               ))}
             </div>
           </div>
+
           <div className={classes.control}>
             <label>{t("compare.statTest")}</label>
             <div className={classes.btnGroup}>
-              {ALL_METHODS.map((m) => (
+              {METHODS.map((item) => (
                 <button
-                  key={m}
+                  key={item}
+                  type="button"
                   className={classes.ctrlBtn}
-                  data-active={method === m}
-                  onClick={() => setMethod(m)}
+                  data-active={method === item}
+                  onClick={() => setMethod(item)}
                 >
-                  {m === "lefse" ? "LEfSe" : m === "permanova" ? "PERMANOVA" : m}
+                  {item === "lefse" ? "LEfSe" : item === "permanova" ? "PERMANOVA" : item}
                 </button>
               ))}
             </div>
           </div>
-          <button
-            className={classes.analyzeBtn}
-            onClick={runAnalysis}
-            disabled={loading}
-          >
+
+          <div className={classes.previewMeta}>
+            {sampleCountLoading ? (
+              <span>{locale === "zh" ? "正在预估样本量..." : "Estimating sample counts..."}</span>
+            ) : (
+              <>
+                <span>A: {sampleCounts?.group_a.abundance_n ?? 0}</span>
+                <span>B: {sampleCounts?.group_b.abundance_n ?? 0}</span>
+              </>
+            )}
+          </div>
+
+          <button className={classes.analyzeBtn} type="button" onClick={runAnalysis} disabled={loading}>
             {loading ? t("compare.analyzing") : t("compare.run")}
           </button>
         </div>
       </section>
 
-      {/* Error / 错误信息 */}
-      {error && <div className={classes.error}>{error}</div>}
+      {error ? <div className={classes.error}>{error}</div> : null}
 
-      {/* Results / 分析结果 */}
-      {result && (
+      {result ? (
         <section className={classes.resultSection}>
-          {/* Summary bar / 摘要信息栏 */}
-          <div className={classes.summary}>
-            <span>
-              <b style={{ color: "var(--secondary)" }}>{result.summary.group_a_name}</b>
-              {" "}(n={result.summary.group_a_n})
-            </span>
-            <span className={classes.vs}>{t("compare.vs")}</span>
-            <span>
-              <b style={{ color: "var(--primary)" }}>{result.summary.group_b_name}</b>
-              {" "}(n={result.summary.group_b_n})
-            </span>
-            <span className={classes.meta}>
-              {result.summary.total_taxa} {result.summary.taxonomy_level === "genus" ? "genera" : "phyla"} · {result.summary.method}
-            </span>
+          <div className={classes.workspaceHeader}>
+            <div className={classes.summaryCard}>
+              <span>{locale === "zh" ? "工作台摘要" : "Workspace summary"}</span>
+              <strong>{result.summary.group_a_name} vs {result.summary.group_b_name}</strong>
+              <small>{taxLevel} / {method}</small>
+            </div>
+            <div className={classes.summaryCard}>
+              <span>{locale === "zh" ? "匹配样本" : "Matched samples"}</span>
+              <strong>{result.summary.group_a_n} / {result.summary.group_b_n}</strong>
+              <small>A / B</small>
+            </div>
+            <div className={classes.summaryCard}>
+              <span>{locale === "zh" ? "总分类单元" : "Total taxa"}</span>
+              <strong>{result.summary.total_taxa}</strong>
+              <small>{result.summary.taxonomy_level}</small>
+            </div>
+            <div className={classes.summaryCard}>
+              <span>{locale === "zh" ? "显著分类单元" : "Significant taxa"}</span>
+              <strong>{result.summary.significant_taxa}</strong>
+              <small>adj. p &lt; 0.05</small>
+            </div>
           </div>
 
-          {/* Tab bar / 标签栏 */}
           <div className={classes.tabs}>
-            {TABS.map(([id, label]) => (
+            {tabs.map(([tabId, label]) => (
               <button
-                key={id}
+                key={tabId}
+                type="button"
                 className={classes.tab}
-                data-active={activeTab === id}
-                onClick={() => setActiveTab(id)}
+                data-active={activeTab === tabId}
+                onClick={() => setActiveTab(tabId)}
               >
                 {label}
               </button>
             ))}
           </div>
 
-          {/* Chart area / 图表区域 */}
           <div className={classes.chartArea}>
-            {activeTab === "bar"     && <DiffBarChart result={result} />}
-            {activeTab === "volcano" && <VolcanoChart result={result} />}
-            {activeTab === "alpha"   && <AlphaBoxChart result={result} />}
-            {activeTab === "beta"    && <BetaPCoAChart result={result} />}
-            {activeTab === "lefse"   && <LefseResults result={result} />}
-            {activeTab === "permanova" && <PermanovaResults result={result} />}
+            {activeTab === "bar" ? <DiffBarChart result={result} /> : null}
+            {activeTab === "volcano" ? <VolcanoChart result={result} /> : null}
+            {activeTab === "alpha" ? <AlphaBoxChart result={result} /> : null}
+            {activeTab === "beta" ? <BetaPCoAChart result={result} /> : null}
+            {activeTab === "composition" ? <StackedBarChart result={result} /> : null}
+            {activeTab === "heatmap" ? <DiffHeatmap result={result} /> : null}
+            {activeTab === "correlation" ? (
+              spearmanLoading ? (
+                <div className={classes.emptyPanel}>
+                  {locale === "zh" ? "正在计算 Spearman 相关结构..." : "Computing Spearman correlation structure..."}
+                </div>
+              ) : (
+                <SpearmanChart result={spearman} />
+              )
+            ) : null}
+            {activeTab === "lefse" ? <LefseResults result={result} /> : null}
+            {activeTab === "permanova" ? <PermanovaResults result={result} /> : null}
           </div>
 
-          {/* Export buttons / 导出按钮 */}
           <div className={classes.exportRow}>
-            <button className={classes.exportBtn} onClick={exportCsv}>{t("export.csv")}</button>
-            <button className={classes.exportBtn} onClick={exportSvgChart}>{t("export.svg")}</button>
-            <button className={classes.exportBtn} onClick={exportPngChart}>{t("export.png")}</button>
+            <button className={classes.exportBtn} type="button" onClick={exportCsv}>{t("export.csv")}</button>
+            <button className={classes.exportBtn} type="button" onClick={exportSvgChart}>{t("export.svg")}</button>
+            <button className={classes.exportBtn} type="button" onClick={exportPngChart}>{t("export.png")}</button>
           </div>
         </section>
-      )}
+      ) : null}
 
-      {/* Cross-study meta-analysis / 跨研究元分析（独立区块） */}
       <section className={classes.filterSection}>
-        <CrossStudyPanel />
+        <CrossStudyPanel taxonomyLevel={taxLevel} />
       </section>
     </div>
   );
 };
 
-// ── LEfSe results display / LEfSe 结果展示 ──────────────────────────────────
-
 const LefseResults = ({ result }: { result: DiffResult }) => {
   const { locale } = useI18n();
-  if (!result.lefse_results || result.lefse_results.length === 0) {
-    return <p style={{ color: "var(--light-gray)", padding: "2rem" }}>
-      {locale === "zh" ? "未发现显著的 LEfSe 特征。" : "No significant LEfSe features found."}
-    </p>;
+  if (!result.lefse_results?.length) {
+    return <div className={classes.emptyPanel}>{locale === "zh" ? "没有显著 LEfSe 特征" : "No significant LEfSe features found"}</div>;
   }
 
-  const maxLda = Math.max(...result.lefse_results.map((r) => Math.abs(r.lda_score)));
-
   return (
-    <div style={{ padding: "1rem" }}>
-      <p style={{ color: "var(--light-gray)", fontSize: "0.85rem", marginBottom: "1rem" }}>
-        {locale === "zh"
-          ? "LEfSe（LDA效应量）— LDA score ≥ 2.0 且 Kruskal-Wallis p < 0.05 的特征"
-          : "LEfSe (LDA Effect Size) — features with LDA score ≥ 2.0 and Kruskal-Wallis p < 0.05"}
-      </p>
-      <svg className="compare-chart" viewBox={`0 0 700 ${Math.max(200, result.lefse_results.length * 24 + 40)}`}
-        style={{ width: "100%", maxWidth: 700 }}>
-        {result.lefse_results.map((feat, i) => {
-          const barWidth = (Math.abs(feat.lda_score) / maxLda) * 400;
-          const isGroupA = feat.enriched_group === "A";
-          const color = isGroupA ? "var(--secondary)" : "var(--primary)";
-          return (
-            <g key={feat.taxon} transform={`translate(200, ${i * 24 + 10})`}>
-              <text x={-5} y={14} textAnchor="end" fill="currentColor" fontSize={11}>
-                {feat.taxon.length > 22 ? feat.taxon.slice(0, 20) + "…" : feat.taxon}
-              </text>
-              <rect x={0} y={2} width={barWidth} height={18} fill={color} opacity={0.8} rx={2} />
-              <text x={barWidth + 5} y={15} fill="currentColor" fontSize={10}>
-                {feat.lda_score.toFixed(2)}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-};
-
-// ── PERMANOVA results display / PERMANOVA 结果展示 ───────────────────────────
-
-const PermanovaResults = ({ result }: { result: DiffResult }) => {
-  const { locale } = useI18n();
-  if (!result.permanova) {
-    return <p style={{ color: "var(--light-gray)", padding: "2rem" }}>
-      {locale === "zh" ? "无 PERMANOVA 结果。" : "No PERMANOVA results available."}
-    </p>;
-  }
-
-  const p = result.permanova;
-  const sigStyle = { color: p.p_value < 0.05 ? "var(--primary)" : "var(--light-gray)" };
-  const zh = locale === "zh";
-
-  return (
-    <div style={{ padding: "2rem" }}>
-      <h3 style={{ marginBottom: "1rem" }}>{zh ? "PERMANOVA 结果" : "PERMANOVA Results"}</h3>
-      <p style={{ color: "var(--light-gray)", fontSize: "0.85rem", marginBottom: "1.5rem" }}>
-        {zh
-          ? `置换多元方差分析 — 检验两组在 Bray-Curtis 距离空间中的质心是否存在差异（${p.permutations} 次置换）`
-          : `Permutational Multivariate Analysis of Variance — tests whether group centroids differ in Bray-Curtis distance space (${p.permutations} permutations)`}
-      </p>
-      <table style={{ borderCollapse: "collapse", width: "100%", maxWidth: 500 }}>
+    <div className={classes.simpleTableWrap}>
+      <table className={classes.simpleTable}>
+        <thead>
+          <tr>
+            <th>{locale === "zh" ? "分类群" : "Taxon"}</th>
+            <th>LDA</th>
+            <th>p</th>
+            <th>{locale === "zh" ? "富集组" : "Enriched in"}</th>
+          </tr>
+        </thead>
         <tbody>
-          {[
-            [zh ? "F统计量 (pseudo-F)" : "F-statistic (pseudo-F)", p.f_statistic.toFixed(4)],
-            [zh ? "p值" : "p-value", <span style={sigStyle}>{p.p_value.toFixed(4)}{p.p_value < 0.05 ? " *" : ""}</span>],
-            [zh ? "R²（效应量）" : "R² (effect size)", p.r_squared.toFixed(4)],
-            [zh ? "置换次数" : "Permutations", String(p.permutations)],
-            [zh ? "样本数 (A)" : "Samples (A)", String(p.n_a)],
-            [zh ? "样本数 (B)" : "Samples (B)", String(p.n_b)],
-          ].map(([label, val], i) => (
-            <tr key={i} style={{ borderBottom: "1px solid var(--gray)" }}>
-              <td style={{ padding: "0.5rem 1rem", color: "var(--light-gray)" }}>{label}</td>
-              <td style={{ padding: "0.5rem 1rem", fontWeight: 600 }}>{val}</td>
+          {result.lefse_results.map((row) => (
+            <tr key={row.taxon}>
+              <td>{row.taxon}</td>
+              <td>{row.lda_score.toFixed(2)}</td>
+              <td>{row.p_value.toExponential(2)}</td>
+              <td>{row.enriched_group}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p style={{ color: "var(--light-gray)", fontSize: "0.8rem", marginTop: "1rem" }}>
-        {p.p_value < 0.05
-          ? (zh ? "两组微生物组组成存在显著差异 (p < 0.05)。" : "The two groups have significantly different microbiome compositions (p < 0.05).")
-          : (zh ? "两组微生物组组成无显著差异。" : "No significant difference in microbiome composition between the two groups.")}
-        {" "}R² = {(p.r_squared * 100).toFixed(1)}%{zh ? " 的变异可由分组解释。" : " of variation explained by grouping."}
-      </p>
+    </div>
+  );
+};
+
+const PermanovaResults = ({ result }: { result: DiffResult }) => {
+  const { locale } = useI18n();
+  if (!result.permanova) {
+    return <div className={classes.emptyPanel}>{locale === "zh" ? "没有 PERMANOVA 结果" : "No PERMANOVA result available"}</div>;
+  }
+
+  return (
+    <div className={classes.permanovaBox}>
+      <div>
+        <span>pseudo-F</span>
+        <strong>{result.permanova.f_statistic.toFixed(4)}</strong>
+      </div>
+      <div>
+        <span>p-value</span>
+        <strong>{result.permanova.p_value.toFixed(4)}</strong>
+      </div>
+      <div>
+        <span>R²</span>
+        <strong>{result.permanova.r_squared.toFixed(4)}</strong>
+      </div>
+      <div>
+        <span>{locale === "zh" ? "置换次数" : "Permutations"}</span>
+        <strong>{result.permanova.permutations}</strong>
+      </div>
     </div>
   );
 };

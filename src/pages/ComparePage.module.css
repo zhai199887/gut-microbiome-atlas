@@ -272,3 +272,296 @@
   color: var(--light-gray);
   font-size: 0.88rem;
 }
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.countBadge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in hsl, var(--white), transparent 92%);
+  color: var(--light-gray);
+  font-size: 0.75rem;
+}
+
+.groupMeta {
+  color: var(--light-gray);
+  font-size: 0.75rem;
+}
+
+.previewMeta {
+  display: flex;
+  gap: 10px;
+  color: var(--light-gray);
+  font-size: 0.82rem;
+  margin-left: auto;
+}
+
+.workspaceHeader {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaryCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--dark-gray);
+  border-radius: 10px;
+  background: color-mix(in hsl, var(--black), var(--white) 4%);
+}
+
+.summaryCard span,
+.summaryCard small {
+  color: var(--light-gray);
+  font-size: 0.76rem;
+}
+
+.summaryCard strong {
+  font-size: 1.05rem;
+}
+
+.betaWrap {
+  width: 100%;
+}
+
+.metricTabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.metricTab {
+  border: 1px solid var(--gray);
+  background: transparent;
+  color: var(--light-gray);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.metricTab[data-active="true"] {
+  border-color: var(--primary);
+  color: var(--white);
+}
+
+.compositionWrap,
+.heatmapWrap,
+.spearmanWrap {
+  width: 100%;
+}
+
+.compositionHeader {
+  margin-bottom: 14px;
+}
+
+.compositionHeader h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.compositionHeader p {
+  margin: 0;
+  color: var(--light-gray);
+  font-size: 0.82rem;
+}
+
+.legendGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--light-gray);
+  font-size: 0.8rem;
+}
+
+.legendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legendValue {
+  margin-left: auto;
+  color: var(--white);
+}
+
+.tableLike {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.heatmapHeaderRow,
+.heatmapRow {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.heatmapHeaderRow {
+  color: var(--light-gray);
+  font-size: 0.8rem;
+}
+
+.heatmapLabel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 48px;
+}
+
+.heatmapLabel small {
+  color: var(--light-gray);
+}
+
+.heatCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  color: var(--white);
+}
+
+.spearmanGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 280px;
+  gap: 16px;
+}
+
+.spearmanMatrix {
+  overflow: auto;
+}
+
+.matrixRow {
+  display: grid;
+  grid-template-columns: 140px repeat(auto-fit, minmax(36px, 1fr));
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.matrixHead {
+  color: var(--light-gray);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.matrixCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  color: var(--white);
+}
+
+.edgeList {
+  border: 1px solid var(--dark-gray);
+  border-radius: 10px;
+  padding: 12px;
+  background: color-mix(in hsl, var(--black), var(--white) 4%);
+}
+
+.edgeList h4 {
+  margin: 0 0 10px;
+}
+
+.edgeItem {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in hsl, var(--dark-gray), transparent 40%);
+  font-size: 0.8rem;
+}
+
+.edgeItem:last-child {
+  border-bottom: none;
+}
+
+.emptyPanel {
+  width: 100%;
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--light-gray);
+}
+
+.simpleTableWrap {
+  width: 100%;
+  overflow: auto;
+}
+
+.simpleTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.simpleTable th,
+.simpleTable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in hsl, var(--dark-gray), transparent 40%);
+  text-align: left;
+}
+
+.simpleTable th {
+  color: var(--light-gray);
+}
+
+.permanovaBox {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.permanovaBox > div {
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: color-mix(in hsl, var(--black), var(--white) 4%);
+  border: 1px solid var(--dark-gray);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.permanovaBox span {
+  color: var(--light-gray);
+  font-size: 0.8rem;
+}
+
+.permanovaBox strong {
+  font-size: 1.05rem;
+}
+
+@media (max-width: 900px) {
+  .workspaceHeader {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .spearmanGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .permanovaBox {
+    grid-template-columns: 1fr 1fr;
+  }
+}

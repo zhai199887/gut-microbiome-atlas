@@ -29,6 +29,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from analysis import wilcoxon_marker_test, spearman_cooccurrence, sample_similarity_search
+from compare_utils import aggregate_by_level, relative_abundance_matrix, run_compare_analysis, run_spearman_analysis
 
 # Configure logging / 配置日志
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -378,7 +379,7 @@ class GroupFilter(BaseModel):
 class DiffAnalysisRequest(BaseModel):
     group_a_filter: GroupFilter
     group_b_filter: GroupFilter
-    taxonomy_level: str = "genus"   # phylum / genus
+    taxonomy_level: str = "genus"   # genus / family / phylum
     method: str = "wilcoxon"        # wilcoxon / t-test / lefse / permanova
 
 
@@ -394,9 +395,21 @@ class CrossStudyRequest(BaseModel):
     project_ids: list[str]        # 项目ID列表
     disease: str                  # 目标疾病
     method: str = "wilcoxon"      # wilcoxon / t-test
-    taxonomy_level: str = "genus" # genus / phylum
+    taxonomy_level: str = "genus" # genus / family / phylum
     p_threshold: float = 0.05     # 显著性阈值
     min_studies: int = 2          # 最少一致队列数
+
+
+class SampleCountRequest(BaseModel):
+    group_a_filter: GroupFilter
+    group_b_filter: GroupFilter
+
+
+class SpearmanAnalysisRequest(BaseModel):
+    group_a_filter: GroupFilter
+    group_b_filter: GroupFilter
+    taxonomy_level: str = "genus"
+    max_taxa: int = 18
 
 
 class HealthIndexRequest(BaseModel):
@@ -875,6 +888,57 @@ def get_disease_display_names(request: Request):
     return result
 
 
+@app.post("/api/estimate-sample-count",
+          summary="Estimate sample count",
+          description="Return matched sample counts for Group A and Group B before running differential analysis.")
+@limiter.limit("60/minute")
+def estimate_sample_count(request: Request, req: SampleCountRequest):
+    meta = get_metadata()
+    abund_idx = set(get_abundance().index)
+
+    def summarize(group_filter: GroupFilter) -> dict:
+        group_meta = apply_filter(meta, group_filter)
+        valid = [key for key in group_meta["sample_key"].values if key in abund_idx]
+        return {
+            "metadata_n": int(len(group_meta)),
+            "abundance_n": int(len(valid)),
+        }
+
+    return {
+        "group_a": summarize(req.group_a_filter),
+        "group_b": summarize(req.group_b_filter),
+    }
+
+
+@app.post("/api/spearman-analysis",
+          summary="Spearman correlation analysis",
+          description="Compute a top-taxa Spearman correlation matrix for the samples selected by the current Compare workspace filters.")
+@limiter.limit("20/minute")
+def spearman_analysis(request: Request, req: SpearmanAnalysisRequest):
+    meta = get_metadata()
+    abund = get_abundance()
+    abund_idx = set(abund.index)
+
+    group_a_meta = apply_filter(meta, req.group_a_filter)
+    group_b_meta = apply_filter(meta, req.group_b_filter)
+    selected_keys = []
+    seen: set[str] = set()
+    for key in list(group_a_meta["sample_key"].values) + list(group_b_meta["sample_key"].values):
+        if key in abund_idx and key not in seen:
+            seen.add(key)
+            selected_keys.append(key)
+
+    if len(selected_keys) < 6:
+        raise HTTPException(400, "Need at least 6 matched samples for Spearman analysis")
+
+    return run_spearman_analysis(
+        abundance_df=abund,
+        sample_keys=selected_keys,
+        taxonomy_level=req.taxonomy_level,
+        max_taxa=max(8, min(int(req.max_taxa), 24)),
+    )
+
+
 @app.post("/api/diff-analysis",
           summary="Differential analysis",
           description="Compare microbiome between two groups using Wilcoxon, t-test, LEfSe, or PERMANOVA.")
@@ -923,6 +987,28 @@ def diff_analysis(request: Request, req: DiffAnalysisRequest):
             f"Group B: {len(keys_b)} metadata rows found but none matched "
             f"abundance data."
         )
+
+    def filter_to_label(f: GroupFilter) -> str:
+        parts = []
+        if f.country:
+            parts.append(f.country.title())
+        if f.disease:
+            parts.append(f.disease)
+        if f.age_group:
+            parts.append(f.age_group)
+        if f.sex:
+            parts.append(f.sex.title())
+        return "-".join(parts) if parts else "Group"
+
+    return run_compare_analysis(
+        abundance_df=abund,
+        valid_a=valid_a,
+        valid_b=valid_b,
+        taxonomy_level=req.taxonomy_level,
+        method=req.method,
+        group_a_name=filter_to_label(req.group_a_filter),
+        group_b_name=filter_to_label(req.group_b_filter),
+    )
 
     # Extract abundance matrices and normalize to relative abundance (%)
     # 提取丰度矩阵并归一化为相对丰度（%）
@@ -2926,18 +3012,9 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
     abund_idx = set(abund.index)
     col_names = abund.columns.tolist()
 
-    # Aggregate columns by taxonomy level
     def _group_by_level(matrix: np.ndarray, cols: list[str], level: str):
-        if level == "genus":
-            labels = [extract_genus(c) for c in cols]
-        else:
-            labels = [extract_phylum(c) for c in cols]
-        unique_labels = list(dict.fromkeys(labels))
-        agg = np.zeros((matrix.shape[0], len(unique_labels)))
-        for i, lbl in enumerate(unique_labels):
-            idxs = [j for j, l in enumerate(labels) if l == lbl]
-            agg[:, i] = matrix[:, idxs].sum(axis=1)
-        return agg, unique_labels
+        agg, labels, _ = aggregate_by_level(matrix, cols, level)
+        return agg, labels
 
     INFORM_COLS = [f"inform{i}" for i in range(12)]
     disease_lower = req.disease.strip().lower()
@@ -2982,10 +3059,8 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
         # Extract and normalize abundance
         raw_d = abund.loc[disease_keys].values.astype(float)
         raw_c = abund.loc[control_keys].values.astype(float)
-        tot_d = raw_d.sum(axis=1, keepdims=True); tot_d[tot_d == 0] = 1
-        tot_c = raw_c.sum(axis=1, keepdims=True); tot_c[tot_c == 0] = 1
-        mat_d = raw_d / tot_d * 100
-        mat_c = raw_c / tot_c * 100
+        mat_d = relative_abundance_matrix(raw_d)
+        mat_c = relative_abundance_matrix(raw_c)
 
         agg_d, taxa = _group_by_level(mat_d, col_names, req.taxonomy_level)
         agg_c, _ = _group_by_level(mat_c, col_names, req.taxonomy_level)

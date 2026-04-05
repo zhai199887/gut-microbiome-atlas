@@ -1,8 +1,3 @@
-/**
- * Shared types for differential analysis page
- * 差异分析页面共享类型定义
- */
-
 export interface GroupFilter {
   country: string;
   disease: string;
@@ -10,14 +5,29 @@ export interface GroupFilter {
   sex: string;
 }
 
+export interface GroupSampleCount {
+  metadata_n: number;
+  abundance_n: number;
+}
+
+export interface SampleCountResult {
+  group_a: GroupSampleCount;
+  group_b: GroupSampleCount;
+}
+
 export interface DiffTaxon {
   taxon: string;
+  phylum: string;
+  tax_level: string;
   mean_a: number;
   mean_b: number;
+  prevalence_a: number;
+  prevalence_b: number;
   log2fc: number;
   p_value: number;
   adjusted_p: number;
   effect_size: number;
+  enriched_in: "A" | "B";
 }
 
 export interface LefseFeature {
@@ -36,6 +46,30 @@ export interface PermanovaResult {
   n_b: number;
 }
 
+export interface AlphaGroup {
+  shannon: number[];
+  simpson: number[];
+  chao1: number[];
+}
+
+export interface BetaPoint {
+  x: number;
+  y: number;
+  group: "A" | "B";
+}
+
+export interface BetaMetricResult {
+  metric: string;
+  variance_explained: number[];
+  pcoa_coords: BetaPoint[];
+}
+
+export interface PhylumCompositionRow {
+  phylum: string;
+  group_a: number;
+  group_b: number;
+}
+
 export interface DiffResult {
   summary: {
     group_a_name: string;
@@ -45,14 +79,25 @@ export interface DiffResult {
     taxonomy_level: string;
     method: string;
     total_taxa: number;
+    significant_taxa: number;
   };
   diff_taxa: DiffTaxon[];
   alpha_diversity: {
-    group_a: { shannon: number[]; simpson: number[] };
-    group_b: { shannon: number[]; simpson: number[] };
+    group_a: AlphaGroup;
+    group_b: AlphaGroup;
+  };
+  alpha_pvalues: {
+    shannon: number;
+    simpson: number;
+    chao1: number;
   };
   beta_diversity: {
-    pcoa_coords: { x: number; y: number; group: "A" | "B" }[];
+    default_metric: string;
+    metrics: Record<string, BetaMetricResult>;
+  };
+  phylum_composition: {
+    groups: [string, string] | string[];
+    rows: PhylumCompositionRow[];
   };
   lefse_results?: LefseFeature[];
   permanova?: PermanovaResult;
@@ -63,6 +108,35 @@ export interface FilterOptions {
   diseases: string[];
   age_groups: string[];
   sexes: string[];
+}
+
+export interface SpearmanTaxon {
+  taxon: string;
+  phylum: string;
+  mean_abundance: number;
+  prevalence: number;
+}
+
+export interface SpearmanEdge {
+  source: string;
+  target: string;
+  source_phylum: string;
+  target_phylum: string;
+  r: number;
+  p_value: number;
+  type: "positive" | "negative";
+}
+
+export interface SpearmanResult {
+  summary: {
+    sample_count: number;
+    taxonomy_level: string;
+    max_taxa: number;
+  };
+  taxa: SpearmanTaxon[];
+  matrix: number[][];
+  p_values: number[][];
+  edges: SpearmanEdge[];
 }
 
 export interface CrossStudyProjectSummary {
@@ -106,6 +180,18 @@ export interface ProjectInfo {
 }
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-export const TAXONOMY_LEVELS = ["genus", "phylum"] as const;
+export const TAXONOMY_LEVELS = ["genus", "family", "phylum"] as const;
 export const METHODS = ["wilcoxon", "t-test", "lefse", "permanova"] as const;
-export type Tab = "bar" | "volcano" | "alpha" | "beta" | "lefse" | "permanova" | "crossstudy";
+export const BETA_METRICS = ["braycurtis", "aitchison"] as const;
+export type TaxonomyLevel = (typeof TAXONOMY_LEVELS)[number];
+export type BetaMetric = (typeof BETA_METRICS)[number];
+export type Tab =
+  | "bar"
+  | "volcano"
+  | "alpha"
+  | "beta"
+  | "composition"
+  | "heatmap"
+  | "correlation"
+  | "lefse"
+  | "permanova";

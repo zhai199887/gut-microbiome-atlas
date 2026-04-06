@@ -3,14 +3,13 @@ import { Link } from "react-router-dom";
 
 import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
+import { LOCAL_API_BASE, PUBLIC_API_BASE, resolveApiBase } from "@/util/apiBase";
 import { countryName } from "@/util/countries";
 import { diseaseShortNameI18n } from "@/util/diseaseNames";
 
 import classes from "./DownloadPage.module.css";
 
-const LOCAL_API_BASE = "http://localhost:8000";
-const PUBLIC_API_BASE = "https://32c774a.r12.cpolar.top";
-const ACTIVE_API_BASE = import.meta.env.VITE_API_URL ?? LOCAL_API_BASE;
+const ACTIVE_API_BASE = resolveApiBase();
 const FORMATS = ["csv", "tsv", "json"] as const;
 
 type DownloadFormat = (typeof FORMATS)[number];
@@ -120,40 +119,40 @@ const copy = {
     },
   },
   zh: {
-    back: "返回 Atlas",
-    title: "Download",
+    back: "返回首页",
+    title: "下载",
     subtitle:
       "提供参考数据表和聚合分析结果，便于复现使用。本页不分发原始样本级丰度矩阵。",
     warning:
       "这里导出的都是聚合统计或分析结果，不包含原始样本数据。若需要原始测序数据，应回到对应 BioProject 或原始数据库获取。",
     sections: {
-      referenceEyebrow: "Reference Datasets",
+      referenceEyebrow: "参考数据",
       referenceTitle: "核心参考表",
       referenceText: "用于本地分析、队列筛选和复现报告的基础下载入口。",
-      analysisEyebrow: "Analysis Results",
+      analysisEyebrow: "分析结果",
       analysisTitle: "模块分析导出",
       analysisText: "直接下载 Compare、Network、Lifecycle 等模块已经计算好的聚合结果，而不是自己重跑一遍。",
-      codeEyebrow: "Code Examples",
+      codeEyebrow: "代码示例",
       codeTitle: "本地与公网访问",
       codeText:
         "开发和验收优先使用 localhost。本页同时给出当前公网 API，但 cpolar 地址属于运维层入口，后续可能变化。",
     },
     cards: {
-      summaryTitle: "Summary statistics",
+      summaryTitle: "汇总统计",
       summaryDesc: "导出全库的国家、疾病、年龄组和性别统计。",
-      genusListTitle: "Genus list",
+      genusListTitle: "菌属列表",
       genusListDesc: "导出完整有效菌属目录，适合模板校验和批量流程。",
-      diseaseProfileTitle: "Disease profile",
+      diseaseProfileTitle: "疾病画像",
       diseaseProfileDesc: "导出单个疾病场景下的优势菌属与对照比较结果。",
-      genusProfileTitle: "Genus profile",
+      genusProfileTitle: "菌属画像",
       genusProfileDesc: "导出单个菌属的跨疾病描述性画像表。",
-      diffTitle: "Differential results",
+      diffTitle: "差异结果",
       diffDesc: "导出疾病 vs 对照的差异丰度统计表，便于复查和再作图。",
-      biomarkerTitle: "Biomarker discovery",
+      biomarkerTitle: "标志物发现",
       biomarkerDesc: "导出 LEfSe 风格的标志物结果，包含效应量和校正 p 值。",
-      cooccurrenceTitle: "Co-occurrence edges",
+      cooccurrenceTitle: "共现网络边表",
       cooccurrenceDesc: "导出疾病或严格 NC 场景下的共现网络边表。",
-      lifecycleTitle: "Lifecycle atlas",
+      lifecycleTitle: "生命周期图谱",
       lifecycleDesc: "导出生命周期轨迹中的年龄阶段丰度和多样性摘要。",
     },
     labels: {

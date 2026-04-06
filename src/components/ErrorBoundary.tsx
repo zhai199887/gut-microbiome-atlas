@@ -1,7 +1,13 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
+import { useI18n } from "@/i18n";
+
 interface Props {
   children: ReactNode;
+  description: string;
+  home: string;
+  retry: string;
+  title: string;
 }
 
 interface State {
@@ -9,7 +15,7 @@ interface State {
   error?: Error;
 }
 
-class ErrorBoundary extends Component<Props, State> {
+class ErrorBoundaryInner extends Component<Props, State> {
   state: State = { hasError: false };
 
   static getDerivedStateFromError(error: Error): State {
@@ -42,10 +48,10 @@ class ErrorBoundary extends Component<Props, State> {
         }}
       >
         <h1 style={{ fontSize: "1.8rem", fontWeight: 600, margin: 0 }}>
-          Something went wrong
+          {this.props.title}
         </h1>
         <p style={{ opacity: 0.6, maxWidth: 400 }}>
-          An unexpected error occurred. Please try again or return to the home page.
+          {this.props.description}
         </p>
         {import.meta.env.DEV && this.state.error && (
           <pre
@@ -75,7 +81,7 @@ class ErrorBoundary extends Component<Props, State> {
               fontSize: "0.95rem",
             }}
           >
-            Retry
+            {this.props.retry}
           </button>
           <a
             href="/"
@@ -88,12 +94,27 @@ class ErrorBoundary extends Component<Props, State> {
               fontSize: "0.95rem",
             }}
           >
-            Home
+            {this.props.home}
           </a>
         </div>
       </div>
     );
   }
 }
+
+const ErrorBoundary = ({ children }: { children: ReactNode }) => {
+  const { t } = useI18n();
+
+  return (
+    <ErrorBoundaryInner
+      title={t("error.title")}
+      description={t("error.description")}
+      retry={t("error.retry")}
+      home={t("error.home")}
+    >
+      {children}
+    </ErrorBoundaryInner>
+  );
+};
 
 export default ErrorBoundary;

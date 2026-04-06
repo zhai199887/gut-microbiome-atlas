@@ -1,15 +1,14 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "@/i18n";
+import { LOCAL_API_BASE, PUBLIC_API_BASE, resolveApiBase } from "@/util/apiBase";
 import Header from "@/sections/Header";
 import Footer from "@/sections/Footer";
 import { API_DOC_CATEGORIES, API_DOC_ENDPOINTS } from "./apiDocs/endpoints";
 import type { ApiEndpoint } from "./apiDocs/types";
 import css from "./ApiDocsPage.module.css";
 
-const LOCAL_API_BASE = "http://localhost:8000";
-const PUBLIC_API_BASE = "https://32c774a.r12.cpolar.top";
-const ACTIVE_API_BASE = import.meta.env.VITE_API_URL ?? LOCAL_API_BASE;
+const ACTIVE_API_BASE = resolveApiBase();
 
 type LocaleCopy = {
   back: string;

@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 
 import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
+import { API_BASE } from "@/util/apiBase";
 import { countryName, AGE_GROUP_ZH } from "@/util/countries";
 import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import { exportTable } from "@/util/export";
@@ -14,8 +15,6 @@ import { exportTable } from "@/util/export";
 import HealthIndexPanel from "./similarity/HealthIndexPanel";
 import SimilarityPreviewHeatmap from "./similarity/SimilarityPreviewHeatmap";
 import classes from "./SimilarityPage.module.css";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 interface SimilarityResult {
   sample_key: string;

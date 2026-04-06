@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
+import { API_BASE } from "@/util/apiBase";
 import { countryName } from "@/util/countries";
 import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import { exportTable } from "@/util/export";
@@ -13,7 +14,6 @@ import StudiesMap from "./studies/StudiesMap";
 import TimelineChart from "./studies/TimelineChart";
 import type { ProjectDetailResult, ProjectListResult, ProjectTimelineResult, StudiesSummary, StudyProjectInfo } from "./studies/types";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 const PAGE_SIZE = 20;
 
 type SortKey = "samples" | "diseases" | "year" | "nc";

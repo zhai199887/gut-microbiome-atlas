@@ -7,14 +7,13 @@ import Placeholder from "@/components/Placeholder";
 import type { ApiStats, Data, Filters, MetadataSummary, CountryStat } from "@/data";
 import { DEFAULT_FILTERS, setSelectedFeature, useData } from "@/data";
 import { useI18n } from "@/i18n";
+import { API_BASE } from "@/util/apiBase";
 import { downloadSvg, getCssVariable } from "@/util/dom";
 import { formatNumber } from "@/util/string";
 import classes from "./Map.module.css";
 
 const width = 770;
 const height = 400;
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-
 /** Estimate filtered sample count for a country based on its stats + global fallback */
 const estimateFilteredCount = (
   stat: CountryStat | undefined,

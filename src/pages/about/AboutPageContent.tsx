@@ -2,13 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
+import { API_BASE } from "@/util/apiBase";
 import Header from "@/sections/Header";
 import Footer from "@/sections/Footer";
 import faqEn from "./faq.en.json";
 import faqZh from "./faq.zh.json";
 import classes from "../CitePage.module.css";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 const PAPER_BIBTEX = `@unpublished{zhai2026gutmicrobiomeatlas,
   title   = {Gut Microbiome Atlas: an analytical platform for 168,464 human gut microbiome samples},
@@ -363,7 +362,7 @@ const AboutPageContent = () => {
             <p className={classes.heroText}>{text.subtitle}</p>
           </div>
           <div className={classes.heroMeta}>
-            <span>{stats?.version ?? "main-branch deployment"}</span>
+            <span>{stats?.version ?? (locale === "zh" ? "主分支部署" : "main-branch deployment")}</span>
             <span>{stats?.last_updated ?? "2026-04-06"}</span>
           </div>
         </header>

@@ -621,10 +621,11 @@ def sample_similarity_search(
     top_indices = np.argsort(distances)[:top_k]
     results = []
     for idx in top_indices:
+        similarity_pct = max(0.0, float(1 - distances[idx]) * 100.0)
         results.append({
             "sample_key": sample_keys[idx],
             "distance": round(float(distances[idx]), 6),
-            "similarity": round(float(1 - distances[idx]), 6),
+            "similarity_pct": round(similarity_pct, 2),
         })
     return results
 

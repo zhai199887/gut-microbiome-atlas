@@ -24,13 +24,13 @@ const FilterPanel = () => {
   const [diseaseSearch, setDiseaseSearch] = useState("");
   const [showAllDiseases, setShowAllDiseases] = useState(false);
 
-  if (!summary) return null;
-
   const allDiseases = useMemo(
     () =>
-      Object.keys(summary.disease_counts)
-        .filter((d) => d !== "unknown" && d !== "NC")
-        .sort((a, b) => (summary.disease_counts[b] ?? 0) - (summary.disease_counts[a] ?? 0)),
+      summary
+        ? Object.keys(summary.disease_counts)
+            .filter((d) => d !== "unknown" && d !== "NC")
+            .sort((a, b) => (summary.disease_counts[b] ?? 0) - (summary.disease_counts[a] ?? 0))
+        : [],
     [summary],
   );
 
@@ -41,10 +41,11 @@ const FilterPanel = () => {
         .filter((d) => d.toLowerCase().includes(query))
         .slice(0, 30);
     }
-    return showAllDiseases ? allDiseases : summary.top20_diseases;
-  }, [allDiseases, diseaseSearch, showAllDiseases, summary.top20_diseases]);
+    return showAllDiseases ? allDiseases : (summary?.top20_diseases ?? []);
+  }, [allDiseases, diseaseSearch, showAllDiseases, summary]);
 
   const countFiltered = () => {
+    if (!summary) return 0;
     let total = summary.total_samples;
     if (filters.sex !== "all") {
       total = summary.sex_counts[filters.sex] ?? 0;
@@ -91,6 +92,8 @@ const FilterPanel = () => {
     male: t("filter.male"),
     unknown: t("filter.unknown"),
   };
+
+  if (!summary) return null;
 
   return (
     <section className={classes.panel}>

@@ -53,20 +53,32 @@ export default function PhenotypeControls({
 
   // Load dynamic groups for disease; use static lists for age/sex
   useEffect(() => {
+    let cancelled = false;
     if (dimType === "disease") {
+      setGroups([]);
       setGroupsLoading(true);
       fetch(`${API_BASE}/api/phenotype-groups?dim_type=disease`)
         .then(r => r.json())
         .then(data => {
+          if (cancelled) return;
           setGroups(data.groups ?? []);
           setGroupsLoading(false);
         })
-        .catch(() => setGroupsLoading(false));
+        .catch(() => {
+          if (cancelled) return;
+          setGroups([]);
+          setGroupsLoading(false);
+        });
     } else if (dimType === "age") {
+      setGroupsLoading(false);
       setGroups(STATIC_AGE_GROUPS.map(g => ({ group: g, sample_count: 0 })));
     } else {
+      setGroupsLoading(false);
       setGroups(STATIC_SEX_GROUPS.map(g => ({ group: g, sample_count: 0 })));
     }
+    return () => {
+      cancelled = true;
+    };
   }, [dimType]);
 
   const groupOptions = dimType === "disease"
@@ -120,6 +132,9 @@ export default function PhenotypeControls({
       <div>
         <div style={labelStyle}>{locale === "zh" ? "组 A" : "GROUP A"}</div>
         <select value={groupA} onChange={e => onGroupAChange(e.target.value)} style={selectStyle} disabled={groupsLoading}>
+          {groupsLoading && dimType === "disease" && (
+            <option value={groupA}>{locale === "zh" ? "加载疾病分组中…" : "Loading disease groups..."}</option>
+          )}
           {groupOptions.map(({ group, sample_count }) => (
             <option key={group} value={group}>
               {labelOf(group)}{sample_count > 0 ? ` (n=${sample_count.toLocaleString()})` : ""}
@@ -134,6 +149,9 @@ export default function PhenotypeControls({
       <div>
         <div style={labelStyle}>{locale === "zh" ? "组 B" : "GROUP B"}</div>
         <select value={groupB} onChange={e => onGroupBChange(e.target.value)} style={selectStyle} disabled={groupsLoading}>
+          {groupsLoading && dimType === "disease" && (
+            <option value={groupB}>{locale === "zh" ? "加载疾病分组中…" : "Loading disease groups..."}</option>
+          )}
           {groupOptions.map(({ group, sample_count }) => (
             <option key={group} value={group}>
               {labelOf(group)}{sample_count > 0 ? ` (n=${sample_count.toLocaleString()})` : ""}

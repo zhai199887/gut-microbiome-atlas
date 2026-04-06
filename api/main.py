@@ -39,7 +39,14 @@ from analysis import (
     wilcoxon_marker_test,
 )
 from compare_utils import aggregate_by_level, relative_abundance_matrix, run_compare_analysis, run_spearman_analysis
-from disease_utils import build_disease_profile, build_disease_studies, build_lollipop_result, log2fc_interval
+from disease_utils import (
+    build_disease_profile,
+    build_disease_studies,
+    build_lollipop_result,
+    compute_genus_statistics,
+    log2fc_interval,
+    matched_disease_control,
+)
 
 # Configure logging / 配置日志
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -1976,7 +1983,7 @@ def species_profile(request: Request, genus: str):
     phylum = extract_phylum(matching_cols[0]) or "Other"
 
     # Strict NC baseline / 严格健康对照基线
-    INFORM_COLS = [f"inform{i}" for i in range(12)]
+    inform_cols = [f"inform{i}" for i in range(12)]
     nc_mask = _strict_nc_mask(mm, INFORM_COLS)
     nc_vals = ga.loc[nc_mask].values.astype(float)
     nc_mean_val = float(np.mean(nc_vals)) if len(nc_vals) > 0 else 0.0
@@ -2014,7 +2021,7 @@ def species_profile(request: Request, genus: str):
 
     # Disease distribution (from inform0-11) / 疾病分布（来自inform0-11）
     disease_samples: dict[str, set[str]] = {}
-    for col in INFORM_COLS:
+    for col in inform_cols:
         if col not in mm.columns:
             continue
         for sample_key, disease_name in mm[col].fillna("").astype(str).str.strip().items():
@@ -2705,14 +2712,91 @@ async def validate_metadata_endpoint(
 
 # ── Data download endpoints / 数据下载端点 ────────────────────────────────────
 
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 import io
 import csv as csv_mod
 
 
+DOWNLOAD_FORMATS = {"csv": ",", "tsv": "\t", "json": None}
+DOWNLOAD_CITATION_NOTE = (
+    "Please cite Gut Microbiome Atlas and the original BioProject / repository sources when reusing these aggregated outputs."
+)
+
+
+def _validate_download_format(format_name: str) -> str:
+    normalized = (format_name or "csv").strip().lower()
+    if normalized not in DOWNLOAD_FORMATS:
+        raise HTTPException(400, "format must be one of: csv, tsv, json")
+    return normalized
+
+
+def _slugify_download_part(value: str) -> str:
+    safe = "".join(ch.lower() if ch.isalnum() else "_" for ch in str(value or "").strip())
+    while "__" in safe:
+        safe = safe.replace("__", "_")
+    return safe.strip("_")
+
+
+def _download_filename(stem: str, format_name: str) -> str:
+    suffix = _slugify_download_part(stem) or "download"
+    generated = datetime.now().strftime("%Y%m%d")
+    return f"{suffix}_{generated}.{format_name}"
+
+
+def _download_headers(stem: str, format_name: str, rate_limit_note: str) -> dict[str, str]:
+    return {
+        "Content-Disposition": f'attachment; filename="{_download_filename(stem, format_name)}"',
+        "X-Data-Version": app.version,
+        "X-Generated-At": datetime.now().isoformat(timespec="seconds"),
+        "X-Rate-Limit-Policy": rate_limit_note,
+        "X-Download-Scope": "Aggregated statistics only; no raw sample data.",
+        "X-Citation-Note": DOWNLOAD_CITATION_NOTE,
+    }
+
+
+def _normalize_download_value(value):
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return value
+
+
+def _download_response(
+    *,
+    json_payload,
+    rows: list[dict],
+    fieldnames: list[str],
+    stem: str,
+    format_name: str,
+    rate_limit_note: str,
+):
+    normalized_format = _validate_download_format(format_name)
+    headers = _download_headers(stem, normalized_format, rate_limit_note)
+
+    if normalized_format == "json":
+        return JSONResponse(content=json_payload, headers=headers)
+
+    buffer = io.StringIO()
+    writer = csv_mod.DictWriter(
+        buffer,
+        fieldnames=fieldnames,
+        delimiter=DOWNLOAD_FORMATS[normalized_format],
+        extrasaction="ignore",
+    )
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({name: _normalize_download_value(row.get(name, "")) for name in fieldnames})
+    buffer.seek(0)
+
+    media_type = "text/tab-separated-values" if normalized_format == "tsv" else "text/csv"
+    return StreamingResponse(iter([buffer.getvalue()]), media_type=media_type, headers=headers)
+
+
 @app.get("/api/download/summary-stats",
          summary="Download summary statistics",
-         description="Export aggregated statistics as CSV, JSON, or TSV.")
+         description="Export aggregated statistics as CSV, JSON, or TSV.",
+         tags=["Download"])
 @limiter.limit("30/minute")
 def download_summary_stats(request: Request, format: str = "csv"):
     """
@@ -2729,124 +2813,298 @@ def download_summary_stats(request: Request, format: str = "csv"):
     # Disease stats / 疾病统计
     disease_counts: dict[str, int] = {}
     for col in INFORM_COLS:
-        if col in meta.columns:
-            for val in meta[col].dropna().astype(str).str.strip():
-                if val and val != "nan" and val != "":
-                    disease_counts[val] = disease_counts.get(val, 0) + 1
+        if col not in meta.columns:
+            continue
+        for value in meta[col].dropna().astype(str).str.strip():
+            if value and value.lower() != "nan":
+                disease_counts[value] = disease_counts.get(value, 0) + 1
     # Age group stats / 年龄组统计
     age_counts = meta["age_group"].value_counts().to_dict() if "age_group" in meta.columns else {}
     # Sex stats / 性别统计
     sex_counts = meta["sex"].value_counts().to_dict() if "sex" in meta.columns else {}
 
-    if format == "json":
-        return {
-            "total_samples": len(meta),
-            "by_country": country_counts,
-            "by_disease": disease_counts,
-            "by_age_group": age_counts,
-            "by_sex": sex_counts,
-        }
+    payload = {
+        "total_samples": int(len(meta)),
+        "by_country": country_counts,
+        "by_disease": disease_counts,
+        "by_age_group": age_counts,
+        "by_sex": sex_counts,
+    }
 
-    # CSV format: flatten to rows
-    rows = []
-    for k, v in country_counts.items():
-        rows.append({"category": "country", "name": iso_to_name(k), "count": v})
-    for k, v in sorted(disease_counts.items(), key=lambda x: x[1], reverse=True):
-        rows.append({"category": "disease", "name": k, "count": v})
-    for k, v in age_counts.items():
-        rows.append({"category": "age_group", "name": k, "count": v})
-    for k, v in sex_counts.items():
-        rows.append({"category": "sex", "name": k, "count": v})
+    rows: list[dict] = []
+    for key, value in country_counts.items():
+        rows.append({"category": "country", "name": iso_to_name(key), "iso": key, "count": int(value)})
+    for key, value in sorted(disease_counts.items(), key=lambda item: item[1], reverse=True):
+        rows.append({"category": "disease", "name": key, "iso": "", "count": int(value)})
+    for key, value in age_counts.items():
+        rows.append({"category": "age_group", "name": key, "iso": "", "count": int(value)})
+    for key, value in sex_counts.items():
+        rows.append({"category": "sex", "name": key, "iso": "", "count": int(value)})
 
-    sep = "\t" if format == "tsv" else ","
-    buf = io.StringIO()
-    writer = csv_mod.DictWriter(buf, fieldnames=["category", "name", "count"], delimiter=sep)
-    writer.writeheader()
-    writer.writerows(rows)
-    buf.seek(0)
-    ext = "tsv" if format == "tsv" else "csv"
-    return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=summary_stats.{ext}"}
+    return _download_response(
+        json_payload=payload,
+        rows=rows,
+        fieldnames=["category", "name", "iso", "count"],
+        stem="summary_stats",
+        format_name=format,
+        rate_limit_note="30/minute",
     )
 
 
 @app.get("/api/download/disease-profile",
          summary="Download disease profile",
-         description="Export disease microbiome profile as CSV, JSON, or TSV.")
+         description="Export disease-vs-control genus profile results as CSV, TSV, or JSON.",
+         tags=["Download"])
 @limiter.limit("30/minute")
 def download_disease_profile_data(request: Request, disease: str, format: str = "csv"):
     """Download disease profile data / 下载疾病画像数据"""
     profile = disease_profile(request, disease, top_n=50)
-    rows = profile["top_genera"]
-
-    if format == "json":
-        return rows
-
-    sep = "\t" if format == "tsv" else ","
-    buf = io.StringIO()
-    if rows:
-        writer = csv_mod.DictWriter(buf, fieldnames=rows[0].keys(), delimiter=sep)
-        writer.writeheader()
-        writer.writerows(rows)
-    buf.seek(0)
-    ext = "tsv" if format == "tsv" else "csv"
-    return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={disease}_profile.{ext}"}
+    rows = profile.get("top_genera", [])
+    return _download_response(
+        json_payload=profile,
+        rows=rows,
+        fieldnames=[
+            "genus",
+            "phylum",
+            "disease_mean",
+            "control_mean",
+            "disease_prevalence",
+            "control_prevalence",
+            "log2fc",
+            "p_value",
+            "adjusted_p",
+            "effect_size",
+            "enriched_in",
+            "ci_low",
+            "ci_high",
+        ],
+        stem=f"disease_profile_{disease}",
+        format_name=format,
+        rate_limit_note="30/minute",
     )
 
 
 @app.get("/api/download/species-profile",
          summary="Download species profile",
-         description="Export genus abundance profile as CSV, JSON, or TSV.")
+         description="Export genus-centric profile tables as CSV, TSV, or JSON.",
+         tags=["Download"])
 @limiter.limit("30/minute")
 def download_species_profile_data(request: Request, genus: str, format: str = "csv"):
     """Download species profile data / 下载物种画像数据"""
     profile = species_profile(request, genus)
 
-    if format == "json":
-        return profile
-
     rows = profile.get("by_disease", [])
-    sep = "\t" if format == "tsv" else ","
-    buf = io.StringIO()
-    if rows:
-        writer = csv_mod.DictWriter(buf, fieldnames=rows[0].keys(), delimiter=sep)
-        writer.writeheader()
-        writer.writerows(rows)
-    buf.seek(0)
-    ext = "tsv" if format == "tsv" else "csv"
-    return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={genus}_profile.{ext}"}
+    return _download_response(
+        json_payload=profile,
+        rows=rows,
+        fieldnames=[
+            "name",
+            "abundance",
+            "prevalence",
+            "sample_count",
+            "phylum",
+        ],
+        stem=f"genus_profile_{genus}",
+        format_name=format,
+        rate_limit_note="30/minute",
     )
 
 
 @app.get("/api/download/genus-list",
          summary="Download genus list",
-         description="Export complete genus name list as CSV, JSON, or TSV.")
+         description="Export the full valid genus name list as CSV, TSV, or JSON.",
+         tags=["Download"])
 @limiter.limit("30/minute")
 def download_genus_list(request: Request, format: str = "csv"):
     """Download list of all genera / 下载所有属名列表"""
     genera = get_genus_list()
 
-    if format == "json":
-        return {"genera": genera}
+    payload = {"genera": genera, "count": len(genera)}
+    rows = [{"genus": genus} for genus in genera]
+    return _download_response(
+        json_payload=payload,
+        rows=rows,
+        fieldnames=["genus"],
+        stem="genus_list",
+        format_name=format,
+        rate_limit_note="30/minute",
+    )
 
-    buf = io.StringIO()
-    buf.write("genus\n")
-    for g in genera:
-        buf.write(f"{g}\n")
-    buf.seek(0)
-    ext = "tsv" if format == "tsv" else "csv"
-    return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=genus_list.{ext}"}
+
+@app.get(
+    "/api/download/diff-results",
+    summary="Download differential abundance results",
+    description="Export disease-vs-control differential abundance results as CSV, TSV, or JSON.",
+    tags=["Download"],
+)
+@limiter.limit("20/minute")
+def download_diff_results(
+    request: Request,
+    disease: str,
+    top_n: int = 200,
+    format: str = "csv",
+):
+    """Download per-genus differential abundance statistics for one disease."""
+    meta = get_metadata()
+    abund = get_abundance()
+    _, _, disease_keys, control_keys = matched_disease_control(meta, abund, disease)
+    if len(disease_keys) < 5:
+        raise HTTPException(400, f"Too few disease samples with abundance data: {len(disease_keys)}")
+    if len(control_keys) < 5:
+        raise HTTPException(400, f"Too few control samples with abundance data: {len(control_keys)}")
+
+    rows = compute_genus_statistics(abund, disease_keys, control_keys)[: max(top_n, 1)]
+    payload = {
+        "disease": disease,
+        "top_n": top_n,
+        "n_disease": len(disease_keys),
+        "n_control": len(control_keys),
+        "results": rows,
+    }
+    return _download_response(
+        json_payload=payload,
+        rows=rows,
+        fieldnames=[
+            "genus",
+            "phylum",
+            "disease_mean",
+            "control_mean",
+            "disease_prevalence",
+            "control_prevalence",
+            "log2fc",
+            "p_value",
+            "adjusted_p",
+            "effect_size",
+            "enriched_in",
+            "ci_low",
+            "ci_high",
+        ],
+        stem=f"diff_results_{disease}_top_{top_n}",
+        format_name=format,
+        rate_limit_note="20/minute",
+    )
+
+
+@app.get(
+    "/api/download/biomarkers",
+    summary="Download biomarker discovery results",
+    description="Export LEfSe-style biomarker discovery output as CSV, TSV, or JSON.",
+    tags=["Download"],
+)
+@limiter.limit("20/minute")
+def download_biomarkers(
+    request: Request,
+    disease: str,
+    lda_threshold: float = 2.0,
+    format: str = "csv",
+):
+    """Download biomarker discovery markers for one disease."""
+    payload = biomarker_discovery(request, disease=disease, lda_threshold=lda_threshold, p_threshold=0.05)
+    rows = payload.get("markers", [])
+    return _download_response(
+        json_payload=payload,
+        rows=rows,
+        fieldnames=[
+            "taxon",
+            "phylum",
+            "lda_score",
+            "p_value",
+            "p_adj",
+            "disease_mean",
+            "control_mean",
+            "disease_prevalence",
+            "control_prevalence",
+            "log2fc",
+        ],
+        stem=f"biomarkers_{disease}_lda_{lda_threshold}",
+        format_name=format,
+        rate_limit_note="20/minute",
+    )
+
+
+@app.get(
+    "/api/download/cooccurrence",
+    summary="Download co-occurrence network edges",
+    description="Export the filtered co-occurrence network edge table as CSV, TSV, or JSON.",
+    tags=["Download"],
+)
+@limiter.limit("20/minute")
+def download_cooccurrence(
+    request: Request,
+    disease: str = "",
+    min_r: float = 0.3,
+    top_genera: int = 50,
+    format: str = "csv",
+):
+    """Download co-occurrence network edges for NC or a disease context."""
+    payload = cooccurrence_network(
+        request,
+        disease=disease,
+        min_r=min_r,
+        top_genera=top_genera,
+        max_samples=3000,
+        method="spearman",
+        fdr_threshold=0.05,
+    )
+    rows = payload.get("edges", [])
+    label = disease or "nc"
+    return _download_response(
+        json_payload=payload,
+        rows=rows,
+        fieldnames=[
+            "source",
+            "target",
+            "source_phylum",
+            "target_phylum",
+            "r",
+            "p_value",
+            "adjusted_p",
+            "type",
+            "method",
+        ],
+        stem=f"cooccurrence_{label}_minr_{min_r}",
+        format_name=format,
+        rate_limit_note="20/minute",
+    )
+
+
+@app.get(
+    "/api/download/lifecycle",
+    summary="Download lifecycle atlas table",
+    description="Export lifecycle abundance trajectories as CSV, TSV, or JSON.",
+    tags=["Download"],
+)
+@limiter.limit("20/minute")
+def download_lifecycle(
+    request: Request,
+    disease: str = "",
+    country: str = "",
+    top_genera: int = 15,
+    format: str = "csv",
+):
+    """Download lifecycle stage abundance tables for NC or disease-filtered cohorts."""
+    payload = lifecycle_atlas(request, disease=disease, country=country, top_genera=top_genera)
+    rows = payload.get("data", [])
+    fieldnames = [
+        "age_group",
+        "sample_count",
+        "shannon_mean",
+        "shannon_sd",
+        "simpson_mean",
+        "simpson_sd",
+        *payload.get("genera", []),
+    ]
+    stem_parts = ["lifecycle", disease or "nc"]
+    if country:
+        stem_parts.append(country)
+    stem_parts.append(f"top_{top_genera}")
+    return _download_response(
+        json_payload=payload,
+        rows=rows,
+        fieldnames=fieldnames,
+        stem="_".join(stem_parts),
+        format_name=format,
+        rate_limit_note="20/minute",
     )
 
 

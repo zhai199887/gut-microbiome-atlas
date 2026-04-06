@@ -388,6 +388,7 @@ def run_compare_analysis(
     method: str,
     group_a_name: str,
     group_b_name: str,
+    max_diff_taxa: int | None = 250,
 ) -> dict:
     columns = abundance_df.columns.tolist()
     raw_a = abundance_df.loc[list(valid_a)].values.astype(float)
@@ -491,7 +492,7 @@ def run_compare_analysis(
             "total_taxa": len(taxa),
             "significant_taxa": sum(1 for row in diff_results if row["adjusted_p"] < 0.05),
         },
-        "diff_taxa": diff_results[:250],
+        "diff_taxa": diff_results if max_diff_taxa is None else diff_results[:max_diff_taxa],
         "alpha_diversity": alpha_diversity,
         "alpha_pvalues": alpha_pvalues,
         "beta_diversity": beta_diversity,

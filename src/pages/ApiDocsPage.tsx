@@ -1,521 +1,574 @@
-import { useState, useCallback } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "@/i18n";
+import Header from "@/sections/Header";
+import Footer from "@/sections/Footer";
+import { API_DOC_CATEGORIES, API_DOC_ENDPOINTS } from "./apiDocs/endpoints";
+import type { ApiEndpoint } from "./apiDocs/types";
 import css from "./ApiDocsPage.module.css";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const LOCAL_API_BASE = "http://localhost:8000";
+const PUBLIC_API_BASE = "https://1d0fc7d9.r12.cpolar.top";
+const ACTIVE_API_BASE = import.meta.env.VITE_API_URL ?? LOCAL_API_BASE;
 
-/* ------------------------------------------------------------------ */
-/*  Endpoint definitions                                               */
-/* ------------------------------------------------------------------ */
+type LocaleCopy = {
+  back: string;
+  title: string;
+  subtitle: string;
+  note: string;
+  localApi: string;
+  publicApi: string;
+  activeApi: string;
+  openapi: string;
+  categories: Record<(typeof API_DOC_CATEGORIES)[number], string>;
+  overviewTitle: string;
+  overviewText: string;
+  errorTitle: string;
+  errorText: string;
+  endpointTitle: string;
+  params: string;
+  requestBody: string;
+  responseSchema: string;
+  errorHandling: string;
+  codeExamples: string;
+  requestPreview: string;
+  tryIt: string;
+  response: string;
+  responseMeta: string;
+  copy: string;
+  copied: string;
+  python: string;
+  r: string;
+  curl: string;
+  status: string;
+  duration: string;
+  size: string;
+  bodyPlaceholder: string;
+  invalidJson: string;
+  publicWarning: string;
+};
 
-type Param = { name: string; type: string; required: boolean; description: string };
+const COPY: Record<"en" | "zh", LocaleCopy> = {
+  en: {
+    back: "Back to Home",
+    title: "API Documentation",
+    subtitle: "Human-readable API workspace with executable examples for local and public environments.",
+    note: "The public API URL is an operations endpoint and may change. Use localhost or /api/openapi.json for stable development references.",
+    localApi: "Local API",
+    publicApi: "Public API",
+    activeApi: "Active Base URL",
+    openapi: "OpenAPI Spec",
+    categories: {
+      all: "All",
+      overview: "Overview",
+      species: "Species",
+      disease: "Disease",
+      network: "Network",
+      analysis: "Analysis",
+      similarity: "Similarity",
+      studies: "Studies",
+      download: "Download",
+    },
+    overviewTitle: "Research-Oriented API Scope",
+    overviewText:
+      "This documentation emphasizes reproducible analysis workflows: project browsing, disease-centric statistics, co-occurrence networks, weighted GMHI scoring, and export endpoints for aggregated results.",
+    errorTitle: "Error Handling",
+    errorText:
+      "Common response codes: 400 for invalid biological filters or insufficient samples, 404 for missing genus/project resources, 422 for malformed request bodies, 429 for rate limiting, and 500 for server-side calculation failures.",
+    endpointTitle: "Endpoints",
+    params: "Parameters",
+    requestBody: "Request Body",
+    responseSchema: "Response Schema",
+    errorHandling: "Error Handling",
+    codeExamples: "Code Examples",
+    requestPreview: "Request Preview",
+    tryIt: "Try It",
+    response: "Response",
+    responseMeta: "Response Meta",
+    copy: "Copy",
+    copied: "Copied",
+    python: "Python",
+    r: "R",
+    curl: "cURL",
+    status: "Status",
+    duration: "Time",
+    size: "Payload",
+    bodyPlaceholder: "Editable JSON body",
+    invalidJson: "Invalid JSON body. Fix the request body before retrying.",
+    publicWarning: "Public API is suitable for demos, not for permanent manuscript citations.",
+  },
+  zh: {
+    back: "返回首页",
+    title: "API 文档",
+    subtitle: "面向科研使用场景的人类可读 API 工作台，支持本地和公网双环境示例。",
+    note: "公网 API 地址属于运维入口，可能变化。稳定开发引用请优先使用 localhost 或 /api/openapi.json。",
+    localApi: "本地 API",
+    publicApi: "公网 API",
+    activeApi: "当前基地址",
+    openapi: "OpenAPI 规范",
+    categories: {
+      all: "全部",
+      overview: "总览",
+      species: "物种检索",
+      disease: "疾病",
+      network: "网络",
+      analysis: "分析",
+      similarity: "相似性",
+      studies: "研究项目",
+      download: "下载",
+    },
+    overviewTitle: "科研导向接口范围",
+    overviewText:
+      "这份文档按真实科研工作流组织接口：项目浏览、疾病统计、共现网络、加权 GMHI，以及聚合分析结果下载，而不是只按技术层级堆接口。",
+    errorTitle: "错误处理",
+    errorText:
+      "常见响应码：400 表示筛选条件无效或样本不足，404 表示属名或项目不存在，422 表示请求体格式错误，429 表示触发限流，500 表示服务端计算失败。",
+    endpointTitle: "接口列表",
+    params: "参数",
+    requestBody: "请求体",
+    responseSchema: "响应结构",
+    errorHandling: "错误处理",
+    codeExamples: "代码示例",
+    requestPreview: "请求预览",
+    tryIt: "立即试跑",
+    response: "响应结果",
+    responseMeta: "响应元信息",
+    copy: "复制",
+    copied: "已复制",
+    python: "Python",
+    r: "R",
+    curl: "cURL",
+    status: "状态",
+    duration: "耗时",
+    size: "大小",
+    bodyPlaceholder: "可编辑 JSON 请求体",
+    invalidJson: "请求体 JSON 无法解析，请先修正后再重试。",
+    publicWarning: "公网 API 适合演示，不适合作为长期论文引用地址。",
+  },
+};
 
-interface Endpoint {
-  method: "GET" | "POST";
-  path: string;
-  category: string;
-  summary: string;
-  description: string;
-  params?: Param[];
-  body?: Record<string, unknown>;
-  python: (base: string) => string;
-  r: (base: string) => string;
-  curl: (base: string) => string;
+const COMMON_ERROR_TEXT: Record<number, string> = {
+  400: "Invalid filters or insufficient samples",
+  404: "Requested resource not found",
+  422: "Malformed request payload",
+  429: "Rate limit exceeded",
+  500: "Server-side calculation failure",
+};
+
+function buildUrl(base: string, endpoint: ApiEndpoint): string {
+  const url = new URL(endpoint.path, `${base}/`);
+  if (endpoint.defaultQuery) {
+    for (const [key, value] of Object.entries(endpoint.defaultQuery)) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  return url.toString();
 }
 
-const ENDPOINTS: Endpoint[] = [
-  // 1. GET /api/health
-  {
-    method: "GET",
-    path: "/api/health",
-    category: "overview",
-    summary: "Health check",
-    description: "Returns server health status and uptime information.",
-    python: (b) => `import requests\n\nres = requests.get("${b}/api/health")\nprint(res.json())`,
-    r: (b) => `library(httr)\nlibrary(jsonlite)\n\nres <- GET("${b}/api/health")\ncat(content(res, "text"), "\\n")`,
-    curl: (b) => `curl -s "${b}/api/health" | python -m json.tool`,
-  },
-  // 2. GET /api/data-stats
-  {
-    method: "GET",
-    path: "/api/data-stats",
-    category: "overview",
-    summary: "Dataset statistics",
-    description: "Returns high-level statistics: total samples, countries, diseases, genera counts.",
-    python: (b) => `import requests\n\nres = requests.get("${b}/api/data-stats")\nstats = res.json()\nprint(f"Samples: {stats['total_samples']}")`,
-    r: (b) => `library(httr)\nlibrary(jsonlite)\n\nres <- GET("${b}/api/data-stats")\nstats <- fromJSON(content(res, "text"))\ncat("Samples:", stats$total_samples, "\\n")`,
-    curl: (b) => `curl -s "${b}/api/data-stats" | python -m json.tool`,
-  },
-  // 3. GET /api/species-search
-  {
-    method: "GET",
-    path: "/api/species-search",
-    category: "species",
-    summary: "Search species / genera",
-    description: "Full-text search across genus names. Returns matching genera with basic stats.",
-    params: [
-      { name: "q", type: "string", required: true, description: "Search query (e.g. 'Blautia')" },
-    ],
-    python: (b) => `import requests\n\nres = requests.get("${b}/api/species-search", params={"q": "Blautia"})\nfor g in res.json()["results"]:\n    print(g)`,
-    r: (b) => `library(httr)\nlibrary(jsonlite)\n\nres <- GET("${b}/api/species-search", query = list(q = "Blautia"))\ndata <- fromJSON(content(res, "text"))\nprint(data$results)`,
-    curl: (b) => `curl -s "${b}/api/species-search?q=Blautia" | python -m json.tool`,
-  },
-  // 4. GET /api/species-profile
-  {
-    method: "GET",
-    path: "/api/species-profile",
-    category: "species",
-    summary: "Species / genus profile",
-    description: "Detailed profile for a single genus: abundance by disease, country, age, and sex.",
-    params: [
-      { name: "genus", type: "string", required: true, description: "Genus name (e.g. 'Bacteroides')" },
-    ],
-    python: (b) => `import requests\n\nres = requests.get("${b}/api/species-profile", params={"genus": "Bacteroides"})\nprofile = res.json()\nprint(f"Prevalence: {profile['prevalence']}")\nprint(f"Mean abundance: {profile['mean_abundance']}")`,
-    r: (b) => `library(httr)\nlibrary(jsonlite)\n\nres <- GET("${b}/api/species-profile", query = list(genus = "Bacteroides"))\nprofile <- fromJSON(content(res, "text"))\ncat("Prevalence:", profile$prevalence, "\\n")`,
-    curl: (b) => `curl -s "${b}/api/species-profile?genus=Bacteroides" | python -m json.tool`,
-  },
-  // 5. GET /api/disease-list
-  {
-    method: "GET",
-    path: "/api/disease-list",
-    category: "disease",
-    summary: "List all diseases",
-    description: "Returns the full list of diseases with sample counts.",
-    python: (b) => `import requests\n\nres = requests.get("${b}/api/disease-list")\nfor d in res.json()["diseases"]:\n    print(d["name"], d["sample_count"])`,
-    r: (b) => `library(httr)\nlibrary(jsonlite)\n\nres <- GET("${b}/api/disease-list")\ndata <- fromJSON(content(res, "text"))\nprint(head(data$diseases))`,
-    curl: (b) => `curl -s "${b}/api/disease-list" | python -m json.tool`,
-  },
-  // 6. GET /api/disease-profile
-  {
-    method: "GET",
-    path: "/api/disease-profile",
-    category: "disease",
-    summary: "Disease microbiome profile",
-    description: "Top genera for a disease vs healthy controls, with fold-change and prevalence.",
-    params: [
-      { name: "disease", type: "string", required: true, description: "Disease name (e.g. 'IBD')" },
-      { name: "top_n", type: "integer", required: false, description: "Number of top genera to return (default 20)" },
-    ],
-    python: (b) => `import requests\n\nres = requests.get("${b}/api/disease-profile", params={"disease": "IBD", "top_n": 10})\nfor g in res.json()["top_genera"]:\n    print(g["genus"], g["log2fc"])`,
-    r: (b) => `library(httr)\nlibrary(jsonlite)\n\nres <- GET("${b}/api/disease-profile", query = list(disease = "IBD", top_n = 10))\nprofile <- fromJSON(content(res, "text"))\nprint(profile$top_genera)`,
-    curl: (b) => `curl -s "${b}/api/disease-profile?disease=IBD&top_n=10" | python -m json.tool`,
-  },
-  // 7. GET /api/biomarker-discovery
-  {
-    method: "GET",
-    path: "/api/biomarker-discovery",
-    category: "disease",
-    summary: "Biomarker discovery",
-    description: "Wilcoxon rank-sum test with BH FDR correction for disease biomarker identification.",
-    params: [
-      { name: "disease", type: "string", required: true, description: "Disease name" },
-      { name: "lda_threshold", type: "number", required: false, description: "LDA effect size threshold (default 2.0)" },
-      { name: "p_threshold", type: "number", required: false, description: "Adjusted p-value threshold (default 0.05)" },
-    ],
-    python: (b) => `import requests\n\nres = requests.get("${b}/api/biomarker-discovery", params={\n    "disease": "CRC",\n    "lda_threshold": 2.0,\n    "p_threshold": 0.05\n})\nmarkers = res.json()["markers"]\nfor m in markers:\n    print(m["taxon"], m["lda_score"], m["p_adj"])`,
-    r: (b) => `library(httr)\nlibrary(jsonlite)\n\nres <- GET("${b}/api/biomarker-discovery",\n  query = list(disease = "CRC", lda_threshold = 2.0, p_threshold = 0.05))\nmarkers <- fromJSON(content(res, "text"))$markers\nprint(markers)`,
-    curl: (b) => `curl -s "${b}/api/biomarker-discovery?disease=CRC&lda_threshold=2.0&p_threshold=0.05" | python -m json.tool`,
-  },
-  // 8. POST /api/diff-analysis
-  {
-    method: "POST",
-    path: "/api/diff-analysis",
-    category: "analysis",
-    summary: "Differential analysis between two groups",
-    description: "Compare microbiome composition between two user-defined sample groups. Returns differential abundance, volcano plot data, and diversity metrics.",
-    body: {
-      group_a_filter: { disease: "IBD", country: "USA" },
-      group_b_filter: { disease: "healthy" },
-      taxonomy_level: "genus",
-      method: "wilcoxon",
-    },
-    python: (b) => `import requests\n\npayload = {\n    "group_a_filter": {"disease": "IBD", "country": "USA"},\n    "group_b_filter": {"disease": "healthy"},\n    "taxonomy_level": "genus",\n    "method": "wilcoxon"\n}\nres = requests.post("${b}/api/diff-analysis", json=payload)\nprint(res.json()["significant_taxa"][:5])`,
-    r: (b) => `library(httr)\nlibrary(jsonlite)\n\npayload <- list(\n  group_a_filter = list(disease = "IBD", country = "USA"),\n  group_b_filter = list(disease = "healthy"),\n  taxonomy_level = "genus",\n  method = "wilcoxon"\n)\nres <- POST("${b}/api/diff-analysis",\n  body = toJSON(payload, auto_unbox = TRUE),\n  content_type_json())\nresult <- fromJSON(content(res, "text"))\nprint(head(result$significant_taxa))`,
-    curl: (b) => `curl -s -X POST "${b}/api/diff-analysis" \\\n  -H "Content-Type: application/json" \\\n  -d '{"group_a_filter":{"disease":"IBD","country":"USA"},"group_b_filter":{"disease":"healthy"},"taxonomy_level":"genus","method":"wilcoxon"}' \\\n  | python -m json.tool`,
-  },
-  // 9. GET /api/cooccurrence
-  {
-    method: "GET",
-    path: "/api/cooccurrence",
-    category: "network",
-    summary: "Co-occurrence network",
-    description: "Spearman correlation-based co-occurrence network for a given disease context.",
-    params: [
-      { name: "disease", type: "string", required: false, description: "Disease context (default 'healthy')" },
-      { name: "min_r", type: "number", required: false, description: "Minimum |r| threshold (default 0.3)" },
-      { name: "top_genera", type: "integer", required: false, description: "Number of top genera (default 30)" },
-    ],
-    python: (b) => `import requests\n\nres = requests.get("${b}/api/cooccurrence", params={\n    "disease": "CRC",\n    "min_r": 0.4,\n    "top_genera": 20\n})\nnetwork = res.json()\nprint(f"Nodes: {len(network['nodes'])}, Edges: {len(network['edges'])}")`,
-    r: (b) => `library(httr)\nlibrary(jsonlite)\n\nres <- GET("${b}/api/cooccurrence",\n  query = list(disease = "CRC", min_r = 0.4, top_genera = 20))\nnet <- fromJSON(content(res, "text"))\ncat("Nodes:", length(net$nodes), "Edges:", length(net$edges), "\\n")`,
-    curl: (b) => `curl -s "${b}/api/cooccurrence?disease=CRC&min_r=0.4&top_genera=20" | python -m json.tool`,
-  },
-  // 10. GET /api/lifecycle
-  {
-    method: "GET",
-    path: "/api/lifecycle",
-    category: "lifecycle",
-    summary: "Lifecycle microbiome data",
-    description: "Gut microbiome composition across 8 life stages, optionally filtered by disease or country.",
-    params: [
-      { name: "disease", type: "string", required: false, description: "Filter by disease (default all healthy)" },
-      { name: "country", type: "string", required: false, description: "Filter by country" },
-      { name: "top_genera", type: "integer", required: false, description: "Number of top genera (default 15)" },
-    ],
-    python: (b) => `import requests\n\nres = requests.get("${b}/api/lifecycle", params={"top_genera": 10})\ndata = res.json()\nprint(f"Total samples: {data['total_samples']}")\nfor row in data["data"]:\n    print(row["age_group"], row["sample_count"])`,
-    r: (b) => `library(httr)\nlibrary(jsonlite)\n\nres <- GET("${b}/api/lifecycle", query = list(top_genera = 10))\ndata <- fromJSON(content(res, "text"))\nprint(data$data)`,
-    curl: (b) => `curl -s "${b}/api/lifecycle?top_genera=10" | python -m json.tool`,
-  },
-  // 11. POST /api/similarity-search
-  {
-    method: "POST",
-    path: "/api/similarity-search",
-    category: "similarity",
-    summary: "Sample similarity search",
-    description: "Upload abundance profile to find the most similar samples in the database.",
-    body: {
-      abundances: { Bacteroides: 0.25, Prevotella: 0.15, Faecalibacterium: 0.10 },
-      metric: "braycurtis",
-      top_k: 10,
-    },
-    python: (b) => `import requests\n\npayload = {\n    "abundances": {"Bacteroides": 0.25, "Prevotella": 0.15, "Faecalibacterium": 0.10},\n    "metric": "braycurtis",\n    "top_k": 10\n}\nres = requests.post("${b}/api/similarity-search", json=payload)\nfor hit in res.json()["results"]:\n    print(hit["sample_key"], hit["distance"])`,
-    r: (b) => `library(httr)\nlibrary(jsonlite)\n\npayload <- list(\n  abundances = list(Bacteroides = 0.25, Prevotella = 0.15, Faecalibacterium = 0.10),\n  metric = "braycurtis",\n  top_k = 10\n)\nres <- POST("${b}/api/similarity-search",\n  body = toJSON(payload, auto_unbox = TRUE),\n  content_type_json())\nresults <- fromJSON(content(res, "text"))$results\nprint(results)`,
-    curl: (b) => `curl -s -X POST "${b}/api/similarity-search" \\\n  -H "Content-Type: application/json" \\\n  -d '{"abundances":{"Bacteroides":0.25,"Prevotella":0.15,"Faecalibacterium":0.10},"metric":"braycurtis","top_k":10}' \\\n  | python -m json.tool`,
-  },
-  // 12. GET /api/biomarker-profile
-  {
-    method: "GET",
-    path: "/api/biomarker-profile",
-    category: "species",
-    summary: "Cross-disease biomarker profile",
-    description: "For a given genus, compute log2 fold change vs healthy controls across all diseases. Returns enrichment/depletion direction, Wilcoxon p-value, and BH-adjusted p-value for each disease.",
-    params: [
-      { name: "genus", type: "string", required: true, description: "Genus name (e.g. 'Faecalibacterium')" },
-      { name: "min_samples", type: "integer", required: false, description: "Minimum samples per disease (default 10)" },
-    ],
-    python: (b) => `import requests\nimport pandas as pd\n\nres = requests.get("${b}/api/biomarker-profile", params={"genus": "Faecalibacterium"})\ndata = res.json()\nprint(f"Enriched in {data['n_enriched']} diseases, depleted in {data['n_depleted']}")\n\n# Convert to DataFrame for analysis\ndf = pd.DataFrame(data["profiles"])\nsig = df[df["significant"]].sort_values("log2fc")\nprint(sig[["disease", "log2fc", "adjusted_p"]].to_string())`,
-    r: (b) => `library(httr)\nlibrary(jsonlite)\n\nres <- GET("${b}/api/biomarker-profile", query = list(genus = "Faecalibacterium"))\ndata <- fromJSON(content(res, "text"))\ncat("Enriched:", data$n_enriched, "Depleted:", data$n_depleted, "\\n")\n\ndf <- data$profiles\nsig <- df[df$significant == TRUE, ]\nprint(sig[order(sig$log2fc), c("disease", "log2fc", "adjusted_p")])`,
-    curl: (b) => `curl -s "${b}/api/biomarker-profile?genus=Faecalibacterium" | python -m json.tool`,
-  },
-  // 13. POST /api/cross-study
-  {
-    method: "POST",
-    path: "/api/cross-study",
-    category: "analysis",
-    summary: "Cross-study meta-analysis",
-    description: "Inverse-variance weighted meta-analysis across multiple cohorts. Uses DerSimonian-Laird random effects model with I² heterogeneity statistics.",
-    body: {
-      project_ids: ["PRJNA389927", "PRJNA763023"],
-      disease: "CRC",
-      method: "wilcoxon",
-      p_threshold: 0.05,
-      min_studies: 2,
-    },
-    python: (b) => `import requests\n\npayload = {\n    "project_ids": ["PRJNA389927", "PRJNA763023"],\n    "disease": "CRC",\n    "method": "wilcoxon",\n    "p_threshold": 0.05,\n    "min_studies": 2\n}\nres = requests.post("${b}/api/cross-study", json=payload)\ndata = res.json()\nprint(f"Consensus markers: {data['n_consensus']}")\nfor m in data["markers"][:5]:\n    print(f"  {m['taxon']}: beta={m['meta_beta']:.3f}, I²={m['I2']:.1f}%")`,
-    r: (b) => `library(httr)\nlibrary(jsonlite)\n\npayload <- list(\n  project_ids = c("PRJNA389927", "PRJNA763023"),\n  disease = "CRC",\n  method = "wilcoxon",\n  p_threshold = 0.05,\n  min_studies = 2\n)\nres <- POST("${b}/api/cross-study",\n  body = toJSON(payload, auto_unbox = TRUE),\n  content_type_json())\ndata <- fromJSON(content(res, "text"))\ncat("Consensus markers:", data$n_consensus, "\\n")`,
-    curl: (b) => `curl -s -X POST "${b}/api/cross-study" \\\n  -H "Content-Type: application/json" \\\n  -d '{"project_ids":["PRJNA389927","PRJNA763023"],"disease":"CRC","method":"wilcoxon","p_threshold":0.05,"min_studies":2}' \\\n  | python -m json.tool`,
-  },
-  // 14. GET /api/download/summary-stats
-  {
-    method: "GET",
-    path: "/api/download/summary-stats",
-    category: "download",
-    summary: "Download summary statistics",
-    description: "Download aggregated summary statistics in CSV, TSV, or JSON format.",
-    params: [
-      { name: "format", type: "string", required: false, description: "Output format: csv, tsv, or json (default json)" },
-    ],
-    python: (b) => `import requests\n\n# Download as CSV\nres = requests.get("${b}/api/download/summary-stats", params={"format": "csv"})\nwith open("summary_stats.csv", "w") as f:\n    f.write(res.text)\nprint("Saved summary_stats.csv")`,
-    r: (b) => `library(httr)\n\nres <- GET("${b}/api/download/summary-stats", query = list(format = "csv"))\nwriteLines(content(res, "text"), "summary_stats.csv")\ncat("Saved summary_stats.csv\\n")`,
-    curl: (b) => `curl -s "${b}/api/download/summary-stats?format=csv" -o summary_stats.csv`,
-  },
-];
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
 
-const CATEGORIES = [
-  "all",
-  "overview",
-  "species",
-  "disease",
-  "analysis",
-  "network",
-  "lifecycle",
-  "similarity",
-  "download",
-] as const;
+function buildPythonExample(base: string, endpoint: ApiEndpoint): string {
+  const url = buildUrl(base, endpoint);
+  if (endpoint.method === "GET") {
+    return [
+      "import requests",
+      "",
+      `res = requests.get("${url}")`,
+      "res.raise_for_status()",
+      "print(res.json())",
+    ].join("\n");
+  }
 
-/* ------------------------------------------------------------------ */
-/*  Component                                                          */
-/* ------------------------------------------------------------------ */
+  return [
+    "import requests",
+    "",
+    `payload = ${JSON.stringify(endpoint.defaultBody ?? {}, null, 2)}`,
+    `res = requests.post("${url}", json=payload)`,
+    "res.raise_for_status()",
+    "print(res.json())",
+  ].join("\n");
+}
+
+function buildRExample(base: string, endpoint: ApiEndpoint): string {
+  const url = buildUrl(base, endpoint);
+  if (endpoint.method === "GET") {
+    return [
+      "library(httr)",
+      "library(jsonlite)",
+      "",
+      `res <- GET("${url}")`,
+      "stop_for_status(res)",
+      'cat(content(res, "text", encoding = "UTF-8"))',
+    ].join("\n");
+  }
+
+  return [
+    "library(httr)",
+    "library(jsonlite)",
+    "",
+    `payload <- ${toRList(endpoint.defaultBody ?? {})}`,
+    `res <- POST("${url}", body = toJSON(payload, auto_unbox = TRUE), content_type_json())`,
+    "stop_for_status(res)",
+    'cat(content(res, "text", encoding = "UTF-8"))',
+  ].join("\n");
+}
+
+function toRList(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `c(${value.map((item) => toRList(item)).join(", ")})`;
+  }
+  if (value && typeof value === "object") {
+    const pairs = Object.entries(value as Record<string, unknown>)
+      .map(([key, inner]) => `${key} = ${toRList(inner)}`)
+      .join(", ");
+    return `list(${pairs})`;
+  }
+  if (typeof value === "string") return `"${value}"`;
+  return String(value);
+}
+
+function buildCurlExample(base: string, endpoint: ApiEndpoint): string {
+  const url = buildUrl(base, endpoint);
+  if (endpoint.method === "GET") {
+    return `curl -s "${url}"`;
+  }
+
+  return [
+    `curl -s -X POST "${url}" \\`,
+    '  -H "Content-Type: application/json" \\',
+    `  -d '${JSON.stringify(endpoint.defaultBody ?? {})}'`,
+  ].join("\n");
+}
+
+type ResponseMeta = {
+  status: number;
+  durationMs: number;
+  bytes: number;
+};
 
 const ApiDocsPage = () => {
-  const { t } = useI18n();
-  const [activeCat, setActiveCat] = useState<string>("all");
-  const [openIdx, setOpenIdx] = useState<number | null>(null);
-  const [codeTabs, setCodeTabs] = useState<Record<number, string>>({});
-  const [copied, setCopied] = useState<number | null>(null);
-  const [tryLoading, setTryLoading] = useState<number | null>(null);
-  const [responses, setResponses] = useState<Record<number, string>>({});
+  const { locale } = useI18n();
+  const text = COPY[locale];
+  const [activeCategory, setActiveCategory] = useState<(typeof API_DOC_CATEGORIES)[number]>("all");
+  const [expandedKey, setExpandedKey] = useState<string | null>(API_DOC_ENDPOINTS[0]?.path ?? null);
+  const [activeLang, setActiveLang] = useState<Record<string, "python" | "r" | "curl">>({});
+  const [bodyDrafts, setBodyDrafts] = useState<Record<string, string>>({});
+  const [responses, setResponses] = useState<Record<string, string>>({});
+  const [responseMeta, setResponseMeta] = useState<Record<string, ResponseMeta>>({});
+  const [loadingKey, setLoadingKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const filtered =
-    activeCat === "all"
-      ? ENDPOINTS
-      : ENDPOINTS.filter((ep) => ep.category === activeCat);
+  const filteredEndpoints = useMemo(() => {
+    if (activeCategory === "all") return API_DOC_ENDPOINTS;
+    return API_DOC_ENDPOINTS.filter((endpoint) => endpoint.category === activeCategory);
+  }, [activeCategory]);
 
-  const toggle = (i: number) => setOpenIdx(openIdx === i ? null : i);
+  const handleCopy = async (key: string, code: string) => {
+    await navigator.clipboard.writeText(code);
+    setCopiedKey(key);
+    window.setTimeout(() => setCopiedKey(null), 1500);
+  };
 
-  const getCodeTab = (i: number) => codeTabs[i] ?? "python";
+  const handleTryIt = async (endpoint: ApiEndpoint) => {
+    const key = `${endpoint.method}:${endpoint.path}`;
+    const startedAt = performance.now();
+    setLoadingKey(key);
 
-  const setTab = (i: number, tab: string) =>
-    setCodeTabs((prev) => ({ ...prev, [i]: tab }));
-
-  const copyCode = useCallback(
-    (i: number, code: string) => {
-      navigator.clipboard.writeText(code).then(() => {
-        setCopied(i);
-        setTimeout(() => setCopied(null), 1500);
-      });
-    },
-    [],
-  );
-
-  const tryEndpoint = useCallback(
-    async (i: number, ep: Endpoint) => {
-      setTryLoading(i);
-      try {
-        const url = `${API_BASE}${ep.path}`;
-        const opts: RequestInit =
-          ep.method === "POST"
-            ? {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(ep.body),
-              }
-            : {};
-        const res = await fetch(url, opts);
-        const text = await res.text();
+    try {
+      const requestInit: RequestInit = { method: endpoint.method };
+      if (endpoint.method === "POST") {
+        const rawBody = bodyDrafts[key] ?? JSON.stringify(endpoint.defaultBody ?? {}, null, 2);
+        let parsed: Record<string, unknown>;
         try {
-          const json = JSON.parse(text);
-          setResponses((prev) => ({
-            ...prev,
-            [i]: JSON.stringify(json, null, 2),
-          }));
+          parsed = JSON.parse(rawBody) as Record<string, unknown>;
         } catch {
-          setResponses((prev) => ({ ...prev, [i]: text }));
+          setResponses((prev) => ({ ...prev, [key]: text.invalidJson }));
+          return;
         }
-      } catch (err: unknown) {
-        setResponses((prev) => ({
-          ...prev,
-          [i]: `Error: ${err instanceof Error ? err.message : String(err)}`,
-        }));
-      } finally {
-        setTryLoading(null);
+        requestInit.headers = { "Content-Type": "application/json" };
+        requestInit.body = JSON.stringify(parsed);
       }
-    },
-    [],
-  );
 
-  const getCode = (ep: Endpoint, tab: string): string => {
-    if (tab === "r") return ep.r(API_BASE);
-    if (tab === "curl") return ep.curl(API_BASE);
-    return ep.python(API_BASE);
+      const url = buildUrl(ACTIVE_API_BASE, endpoint);
+      const res = await fetch(url, requestInit);
+      const payload = await res.text();
+      const durationMs = Math.round(performance.now() - startedAt);
+      const bytes = new TextEncoder().encode(payload).length;
+
+      let rendered = payload;
+      try {
+        rendered = JSON.stringify(JSON.parse(payload), null, 2);
+      } catch {
+        // keep original text
+      }
+
+      setResponses((prev) => ({ ...prev, [key]: rendered }));
+      setResponseMeta((prev) => ({
+        ...prev,
+        [key]: {
+          status: res.status,
+          durationMs,
+          bytes,
+        },
+      }));
+    } catch (error) {
+      const durationMs = Math.round(performance.now() - startedAt);
+      setResponses((prev) => ({
+        ...prev,
+        [key]: error instanceof Error ? error.message : String(error),
+      }));
+      setResponseMeta((prev) => ({
+        ...prev,
+        [key]: {
+          status: 0,
+          durationMs,
+          bytes: 0,
+        },
+      }));
+    } finally {
+      setLoadingKey(null);
+    }
   };
 
   return (
-    <div className={css.page}>
-      {/* Back link */}
-      <Link to="/" className={css.back}>
-        {t("apiDocs.back")}
-      </Link>
+    <>
+      <Header />
+      <main className={css.page}>
+        <Link to="/" className={css.back}>
+          {text.back}
+        </Link>
 
-      {/* Title */}
-      <h1 className={css.title}>{t("apiDocs.title")}</h1>
-      <p className={css.subtitle}>{t("apiDocs.subtitle")}</p>
+        <header className={css.hero}>
+          <div>
+            <h1 className={css.title}>{text.title}</h1>
+            <p className={css.subtitle}>{text.subtitle}</p>
+          </div>
+          <div className={css.badges}>
+            <a className={css.badge} href={`${ACTIVE_API_BASE}/api/openapi.json`} target="_blank" rel="noreferrer">
+              {text.openapi}
+            </a>
+            <a className={css.badge} href={`${ACTIVE_API_BASE}/api/docs`} target="_blank" rel="noreferrer">
+              Swagger UI
+            </a>
+          </div>
+        </header>
 
-      {/* Info cards */}
-      <div className={css.infoCards}>
-        <div className={css.infoCard}>
-          <h4>{t("apiDocs.baseUrl")}</h4>
-          <p>{API_BASE}</p>
-        </div>
-        <div className={css.infoCard}>
-          <h4>{t("apiDocs.version")}</h4>
-          <p>v1</p>
-        </div>
-        <div className={css.infoCard}>
-          <h4>{t("apiDocs.rateLimit")}</h4>
-          <p>{t("apiDocs.rateLimitDesc")}</p>
-        </div>
-        <div className={css.infoCard}>
-          <h4>Interactive Docs</h4>
-          <p>
-            <a href={`${API_BASE}/api/docs`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "underline" }}>Swagger UI</a>
-            {" · "}
-            <a href={`${API_BASE}/api/redoc`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "underline" }}>ReDoc</a>
-          </p>
-        </div>
-      </div>
+        <section className={css.warning}>
+          <p>{text.note}</p>
+          <p>{text.publicWarning}</p>
+        </section>
 
-      {/* Overview section */}
-      <div className={css.section}>
-        <h2>{t("apiDocs.overview")}</h2>
-        <p>{t("apiDocs.overviewText")}</p>
-      </div>
+        <section className={css.infoCards}>
+          <div className={css.infoCard}>
+            <h3>{text.localApi}</h3>
+            <code>{LOCAL_API_BASE}</code>
+          </div>
+          <div className={css.infoCard}>
+            <h3>{text.publicApi}</h3>
+            <code>{PUBLIC_API_BASE}</code>
+          </div>
+          <div className={css.infoCard}>
+            <h3>{text.activeApi}</h3>
+            <code>{ACTIVE_API_BASE}</code>
+          </div>
+        </section>
 
-      {/* Authentication section */}
-      <div className={css.section}>
-        <h2>{t("apiDocs.auth")}</h2>
-        <p>{t("apiDocs.authText")}</p>
-      </div>
+        <section className={css.section}>
+          <h2>{text.overviewTitle}</h2>
+          <p>{text.overviewText}</p>
+        </section>
 
-      {/* Endpoints section */}
-      <div className={css.section}>
-        <h2>{t("apiDocs.endpoints")}</h2>
+        <section className={css.section}>
+          <h2>{text.errorTitle}</h2>
+          <p>{text.errorText}</p>
+          <ul className={css.errorList}>
+            {Object.entries(COMMON_ERROR_TEXT).map(([code, label]) => (
+              <li key={code}>
+                <strong>{code}</strong>
+                <span>{label}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
 
-        {/* Category filter */}
-        <div className={css.categories}>
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              className={activeCat === cat ? css.catBtnActive : css.catBtn}
-              onClick={() => setActiveCat(cat)}
-            >
-              {cat === "all"
-                ? "All"
-                : t(`apiDocs.category.${cat}` as any)}
-            </button>
-          ))}
-        </div>
-
-        {/* Endpoint list */}
-        {filtered.map((ep, fi) => {
-          const globalIdx = ENDPOINTS.indexOf(ep);
-          const isOpen = openIdx === globalIdx;
-          const tab = getCodeTab(globalIdx);
-          const code = getCode(ep, tab);
-
-          return (
-            <div key={ep.path + ep.method} className={css.endpoint}>
-              {/* Header row */}
-              <div
-                className={css.endpointHeader}
-                onClick={() => toggle(globalIdx)}
+        <section className={css.section}>
+          <h2>{text.endpointTitle}</h2>
+          <div className={css.categories}>
+            {API_DOC_CATEGORIES.map((category) => (
+              <button
+                key={category}
+                type="button"
+                className={activeCategory === category ? css.categoryActive : css.categoryButton}
+                onClick={() => setActiveCategory(category)}
               >
-                <span
-                  className={
-                    ep.method === "GET" ? css.methodGet : css.methodPost
-                  }
-                >
-                  {ep.method}
-                </span>
-                <span className={css.path}>{ep.path}</span>
-                <span className={css.desc}>{ep.summary}</span>
-                <span className={isOpen ? css.arrowOpen : css.arrow}>
-                  &#9654;
-                </span>
-              </div>
+                {text.categories[category]}
+              </button>
+            ))}
+          </div>
 
-              {/* Expanded body */}
-              {isOpen && (
-                <div className={css.endpointBody}>
-                  <p>{ep.description}</p>
+          <div className={css.endpointList}>
+            {filteredEndpoints.map((endpoint) => {
+              const key = `${endpoint.method}:${endpoint.path}`;
+              const isOpen = expandedKey === key;
+              const lang = activeLang[key] ?? "python";
+              const code =
+                lang === "python"
+                  ? buildPythonExample(ACTIVE_API_BASE, endpoint)
+                  : lang === "r"
+                    ? buildRExample(ACTIVE_API_BASE, endpoint)
+                    : buildCurlExample(ACTIVE_API_BASE, endpoint);
+              const requestPreview = buildUrl(ACTIVE_API_BASE, endpoint);
+              const bodyDraft = bodyDrafts[key] ?? JSON.stringify(endpoint.defaultBody ?? {}, null, 2);
 
-                  {/* Parameters table */}
-                  {ep.params && ep.params.length > 0 && (
-                    <div className={css.params}>
-                      <h4>{t("apiDocs.parameters")}</h4>
-                      <table className={css.paramTable}>
-                        <thead>
-                          <tr>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th>Required</th>
-                            <th>Description</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {ep.params.map((p) => (
-                            <tr key={p.name}>
-                              <td>
-                                <code>{p.name}</code>
-                              </td>
-                              <td>{p.type}</td>
-                              <td>{p.required ? "Yes" : "No"}</td>
-                              <td>{p.description}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  {/* Request body example for POST */}
-                  {ep.body && (
-                    <div className={css.params}>
-                      <h4>Request Body</h4>
-                      <div className={css.codeBlock}>
-                        {JSON.stringify(ep.body, null, 2)}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Code examples with tabs */}
-                  <div className={css.codeTabs}>
-                    {(["python", "r", "curl"] as const).map((lang) => (
-                      <button
-                        key={lang}
-                        className={
-                          tab === lang ? css.codeTabActive : css.codeTab
-                        }
-                        onClick={() => setTab(globalIdx, lang)}
-                      >
-                        {t(
-                          `apiDocs.${lang}` as "apiDocs.python" | "apiDocs.r" | "apiDocs.curl",
-                        )}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className={css.codeBlock}>
-                    {code}
-                    <button
-                      className={css.copyBtn}
-                      onClick={() => copyCode(globalIdx, code)}
-                    >
-                      {copied === globalIdx
-                        ? t("apiDocs.copied")
-                        : t("apiDocs.copy")}
-                    </button>
-                  </div>
-
-                  {/* Try it button */}
+              return (
+                <article key={key} className={css.endpointCard}>
                   <button
-                    className={css.tryBtn}
-                    disabled={tryLoading === globalIdx}
-                    onClick={() => tryEndpoint(globalIdx, ep)}
+                    type="button"
+                    className={css.endpointHeader}
+                    onClick={() => setExpandedKey(isOpen ? null : key)}
                   >
-                    {tryLoading === globalIdx
-                      ? "..."
-                      : t("apiDocs.tryIt")}
+                    <span className={endpoint.method === "GET" ? css.methodGet : css.methodPost}>{endpoint.method}</span>
+                    <span className={css.path}>{endpoint.path}</span>
+                    <span className={css.summary}>{endpoint.summary}</span>
                   </button>
 
-                  {/* Response */}
-                  {responses[globalIdx] !== undefined && (
-                    <div>
-                      <h4 style={{ marginTop: "0.75rem", fontSize: "0.9rem" }}>
-                        {t("apiDocs.response")}
-                      </h4>
-                      <div className={css.responseBlock}>
-                        {responses[globalIdx]}
+                  {isOpen && (
+                    <div className={css.endpointBody}>
+                      <p className={css.description}>{endpoint.description}</p>
+
+                      {endpoint.params && endpoint.params.length > 0 && (
+                        <div className={css.block}>
+                          <h3>{text.params}</h3>
+                          <table className={css.table}>
+                            <thead>
+                              <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Description</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {endpoint.params.map((param) => (
+                                <tr key={param.name}>
+                                  <td><code>{param.name}</code></td>
+                                  <td>{param.type}</td>
+                                  <td>{param.required ? "Yes" : "No"}</td>
+                                  <td>{param.description}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      <div className={css.grid}>
+                        <div className={css.block}>
+                          <h3>{text.requestPreview}</h3>
+                          <pre className={css.preview}>{requestPreview}</pre>
+                        </div>
+
+                        <div className={css.block}>
+                          <h3>{text.responseSchema}</h3>
+                          <ul className={css.schemaList}>
+                            {endpoint.responseSchema.map((line) => (
+                              <li key={line}><code>{line}</code></li>
+                            ))}
+                          </ul>
+                        </div>
                       </div>
+
+                      {endpoint.defaultBody && (
+                        <div className={css.block}>
+                          <h3>{text.requestBody}</h3>
+                          <textarea
+                            className={css.textarea}
+                            spellCheck={false}
+                            aria-label={text.bodyPlaceholder}
+                            value={bodyDraft}
+                            onChange={(event) =>
+                              setBodyDrafts((prev) => ({ ...prev, [key]: event.target.value }))
+                            }
+                          />
+                        </div>
+                      )}
+
+                      <div className={css.block}>
+                        <h3>{text.errorHandling}</h3>
+                        <div className={css.errorBadges}>
+                          {endpoint.errorCodes.map((codeValue) => (
+                            <span key={codeValue} className={css.errorBadge}>
+                              {codeValue} {COMMON_ERROR_TEXT[codeValue] ?? "Unhandled"}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className={css.block}>
+                        <h3>{text.codeExamples}</h3>
+                        <div className={css.codeTabs}>
+                          {(["python", "r", "curl"] as const).map((tab) => (
+                            <button
+                              key={tab}
+                              type="button"
+                              className={lang === tab ? css.codeTabActive : css.codeTab}
+                              onClick={() => setActiveLang((prev) => ({ ...prev, [key]: tab }))}
+                            >
+                              {text[tab]}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className={css.codeBlock}>
+                          <pre>{code}</pre>
+                          <button type="button" className={css.copyButton} onClick={() => void handleCopy(key, code)}>
+                            {copiedKey === key ? text.copied : text.copy}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className={css.actions}>
+                        <button
+                          type="button"
+                          className={css.tryButton}
+                          disabled={loadingKey === key}
+                          onClick={() => void handleTryIt(endpoint)}
+                        >
+                          {loadingKey === key ? "..." : text.tryIt}
+                        </button>
+                      </div>
+
+                      {responseMeta[key] && (
+                        <div className={css.block}>
+                          <h3>{text.responseMeta}</h3>
+                          <div className={css.metaRow}>
+                            <span>{text.status}: {responseMeta[key].status}</span>
+                            <span>{text.duration}: {responseMeta[key].durationMs} ms</span>
+                            <span>{text.size}: {formatBytes(responseMeta[key].bytes)}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {responses[key] && (
+                        <div className={css.block}>
+                          <h3>{text.response}</h3>
+                          <pre className={css.responseBlock}>{responses[key]}</pre>
+                        </div>
+                      )}
                     </div>
                   )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      </main>
+      <Footer />
+    </>
   );
 };
 

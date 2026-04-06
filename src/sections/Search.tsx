@@ -9,14 +9,13 @@ import { Link } from "react-router-dom";
 import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
+import { API_BASE } from "@/util/apiBase";
 import { exportTable } from "@/util/export";
 import { exportSVG, exportPNG } from "@/util/chartExport";
 import { diseaseShortNameI18n } from "@/util/diseaseNames";
 import { countryName, AGE_GROUP_ZH, SEX_ZH } from "@/util/countries";
 import "@/components/tooltip";
 import classes from "./Search.module.css";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 interface ProfileEntry {
   name: string;

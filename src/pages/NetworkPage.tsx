@@ -9,6 +9,7 @@ import { renderToString } from "react-dom/server";
 
 import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
+import { API_BASE } from "@/util/apiBase";
 import { exportPNG, exportSVG } from "@/util/chartExport";
 import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 
@@ -17,8 +18,6 @@ import classes from "./NetworkPage.module.css";
 const ChordPanel = lazy(() => import("./network/ChordPanel"));
 const CooccurrencePanel = lazy(() => import("./network/CooccurrencePanel"));
 const NetworkComparePanel = lazy(() => import("./network/NetworkComparePanel"));
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 type TabKey = "association" | "chord" | "cooccurrence" | "compare";
 

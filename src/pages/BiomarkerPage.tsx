@@ -6,10 +6,9 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import * as d3 from "d3";
 import { useI18n } from "@/i18n";
+import { API_BASE } from "@/util/apiBase";
 import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import classes from "./BiomarkerPage.module.css";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 interface Marker {
   taxon: string;

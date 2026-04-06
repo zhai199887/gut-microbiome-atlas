@@ -4,7 +4,7 @@
  * 中文映射内嵌，不依赖后端 API
  */
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+import { API_BASE } from "@/util/apiBase";
 
 let displayMap: Record<string, string> | null = null;
 let loading: Promise<void> | null = null;
@@ -24,6 +24,9 @@ const DISEASE_ZH: Record<string, string> = {
   "hematopoietic_stem_cell_transplantation": "造血干细胞移植",
   "Hematologic malignancy": "血液恶性肿瘤",
   "preterm infants": "早产儿",
+  "Healthy first-degree relatives of Crohn's disease patients": "克罗恩病患者健康一级亲属",
+  "Low birth weight infant": "低出生体重婴儿",
+  "Very low birth weight preterm infants": "极低出生体重早产儿",
   "chickenpox": "水痘",
   "UC": "溃疡性结肠炎",
   "obesity": "肥胖症",
@@ -42,7 +45,6 @@ const DISEASE_ZH: Record<string, string> = {
   "Lean": "消瘦",
   "ICU patient": "ICU患者",
   "acid_reflux": "胃酸反流",
-  "LTACH patient": "长期急性护理患者",
   "severe acute malnutrition": "严重急性营养不良",
   "migraine": "偏头痛",
   "parkinson": "帕金森病",
@@ -120,7 +122,6 @@ const DISEASE_ZH: Record<string, string> = {
   "IGA GLOMERULONEPHRITIS": "IgA肾病",
   "Non-alcoholic steatohepatitis": "非酒精性脂肪性肝炎",
   "Nonalcoholic Fatty Liver Disease": "非酒精性脂肪肝病",
-  "Overweight": "超重",
   "Underweight": "体重不足",
   "allergic_rhinitis": "过敏性鼻炎",
   "celiac_disease": "乳糜泻",
@@ -215,7 +216,6 @@ const DISEASE_ZH: Record<string, string> = {
   "Sickle Cell Disease": "镰状细胞病",
   "Small Cell Lung Cancer": "小细胞肺癌",
   "Systemic Sclerosis": "系统性硬化症",
-  "Ulcerative Colitis": "溃疡性结肠炎",
   "Urinary Tract Infection": "尿路感染",
   "Vaginal Dysbiosis": "阴道菌群失调",
   "Wilson Disease": "威尔逊病",
@@ -302,7 +302,6 @@ const DISEASE_ZH: Record<string, string> = {
   "IBS-D": "腹泻型肠易激综合征",
   "IgA glomerulonephritis": "IgA肾小球肾炎",
   "Infantile cholestasis": "婴儿胆汁淤积症",
-  "Kidney Stone": "肾结石",
   "LTACH KPC_POSITIVE": "长期急性护理KPC阳性",
   "LTACH control": "长期急性护理对照",
   "Long-term PPI use": "长期PPI使用",

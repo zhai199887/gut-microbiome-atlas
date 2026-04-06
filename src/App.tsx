@@ -6,7 +6,7 @@ import {
   loadSummary,
 } from "@/data";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { I18nProvider } from "@/i18n";
+import { I18nProvider, useI18n } from "@/i18n";
 import Footer from "@/sections/Footer";
 import Header from "@/sections/Header";
 import FilterPanel from "@/sections/FilterPanel";
@@ -41,33 +41,64 @@ const StudiesPage = lazy(() => import("@/pages/StudiesPage"));
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 
 /* ── Route-level document title / 路由级页面标题 ── */
-const ROUTE_TITLES: Record<string, string> = {
-  "/": "Home",
-  "/phenotype": "Phenotype Explorer",
-  "/compare": "Differential Analysis",
-  "/disease": "Disease Browser",
-  "/network": "Network Visualization",
-  "/cooccurrence": "Network Visualization",
-  "/chord": "Network Visualization",
-  "/metabolism": "Metabolism Pathway",
-  "/similarity": "Sample Similarity",
-  "/lifecycle": "Lifecycle Atlas",
-  "/search": "Genus Search",
-  "/api-docs": "API Documentation",
-  "/about": "About & Cite",
-  "/download": "Download",
-  "/admin": "Admin",
-};
-const BASE_TITLE = "Gut Microbiome Atlas";
+const ROUTE_TITLES = {
+  en: {
+    "/": "Home",
+    "/phenotype": "Phenotype Explorer",
+    "/compare": "Differential Analysis",
+    "/disease": "Disease Browser",
+    "/network": "Network Visualization",
+    "/cooccurrence": "Network Visualization",
+    "/chord": "Network Visualization",
+    "/metabolism": "Metabolism Pathway",
+    "/similarity": "Sample Similarity",
+    "/lifecycle": "Lifecycle Atlas",
+    "/search": "Genus Search",
+    "/studies": "Studies",
+    "/api-docs": "API Documentation",
+    "/about": "About & Cite",
+    "/download": "Download",
+    "/admin": "Admin",
+  },
+  zh: {
+    "/": "首页",
+    "/phenotype": "表型探索",
+    "/compare": "差异分析",
+    "/disease": "疾病浏览",
+    "/network": "网络可视化",
+    "/cooccurrence": "网络可视化",
+    "/chord": "网络可视化",
+    "/metabolism": "代谢功能",
+    "/similarity": "相似搜索",
+    "/lifecycle": "生命周期",
+    "/search": "菌属检索",
+    "/studies": "研究项目",
+    "/api-docs": "API 文档",
+    "/about": "引用与关于",
+    "/download": "下载",
+    "/admin": "管理",
+  },
+} as const;
+
+const BASE_TITLES = {
+  en: "Gut Microbiome Atlas",
+  zh: "肠道微生物图谱",
+} as const;
 
 const DocumentTitle = ({ children }: { children: ReactNode }) => {
+  const { locale } = useI18n();
   const { pathname } = useLocation();
   const navigate = useNavigate();
+
   useEffect(() => {
-    const sub = ROUTE_TITLES[pathname];
-    document.title = sub ? `${sub} | ${BASE_TITLE}` : BASE_TITLE;
+    const routeTitles = ROUTE_TITLES[locale];
+    const baseTitle = BASE_TITLES[locale];
+    const sub = pathname.startsWith("/species/")
+      ? (locale === "zh" ? "菌属画像" : "Genus Profile")
+      : routeTitles[pathname as keyof typeof routeTitles];
+    document.title = sub ? `${sub} | ${baseTitle}` : baseTitle;
     trackEvent("page_view", pathname);
-  }, [pathname]);
+  }, [locale, pathname]);
 
   // Ctrl+K / Cmd+K 全局搜索快捷键
   useEffect(() => {
@@ -88,12 +119,15 @@ const DocumentTitle = ({ children }: { children: ReactNode }) => {
   return <>{children}</>;
 };
 
-const PageLoader = () => (
-  <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minHeight: "60vh", gap: "1.5rem" }}>
-    <div className="loading-spinner" />
-    <p style={{ opacity: 0.4, fontSize: "0.9rem", margin: 0 }}>Loading...</p>
-  </div>
-);
+const PageLoader = () => {
+  const { t } = useI18n();
+  return (
+    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minHeight: "60vh", gap: "1.5rem" }}>
+      <div className="loading-spinner" />
+      <p style={{ opacity: 0.4, fontSize: "0.9rem", margin: 0 }}>{t("common.loading")}</p>
+    </div>
+  );
+};
 
 const MainPage = () => {
   useEffect(() => {
@@ -117,10 +151,12 @@ const MainPage = () => {
   );
 };
 
-const App = () => (
-  <I18nProvider>
-    <BrowserRouter>
-      <a href="#main-content" className="skip-link">Skip to content</a>
+const AppShell = () => {
+  const { t } = useI18n();
+
+  return (
+    <>
+      <a href="#main-content" className="skip-link">{t("common.skipToContent")}</a>
       <ErrorBoundary>
       <DocumentTitle>
       <Suspense fallback={<PageLoader />}>
@@ -147,6 +183,14 @@ const App = () => (
       </Suspense>
       </DocumentTitle>
       </ErrorBoundary>
+    </>
+  );
+};
+
+const App = () => (
+  <I18nProvider>
+    <BrowserRouter>
+      <AppShell />
     </BrowserRouter>
   </I18nProvider>
 );

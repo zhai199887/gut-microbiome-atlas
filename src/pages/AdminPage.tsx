@@ -5,9 +5,8 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { API_BASE } from "@/util/apiBase";
 import classes from "./AdminPage.module.css";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 interface DataStats {
   total_samples: number;

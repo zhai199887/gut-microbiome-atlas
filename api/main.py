@@ -2062,7 +2062,7 @@ def species_profile(request: Request, genus: str):
 
     # Strict NC baseline / 严格健康对照基线
     inform_cols = [f"inform{i}" for i in range(12)]
-    nc_mask = _strict_nc_mask(mm, INFORM_COLS)
+    nc_mask = _strict_nc_mask(mm, inform_cols)
     nc_vals = ga.loc[nc_mask].values.astype(float)
     nc_mean_val = float(np.mean(nc_vals)) if len(nc_vals) > 0 else 0.0
     nc_prevalence_val = float((nc_vals > 0).sum() / len(nc_vals)) if len(nc_vals) > 0 else 0.0

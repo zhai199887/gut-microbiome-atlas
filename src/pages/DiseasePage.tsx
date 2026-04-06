@@ -6,6 +6,7 @@ import { useI18n } from "@/i18n";
 import { exportTable } from "@/util/export";
 import { exportPNG, exportSVG } from "@/util/chartExport";
 import { cachedFetch } from "@/util/apiCache";
+import { API_BASE } from "@/util/apiBase";
 import { countryName, AGE_GROUP_ZH, SEX_ZH } from "@/util/countries";
 import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import "@/components/tooltip";
@@ -16,8 +17,6 @@ import PrevalenceDotPlot from "./disease/PrevalenceDotPlot";
 import StudiesPanel from "./disease/StudiesPanel";
 import type { DiseaseListItem, DiseaseProfile, GenusEntry } from "./disease/types";
 import classes from "./DiseasePage.module.css";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 type TabKey = "profile" | "biomarker" | "lollipop" | "studies";
 

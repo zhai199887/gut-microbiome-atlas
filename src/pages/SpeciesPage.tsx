@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
+import { API_BASE } from "@/util/apiBase";
 import { phylumColor } from "@/util/phylumColors";
 
 import BiomarkerPanel from "./species/BiomarkerPanel";
@@ -12,8 +13,6 @@ import MetabolismPanel from "./species/MetabolismPanel";
 import ProfilePanel from "./species/ProfilePanel";
 import type { SpeciesProfile } from "./species/types";
 import classes from "./SpeciesPage.module.css";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 type TabKey = "profile" | "biomarker" | "cooccurrence";
 

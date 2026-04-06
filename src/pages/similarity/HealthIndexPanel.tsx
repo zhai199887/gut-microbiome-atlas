@@ -1,25 +1,54 @@
 /**
  * HealthIndexPanel.tsx
- * 肠道微生物组健康指数 (GMHI) — 群体分布概览 + 用户计算
+ * 肠道微生物组健康指数 (GMHI) — 群体分布 + 用户评分工作台
  */
-import { useRef, useState, useEffect } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
+
 import * as d3 from "d3";
+
 import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
 import { exportTable } from "@/util/export";
+
+import ContributionChart from "./ContributionChart";
 import classes from "./HealthIndexPanel.module.css";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
-/* ── Types ── */
-interface HistBin { bin_start: number; bin_end: number; nc_count: number; disease_count: number }
-interface PopStats { n: number; mean: number; median: number; std: number; p25: number; p75: number }
-interface GenusEntry { genus: string; log2fc: number; p_value: number; mean_nc: number; mean_disease: number }
+interface HistBin {
+  bin_start: number;
+  bin_end: number;
+  nc_count: number;
+  disease_count: number;
+}
+
+interface PopStats {
+  n: number;
+  mean: number;
+  median: number;
+  std: number;
+  p10: number;
+  p25: number;
+  p75: number;
+  p90: number;
+}
+
+interface GenusEntry {
+  genus: string;
+  log2fc: number;
+  p_value: number;
+  adjusted_p: number;
+  weight: number;
+  mean_nc: number;
+  mean_disease: number;
+}
+
 interface PopulationData {
   histogram: HistBin[];
   nc_stats: PopStats;
   disease_stats: PopStats;
 }
+
 interface ReferenceData {
   health_genera: GenusEntry[];
   disease_genera: GenusEntry[];
@@ -28,23 +57,38 @@ interface ReferenceData {
   population: PopulationData;
 }
 
+interface HealthDetail {
+  genus: string;
+  abundance: number;
+  weight: number;
+  contribution: number;
+}
+
+interface DeviationEntry {
+  genus: string;
+  user_abundance: number;
+  nc_mean: number;
+  nc_median: number;
+  nc_p10: number;
+  nc_p25: number;
+  nc_p75: number;
+  nc_p90: number;
+  status: string;
+}
+
 interface HealthResult {
   score: number;
   raw_score: number;
+  raw_score_weighted: number;
   category: string;
+  population_percentile: number;
   health_genera_matched: number;
   disease_genera_matched: number;
   health_genera_sum: number;
   disease_genera_sum: number;
-  health_genera_detail: { genus: string; abundance: number }[];
-  disease_genera_detail: { genus: string; abundance: number }[];
-  per_genus_deviation: {
-    genus: string;
-    user_abundance: number;
-    nc_mean: number;
-    nc_median: number;
-    status: string;
-  }[];
+  health_genera_detail: HealthDetail[];
+  disease_genera_detail: HealthDetail[];
+  per_genus_deviation: DeviationEntry[];
   reference: {
     n_nc_samples: number;
     n_disease_samples: number;
@@ -62,19 +106,30 @@ function parseAbundanceText(text: string): Record<string, number> {
     const lower = trimmed.toLowerCase();
     if (lower.startsWith("genus") || lower.startsWith("taxon") || lower.startsWith("name")) continue;
     const parts = trimmed.split(/[,\t]+/);
-    if (parts.length >= 2) {
-      const genus = parts[0].trim();
-      const value = parseFloat(parts[1].trim());
-      if (genus && !isNaN(value)) {
-        result[genus] = value;
-      }
+    if (parts.length < 2) continue;
+    const genus = parts[0].trim();
+    const value = parseFloat(parts[1].trim());
+    if (genus && !Number.isNaN(value)) {
+      result[genus] = value;
     }
   }
   return result;
 }
 
-/* ── Population Distribution Histogram (D3) ── */
-const PopHistogram = ({ data }: { data: HistBin[] }) => {
+const formatP = (value: number) => {
+  if (value < 0.001) return value.toExponential(2);
+  return value.toFixed(4);
+};
+
+const PopHistogram = ({
+  data,
+  xLabel,
+  yLabel,
+}: {
+  data: HistBin[];
+  xLabel: string;
+  yLabel: string;
+}) => {
   const ref = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -82,81 +137,95 @@ const PopHistogram = ({ data }: { data: HistBin[] }) => {
     const svg = d3.select(ref.current);
     svg.selectAll("*").remove();
 
-    const margin = { top: 20, right: 20, bottom: 36, left: 44 };
-    const w = 560, h = 220;
-    const iw = w - margin.left - margin.right;
-    const ih = h - margin.top - margin.bottom;
+    const margin = { top: 24, right: 20, bottom: 40, left: 48 };
+    const width = 560;
+    const height = 220;
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
 
-    svg.attr("viewBox", `0 0 ${w} ${h}`);
-    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+    svg.attr("viewBox", `0 0 ${width} ${height}`);
+    const group = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
-    const maxVal = d3.max(data, d => Math.max(d.nc_count, d.disease_count)) ?? 1;
-    const x = d3.scaleBand().domain(data.map(d => String(d.bin_start))).range([0, iw]).padding(0.15);
-    const y = d3.scaleLinear().domain([0, maxVal * 1.1]).range([ih, 0]);
+    const maxValue = d3.max(data, (item) => Math.max(item.nc_count, item.disease_count)) ?? 1;
+    const x = d3.scaleBand().domain(data.map((item) => String(item.bin_start))).range([0, innerWidth]).padding(0.15);
+    const y = d3.scaleLinear().domain([0, maxValue * 1.1]).range([innerHeight, 0]);
 
-    // Axes
-    g.append("g").attr("transform", `translate(0,${ih})`)
-      .call(d3.axisBottom(x).tickValues(data.filter((_, i) => i % 2 === 0).map(d => String(d.bin_start))))
-      .selectAll("text").attr("fill", "#999").style("font-size", "10px");
-    g.append("g")
+    group.append("g")
+      .attr("transform", `translate(0,${innerHeight})`)
+      .call(d3.axisBottom(x).tickValues(data.filter((_, index) => index % 2 === 0).map((item) => String(item.bin_start))))
+      .selectAll("text")
+      .attr("fill", "#999")
+      .style("font-size", "10px");
+
+    group.append("g")
       .call(d3.axisLeft(y).ticks(5))
-      .selectAll("text").attr("fill", "#999").style("font-size", "10px");
+      .selectAll("text")
+      .attr("fill", "#999")
+      .style("font-size", "10px");
 
-    // Axis labels
-    g.append("text").attr("x", iw / 2).attr("y", ih + 32)
-      .attr("text-anchor", "middle").attr("fill", "#888").style("font-size", "11px")
-      .text("GMHI Score");
-    g.append("text").attr("x", -ih / 2).attr("y", -34)
-      .attr("transform", "rotate(-90)").attr("text-anchor", "middle")
-      .attr("fill", "#888").style("font-size", "11px").text("Count");
+    group.append("text")
+      .attr("x", innerWidth / 2)
+      .attr("y", innerHeight + 34)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#888")
+      .style("font-size", "11px")
+      .text(xLabel);
 
-    const bw = x.bandwidth() / 2;
+    group.append("text")
+      .attr("x", -innerHeight / 2)
+      .attr("y", -34)
+      .attr("transform", "rotate(-90)")
+      .attr("text-anchor", "middle")
+      .attr("fill", "#888")
+      .style("font-size", "11px")
+      .text(yLabel);
 
-    // NC bars
-    g.selectAll(".nc-bar").data(data).join("rect")
-      .attr("x", d => x(String(d.bin_start))!)
-      .attr("y", d => y(d.nc_count))
-      .attr("width", bw)
-      .attr("height", d => ih - y(d.nc_count))
-      .attr("fill", "#44cc88").attr("opacity", 0.8);
+    const bandHalf = x.bandwidth() / 2;
 
-    // Disease bars
-    g.selectAll(".dis-bar").data(data).join("rect")
-      .attr("x", d => x(String(d.bin_start))! + bw)
-      .attr("y", d => y(d.disease_count))
-      .attr("width", bw)
-      .attr("height", d => ih - y(d.disease_count))
-      .attr("fill", "#ff6666").attr("opacity", 0.8);
+    group.selectAll(".nc-bar")
+      .data(data)
+      .join("rect")
+      .attr("x", (item) => x(String(item.bin_start))!)
+      .attr("y", (item) => y(item.nc_count))
+      .attr("width", bandHalf)
+      .attr("height", (item) => innerHeight - y(item.nc_count))
+      .attr("fill", "#44cc88")
+      .attr("opacity", 0.8);
 
-    // Legend
-    const lg = svg.append("g").attr("transform", `translate(${w - 180}, 8)`);
-    lg.append("rect").attr("width", 12).attr("height", 12).attr("fill", "#44cc88").attr("rx", 2);
-    lg.append("text").attr("x", 16).attr("y", 10).attr("fill", "#ccc").style("font-size", "11px").text("NC");
-    lg.append("rect").attr("x", 50).attr("width", 12).attr("height", 12).attr("fill", "#ff6666").attr("rx", 2);
-    lg.append("text").attr("x", 66).attr("y", 10).attr("fill", "#ccc").style("font-size", "11px").text("Disease");
-  }, [data]);
+    group.selectAll(".disease-bar")
+      .data(data)
+      .join("rect")
+      .attr("x", (item) => x(String(item.bin_start))! + bandHalf)
+      .attr("y", (item) => y(item.disease_count))
+      .attr("width", bandHalf)
+      .attr("height", (item) => innerHeight - y(item.disease_count))
+      .attr("fill", "#ff6666")
+      .attr("opacity", 0.8);
+
+    const legend = svg.append("g").attr("transform", `translate(${width - 180}, 8)`);
+    legend.append("rect").attr("width", 12).attr("height", 12).attr("fill", "#44cc88").attr("rx", 2);
+    legend.append("text").attr("x", 16).attr("y", 10).attr("fill", "#ccc").style("font-size", "11px").text("NC");
+    legend.append("rect").attr("x", 50).attr("width", 12).attr("height", 12).attr("fill", "#ff6666").attr("rx", 2);
+    legend.append("text").attr("x", 66).attr("y", 10).attr("fill", "#ccc").style("font-size", "11px").text("Disease");
+  }, [data, xLabel, yLabel]);
 
   return <svg ref={ref} style={{ width: "100%", maxWidth: 560, height: "auto" }} role="img" aria-label="Population GMHI distribution histogram" />;
 };
 
-/* ── Main Component ── */
 const HealthIndexPanel = () => {
-  const { t } = useI18n();
-
-  // Population reference data
+  const { t, locale } = useI18n();
   const [refData, setRefData] = useState<ReferenceData | null>(null);
   const [refLoading, setRefLoading] = useState(true);
-
-  // User calculation state
   const [pasteText, setPasteText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<HealthResult | null>(null);
+  const [sortMode, setSortMode] = useState<"diff" | "user" | "nc">("diff");
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gaugeRef = useRef<SVGSVGElement>(null);
 
-  // Load population reference data on mount
   useEffect(() => {
     cachedFetch<ReferenceData>(`${API_BASE}/api/health-index/reference`)
       .then(setRefData)
@@ -164,12 +233,12 @@ const HealthIndexPanel = () => {
       .finally(() => setRefLoading(false));
   }, []);
 
-  const readFile = (f: File): Promise<string> =>
-    new Promise((resolve, reject) => {
+  const readFile = (candidate: File) =>
+    new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
       reader.onerror = () => reject(new Error("Failed to read file"));
-      reader.readAsText(f);
+      reader.readAsText(candidate);
     });
 
   const calculate = async () => {
@@ -185,12 +254,12 @@ const HealthIndexPanel = () => {
         abundances = parseAbundanceText(pasteText);
       }
     } catch {
-      setError("Failed to parse input");
+      setError(locale === "zh" ? "输入解析失败" : "Failed to parse input");
       return;
     }
 
     if (Object.keys(abundances).length === 0) {
-      setError("No valid genus-abundance pairs found");
+      setError(locale === "zh" ? "未识别到有效的属名-丰度对" : "No valid genus-abundance pairs found");
       return;
     }
 
@@ -205,194 +274,260 @@ const HealthIndexPanel = () => {
         const errData = await resp.json().catch(() => ({}));
         throw new Error(errData.detail || `HTTP ${resp.status}`);
       }
-      setResult(await resp.json());
+      const payload: HealthResult = await resp.json();
+      setResult(payload);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Calculation failed");
+      setError(err instanceof Error ? err.message : (locale === "zh" ? "计算失败" : "Calculation failed"));
     } finally {
       setLoading(false);
     }
   };
 
-  // Gauge chart for user result
   useEffect(() => {
     if (!result || !gaugeRef.current) return;
     const svg = d3.select(gaugeRef.current);
     svg.selectAll("*").remove();
 
-    const w = 280, h = 180;
-    svg.attr("viewBox", `0 0 ${w} ${h}`);
-    const cx = w / 2, cy = 150;
-    const r = 110;
+    const width = 300;
+    const height = 190;
+    const centerX = width / 2;
+    const centerY = 152;
+    const radius = 112;
     const startAngle = -Math.PI * 0.75;
     const endAngle = Math.PI * 0.75;
-    const scoreAngle = startAngle + (result.score / 100) * (endAngle - startAngle);
 
-    const bgArc = d3.arc<unknown>()
-      .innerRadius(r - 18).outerRadius(r)
-      .startAngle(startAngle).endAngle(endAngle);
-    svg.append("path")
-      .attr("d", bgArc({} as never) ?? "")
-      .attr("transform", `translate(${cx},${cy})`)
-      .attr("fill", "#2a2a3a");
+    svg.attr("viewBox", `0 0 ${width} ${height}`);
 
-    const segments = [
-      { end: 0.33, color: "#ff4444" },
-      { end: 0.66, color: "#ffaa00" },
-      { end: 1.0, color: "#44cc88" },
+    const segmentDefs = [
+      { from: 0, to: 0.33, color: "#ff5454" },
+      { from: 0.33, to: 0.66, color: "#ffb02e" },
+      { from: 0.66, to: 1, color: "#44cc88" },
     ];
-    let prevEnd = startAngle;
-    for (const seg of segments) {
-      const segEnd = startAngle + seg.end * (endAngle - startAngle);
-      const clampedEnd = Math.min(segEnd, scoreAngle);
-      if (clampedEnd <= prevEnd) break;
-      const segArc = d3.arc<unknown>()
-        .innerRadius(r - 18).outerRadius(r)
-        .startAngle(prevEnd).endAngle(clampedEnd);
+
+    segmentDefs.forEach((segment) => {
+      const arc = d3.arc<unknown>()
+        .innerRadius(radius - 16)
+        .outerRadius(radius)
+        .startAngle(startAngle + segment.from * (endAngle - startAngle))
+        .endAngle(startAngle + segment.to * (endAngle - startAngle));
+
       svg.append("path")
-        .attr("d", segArc({} as never) ?? "")
-        .attr("transform", `translate(${cx},${cy})`)
-        .attr("fill", seg.color).attr("opacity", 0.9);
-      prevEnd = clampedEnd;
-    }
+        .attr("d", arc({} as never) ?? "")
+        .attr("transform", `translate(${centerX},${centerY})`)
+        .attr("fill", segment.color)
+        .attr("opacity", 0.3);
+    });
 
-    const needleLen = r - 25;
-    const nx = cx + needleLen * Math.cos(scoreAngle - Math.PI / 2);
-    const ny = cy + needleLen * Math.sin(scoreAngle - Math.PI / 2);
-    svg.append("line")
-      .attr("x1", cx).attr("y1", cy)
-      .attr("x2", nx).attr("y2", ny)
-      .attr("stroke", "#fff").attr("stroke-width", 2);
+    const trackArc = d3.arc<unknown>()
+      .innerRadius(radius - 4)
+      .outerRadius(radius - 1)
+      .startAngle(startAngle)
+      .endAngle(endAngle);
+
+    svg.append("path")
+      .attr("d", trackArc({} as never) ?? "")
+      .attr("transform", `translate(${centerX},${centerY})`)
+      .attr("fill", "rgba(255,255,255,0.08)");
+
+    const needle = svg.append("line")
+      .attr("stroke", "#ffffff")
+      .attr("stroke-width", 2.5)
+      .attr("x1", centerX)
+      .attr("y1", centerY);
+
     svg.append("circle")
-      .attr("cx", cx).attr("cy", cy).attr("r", 5).attr("fill", "#fff");
+      .attr("cx", centerX)
+      .attr("cy", centerY)
+      .attr("r", 6)
+      .attr("fill", "#ffffff");
 
-    svg.append("text")
-      .attr("x", cx).attr("y", cy - 30)
+    const valueText = svg.append("text")
+      .attr("x", centerX)
+      .attr("y", centerY - 34)
       .attr("text-anchor", "middle")
-      .attr("fill", "#fff").attr("font-size", 32).attr("font-weight", 700)
-      .text(result.score.toFixed(0));
+      .attr("fill", "#ffffff")
+      .attr("font-size", 34)
+      .attr("font-weight", 700)
+      .text("0");
 
-    const catColor = result.category === "good" ? "#44cc88" : result.category === "moderate" ? "#ffaa00" : "#ff4444";
-    svg.append("text")
-      .attr("x", cx).attr("y", cy - 5)
+    const categoryText = svg.append("text")
+      .attr("x", centerX)
+      .attr("y", centerY - 8)
       .attr("text-anchor", "middle")
-      .attr("fill", catColor).attr("font-size", 13)
+      .attr("fill", result.category === "good" ? "#44cc88" : result.category === "moderate" ? "#ffb02e" : "#ff6666")
+      .attr("font-size", 13)
       .text(t(`healthIndex.category.${result.category}` as const));
+
+    svg.append("text")
+      .attr("x", 36)
+      .attr("y", centerY + 4)
+      .attr("fill", "#888")
+      .attr("font-size", 11)
+      .text("0");
+
+    svg.append("text")
+      .attr("x", centerX)
+      .attr("y", 34)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#888")
+      .attr("font-size", 11)
+      .text("50");
+
+    svg.append("text")
+      .attr("x", width - 42)
+      .attr("y", centerY + 4)
+      .attr("fill", "#888")
+      .attr("font-size", 11)
+      .text("100");
+
+    const updateNeedle = (score: number) => {
+      const clamped = Math.max(0, Math.min(100, score));
+      const angle = startAngle + (clamped / 100) * (endAngle - startAngle) - Math.PI / 2;
+      const length = radius - 24;
+      const x2 = centerX + length * Math.cos(angle);
+      const y2 = centerY + length * Math.sin(angle);
+      needle.attr("x2", x2).attr("y2", y2);
+    };
+
+    updateNeedle(0);
+    const transition = d3.transition().duration(900).ease(d3.easeCubicOut);
+    svg.transition(transition).tween("gmhi", () => {
+      const interpolate = d3.interpolateNumber(0, result.score);
+      return (time) => {
+        const current = interpolate(time);
+        valueText.text(current.toFixed(0));
+        updateNeedle(current);
+      };
+    });
+
+    categoryText.raise();
   }, [result, t]);
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const f = e.dataTransfer.files?.[0] ?? null;
-    if (f) setFile(f);
+  const handleDrop = (event: DragEvent) => {
+    event.preventDefault();
+    const dropped = event.dataTransfer.files?.[0] ?? null;
+    if (dropped) setFile(dropped);
   };
 
-  const exportDeviations = () => {
-    if (!result) return;
+  const exportDeviations = (rows: DeviationEntry[]) => {
     exportTable(
-      result.per_genus_deviation.map(g => ({
-        Genus: g.genus,
-        User_Abundance: g.user_abundance,
-        NC_Mean: g.nc_mean,
-        NC_Median: g.nc_median,
-        Status: g.status,
+      rows.map((item) => ({
+        Genus: item.genus,
+        User_Abundance: item.user_abundance,
+        NC_Mean: item.nc_mean,
+        NC_Median: item.nc_median,
+        NC_P10: item.nc_p10,
+        NC_P25: item.nc_p25,
+        NC_P75: item.nc_p75,
+        NC_P90: item.nc_p90,
+        Status: item.status,
       })),
       `health_index_deviation_${Date.now()}`,
     );
   };
 
+  const sortedDeviation = result ? [...result.per_genus_deviation].sort((a, b) => {
+    if (sortMode === "user") return b.user_abundance - a.user_abundance;
+    if (sortMode === "nc") return b.nc_mean - a.nc_mean;
+    return Math.abs(b.user_abundance - b.nc_mean) - Math.abs(a.user_abundance - a.nc_mean);
+  }) : [];
+
   const hasInput = !!file || pasteText.trim().length > 0;
-  const pop = refData?.population;
+  const population = refData?.population;
 
   return (
     <div className={classes.panel}>
       <h2 className={classes.title}>{t("healthIndex.title")}</h2>
       <p className={classes.subtitle}>{t("healthIndex.subtitle")}</p>
 
-      {/* ── Section 1: Population Overview (always shown) ── */}
       {refLoading && (
         <div className={classes.popLoading}>
           <div className="loading-spinner" style={{ width: 24, height: 24 }} />
-          <span>Loading population data...</span>
+          <span>{locale === "zh" ? "正在加载参考分布…" : "Loading reference population..."}</span>
         </div>
       )}
 
-      {!refLoading && refData && pop && (
+      {!refLoading && refData && population && (
         <div className={classes.popSection}>
           <h3 className={classes.popTitle}>{t("healthIndex.popTitle")}</h3>
           <p className={classes.popSubtitle}>{t("healthIndex.popSubtitle")}</p>
 
-          {/* Stats cards */}
           <div className={classes.statsGrid}>
             <div className={classes.statCard} data-accent="green">
               <div className={classes.statCardVal}>{refData.n_nc_samples.toLocaleString()}</div>
               <div className={classes.statCardLbl}>{t("healthIndex.ncSamples")}</div>
               <div className={classes.statCardSub}>
-                {t("healthIndex.meanScore")}: <strong>{pop.nc_stats.mean}</strong> &middot; {t("healthIndex.medianScore")}: <strong>{pop.nc_stats.median}</strong>
+                {t("healthIndex.meanScore")}: <strong>{population.nc_stats.mean}</strong> · {t("healthIndex.medianScore")}: <strong>{population.nc_stats.median}</strong>
               </div>
               <div className={classes.statCardSub}>
-                {t("healthIndex.scoreRange")}: {pop.nc_stats.p25} — {pop.nc_stats.p75}
+                P10–P90: {population.nc_stats.p10} — {population.nc_stats.p90}
               </div>
             </div>
+
             <div className={classes.statCard} data-accent="red">
               <div className={classes.statCardVal}>{refData.n_disease_samples.toLocaleString()}</div>
               <div className={classes.statCardLbl}>{t("healthIndex.diseaseSamples")}</div>
               <div className={classes.statCardSub}>
-                {t("healthIndex.meanScore")}: <strong>{pop.disease_stats.mean}</strong> &middot; {t("healthIndex.medianScore")}: <strong>{pop.disease_stats.median}</strong>
+                {t("healthIndex.meanScore")}: <strong>{population.disease_stats.mean}</strong> · {t("healthIndex.medianScore")}: <strong>{population.disease_stats.median}</strong>
               </div>
               <div className={classes.statCardSub}>
-                {t("healthIndex.scoreRange")}: {pop.disease_stats.p25} — {pop.disease_stats.p75}
+                P10–P90: {population.disease_stats.p10} — {population.disease_stats.p90}
               </div>
             </div>
           </div>
 
-          {/* Histogram */}
-          <PopHistogram data={pop.histogram} />
+          <PopHistogram data={population.histogram} xLabel={t("healthIndex.score")} yLabel={t("col.samples")} />
 
-          {/* Top genera tables side by side */}
           <div className={classes.generaRow}>
             <div className={classes.generaCol}>
-              <h4 className={classes.generaTitle} style={{ color: "#44cc88" }}>
-                {t("healthIndex.topHealthGenera")}
-              </h4>
-              <div className={classes.tableWrap} style={{ maxHeight: 260 }}>
+              <h4 className={classes.generaTitle} style={{ color: "#44cc88" }}>{t("healthIndex.topHealthGenera")}</h4>
+              <div className={classes.tableWrap} style={{ maxHeight: 320 }}>
                 <table className={classes.table}>
                   <thead>
                     <tr>
                       <th>{t("healthIndex.col.genus")}</th>
                       <th>{t("healthIndex.log2fc")}</th>
+                      <th>{t("healthIndex.col.adjustedP")}</th>
+                      <th>{t("healthIndex.col.weight")}</th>
                       <th>{t("healthIndex.meanNC")}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {refData.health_genera.map(g => (
-                      <tr key={g.genus}>
-                        <td><em>{g.genus}</em></td>
-                        <td style={{ color: "#44cc88" }}>{g.log2fc.toFixed(2)}</td>
-                        <td>{g.mean_nc.toFixed(3)}</td>
+                    {refData.health_genera.map((item) => (
+                      <tr key={`health:${item.genus}`}>
+                        <td><em>{item.genus}</em></td>
+                        <td style={{ color: "#44cc88" }}>{item.log2fc.toFixed(2)}</td>
+                        <td>{formatP(item.adjusted_p)}</td>
+                        <td>{item.weight.toFixed(2)}</td>
+                        <td>{item.mean_nc.toFixed(3)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
+
             <div className={classes.generaCol}>
-              <h4 className={classes.generaTitle} style={{ color: "#ff6666" }}>
-                {t("healthIndex.topDiseaseGenera")}
-              </h4>
-              <div className={classes.tableWrap} style={{ maxHeight: 260 }}>
+              <h4 className={classes.generaTitle} style={{ color: "#ff7a7a" }}>{t("healthIndex.topDiseaseGenera")}</h4>
+              <div className={classes.tableWrap} style={{ maxHeight: 320 }}>
                 <table className={classes.table}>
                   <thead>
                     <tr>
                       <th>{t("healthIndex.col.genus")}</th>
                       <th>{t("healthIndex.log2fc")}</th>
+                      <th>{t("healthIndex.col.adjustedP")}</th>
+                      <th>{t("healthIndex.col.weight")}</th>
                       <th>{t("healthIndex.meanDis")}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {refData.disease_genera.map(g => (
-                      <tr key={g.genus}>
-                        <td><em>{g.genus}</em></td>
-                        <td style={{ color: "#ff6666" }}>{g.log2fc.toFixed(2)}</td>
-                        <td>{g.mean_disease.toFixed(3)}</td>
+                    {refData.disease_genera.map((item) => (
+                      <tr key={`disease:${item.genus}`}>
+                        <td><em>{item.genus}</em></td>
+                        <td style={{ color: "#ff7a7a" }}>{item.log2fc.toFixed(2)}</td>
+                        <td>{formatP(item.adjusted_p)}</td>
+                        <td>{item.weight.toFixed(2)}</td>
+                        <td>{item.mean_disease.toFixed(3)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -403,7 +538,6 @@ const HealthIndexPanel = () => {
         </div>
       )}
 
-      {/* ── Section 2: User upload & calculation ── */}
       <div className={classes.uploadSection}>
         <h3 className={classes.uploadTitle}>{t("healthIndex.tryYourOwn")}</h3>
       </div>
@@ -413,18 +547,26 @@ const HealthIndexPanel = () => {
           className={`${classes.dropZone} ${file ? classes.dropZoneActive : ""}`}
           onClick={() => fileInputRef.current?.click()}
           onDrop={handleDrop}
-          onDragOver={e => e.preventDefault()}
+          onDragOver={(event) => event.preventDefault()}
         >
-          <input ref={fileInputRef} type="file" accept=".csv,.tsv,.txt" onChange={e => setFile(e.target.files?.[0] ?? null)} style={{ display: "none" }} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.tsv,.txt"
+            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            style={{ display: "none" }}
+          />
           <p>{file ? file.name : "CSV / TSV"}</p>
           <p style={{ fontSize: "0.75rem", color: "#888" }}>genus_name, abundance</p>
         </div>
+
         <textarea
           className={classes.textarea}
           placeholder={"Bacteroides,0.25\nFaecalibacterium,0.18\nPrevotella,0.12"}
           value={pasteText}
-          onChange={e => setPasteText(e.target.value)}
+          onChange={(event) => setPasteText(event.target.value)}
         />
+
         <button className={classes.calcBtn} onClick={calculate} disabled={!hasInput || loading}>
           {loading ? t("healthIndex.calculating") : t("healthIndex.calculate")}
         </button>
@@ -432,33 +574,68 @@ const HealthIndexPanel = () => {
 
       {error && <div className={classes.error}>{error}</div>}
 
-      {/* User result */}
       {result && (
         <div className={classes.results}>
+          <div className={classes.percentileBanner}>
+            <span className={classes.percentileValue}>{result.population_percentile.toFixed(1)}%</span>
+            <span className={classes.percentileLabel}>{t("healthIndex.populationPct")}</span>
+          </div>
+
           <div className={classes.gaugeRow}>
             <svg ref={gaugeRef} className={classes.gauge} />
-            <div className={classes.statsCol}>
-              <div className={classes.statItem}>
-                <span className={classes.statVal}>{result.health_genera_matched}</span>
-                <span className={classes.statLbl}>{t("healthIndex.healthGenera")}</span>
+
+            <div className={classes.resultMetrics}>
+              <div className={classes.metricCard}>
+                <span className={classes.metricValue}>{result.score.toFixed(1)}</span>
+                <span className={classes.metricLabel}>{t("healthIndex.score")}</span>
               </div>
-              <div className={classes.statItem}>
-                <span className={classes.statVal}>{result.disease_genera_matched}</span>
-                <span className={classes.statLbl}>{t("healthIndex.diseaseGenera")}</span>
+              <div className={classes.metricCard}>
+                <span className={classes.metricValue}>{result.raw_score.toFixed(3)}</span>
+                <span className={classes.metricLabel}>{t("healthIndex.rawScore")}</span>
               </div>
-              <div className={classes.statItem}>
-                <span className={classes.statVal}>{result.reference.n_nc_samples.toLocaleString()}</span>
-                <span className={classes.statLbl}>NC samples (ref)</span>
+              <div className={classes.metricCard}>
+                <span className={classes.metricValue}>{result.raw_score_weighted.toFixed(3)}</span>
+                <span className={classes.metricLabel}>{t("healthIndex.weightedScore")}</span>
+              </div>
+              <div className={classes.metricCard}>
+                <span className={classes.metricValue}>{result.health_genera_matched}</span>
+                <span className={classes.metricLabel}>{t("healthIndex.healthGenera")}</span>
+              </div>
+              <div className={classes.metricCard}>
+                <span className={classes.metricValue}>{result.disease_genera_matched}</span>
+                <span className={classes.metricLabel}>{t("healthIndex.diseaseGenera")}</span>
+              </div>
+              <div className={classes.metricCard}>
+                <span className={classes.metricValue}>{result.reference.n_nc_samples.toLocaleString()}</span>
+                <span className={classes.metricLabel}>{t("healthIndex.ncSamples")}</span>
               </div>
             </div>
           </div>
 
-          {/* Deviation table */}
+          <ContributionChart
+            title={t("healthIndex.contribution")}
+            positiveLabel={t("healthIndex.topHealthGenera")}
+            negativeLabel={t("healthIndex.topDiseaseGenera")}
+            health={result.health_genera_detail}
+            disease={result.disease_genera_detail}
+          />
+
           <div className={classes.deviationSection}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div className={classes.tableToolbar}>
               <h3>{t("healthIndex.deviation")}</h3>
-              <button className={classes.exportBtn} onClick={exportDeviations}>{t("export.csv")}</button>
+              <div className={classes.toolbarActions}>
+                <label className={classes.sortField}>
+                  <span>{t("healthIndex.sortBy")}</span>
+                  <select value={sortMode} onChange={(event) => setSortMode(event.target.value as "diff" | "user" | "nc")}>
+                    <option value="diff">{t("healthIndex.sortDiff")}</option>
+                    <option value="user">{t("healthIndex.sortUser")}</option>
+                    <option value="nc">{t("healthIndex.sortNC")}</option>
+                  </select>
+                </label>
+                <button className={classes.exportBtn} onClick={() => exportDeviations(sortedDeviation)}>{t("export.csv")}</button>
+              </div>
             </div>
+
             <div className={classes.tableWrap}>
               <table className={classes.table}>
                 <thead>
@@ -467,19 +644,23 @@ const HealthIndexPanel = () => {
                     <th>{t("healthIndex.col.yours")}</th>
                     <th>{t("healthIndex.col.ncMean")}</th>
                     <th>{t("healthIndex.col.ncMedian")}</th>
+                    <th>P10</th>
+                    <th>P90</th>
                     <th>{t("healthIndex.col.status")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {result.per_genus_deviation.map(g => (
-                    <tr key={g.genus}>
-                      <td>{g.genus}</td>
-                      <td>{g.user_abundance.toFixed(4)}</td>
-                      <td>{g.nc_mean.toFixed(4)}</td>
-                      <td>{g.nc_median.toFixed(4)}</td>
+                  {sortedDeviation.map((item) => (
+                    <tr key={item.genus}>
+                      <td>{item.genus}</td>
+                      <td>{item.user_abundance.toFixed(4)}</td>
+                      <td>{item.nc_mean.toFixed(4)}</td>
+                      <td>{item.nc_median.toFixed(4)}</td>
+                      <td>{item.nc_p10.toFixed(4)}</td>
+                      <td>{item.nc_p90.toFixed(4)}</td>
                       <td>
-                        <span className={classes.statusBadge} data-status={g.status}>
-                          {g.status === "high" ? "↑" : g.status === "low" ? "↓" : "—"}
+                        <span className={classes.statusBadge} data-status={item.status}>
+                          {item.status === "high" ? "↑" : item.status === "low" ? "↓" : "—"}
                         </span>
                       </td>
                     </tr>

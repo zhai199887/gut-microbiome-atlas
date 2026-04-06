@@ -386,6 +386,21 @@ METABOLISM_OVERVIEW_TTL = 24 * 3600
 METABOLISM_PSEUDOCOUNT = 1e-6
 
 
+def _strict_nc_mask(meta: pd.DataFrame, inform_cols: list[str] | None = None) -> pd.Series:
+    """Return strict healthy-control mask: inform0=NC and inform1-11 empty."""
+    columns = inform_cols or [f"inform{i}" for i in range(12)]
+    if not columns or columns[0] not in meta.columns:
+        return pd.Series(False, index=meta.index)
+
+    mask = meta[columns[0]].fillna("").astype(str).str.strip().str.lower() == "nc"
+    for col in columns[1:]:
+        if col not in meta.columns:
+            continue
+        values = meta[col].fillna("").astype(str).str.strip()
+        mask &= values == ""
+    return mask
+
+
 @lru_cache(maxsize=1)
 def load_metabolism_mapping() -> dict:
     """Load curated metabolism mapping JSON."""
@@ -422,16 +437,7 @@ def _metabolism_disease_mask(meta: pd.DataFrame, disease: str) -> pd.Series:
 
 
 def _metabolism_strict_nc_mask(meta: pd.DataFrame) -> pd.Series:
-    if "inform0" not in meta.columns:
-        return pd.Series(False, index=meta.index)
-
-    mask = meta["inform0"].fillna("").astype(str).str.strip().str.lower() == "nc"
-    for col in METABOLISM_INFORM_COLS[1:]:
-        if col not in meta.columns:
-            continue
-        values = meta[col].fillna("").astype(str).str.strip()
-        mask &= values == ""
-    return mask
+    return _strict_nc_mask(meta, METABOLISM_INFORM_COLS)
 
 
 def _prepare_metabolism_context(meta: pd.DataFrame, abundance_df: pd.DataFrame) -> dict:
@@ -650,6 +656,9 @@ class SimilarityRequest(BaseModel):
     abundances: dict[str, float]  # genus_name -> abundance_value / 属名 -> 丰度值
     metric: str = "braycurtis"    # braycurtis or jaccard / 距离度量
     top_k: int = 10               # 返回最相似样本数量
+    filter_disease: str = ""
+    filter_country: str = ""
+    filter_age_group: str = ""
 
 
 class CrossStudyRequest(BaseModel):
@@ -3438,23 +3447,64 @@ async def similarity_search(request: Request, req: SimilarityRequest):
 
     abund = get_abundance()
     meta = get_metadata()
+    inform_cols = [f"inform{i}" for i in range(12)]
 
-    # ── 构建列名映射：属名 -> 丰度矩阵列名 ──
-    col_genus_map: dict[str, str] = {}
-    for c in abund.columns:
-        g = extract_genus(c)
-        if g and is_valid_genus(g):
-            col_genus_map[g.lower()] = c
+    # ── 构建属名与列索引映射 ──
+    genus_to_indices: dict[str, list[int]] = {}
+    genus_display: dict[str, str] = {}
+    for idx, column in enumerate(abund.columns):
+        genus = extract_genus(column).strip()
+        genus_key = genus.lower()
+        if not genus or not is_valid_genus(genus):
+            continue
+        genus_to_indices.setdefault(genus_key, []).append(idx)
+        genus_display.setdefault(genus_key, genus)
+
+    # ── 样本过滤：先缩小搜索空间，再做相似性检索 ──
+    filtered_meta = meta.copy()
+    if req.filter_disease.strip():
+        disease_key = req.filter_disease.strip().lower()
+        disease_mask = pd.Series(False, index=filtered_meta.index)
+        for col in inform_cols:
+            if col not in filtered_meta.columns:
+                continue
+            values = filtered_meta[col].fillna("").astype(str).str.strip().str.lower()
+            disease_mask |= values == disease_key
+        filtered_meta = filtered_meta[disease_mask]
+    if req.filter_country.strip():
+        filtered_meta = filtered_meta[
+            filtered_meta["country"].fillna("").astype(str).str.upper() == req.filter_country.strip().upper()
+        ]
+    if req.filter_age_group.strip() and "age_group" in filtered_meta.columns:
+        filtered_meta = filtered_meta[
+            filtered_meta["age_group"].fillna("").astype(str).str.strip() == req.filter_age_group.strip()
+        ]
+
+    filtered_keys = filtered_meta["sample_key"].dropna().astype(str).unique().tolist()
+    has_filter = bool(req.filter_disease.strip() or req.filter_country.strip() or req.filter_age_group.strip())
+    valid_idx = abund.index.intersection(filtered_keys) if has_filter else abund.index
+    if len(valid_idx) < req.top_k:
+        raise HTTPException(400, f"Too few samples after filtering: {len(valid_idx)}")
+
+    abund_filtered = abund.loc[valid_idx]
+    sample_keys = list(abund_filtered.index)
 
     # ── 将用户提交的属名->丰度值对齐到丰度矩阵的列顺序 ──
-    query_vector = np.zeros(len(abund.columns), dtype=float)
+    query_vector = np.zeros(len(abund_filtered.columns), dtype=float)
     matched_genera = 0
+    matched_genera_pairs: list[tuple[str, float]] = []
+    unmatched_genera: list[str] = []
     for genus_name, value in req.abundances.items():
-        col_name = col_genus_map.get(genus_name.lower().strip())
-        if col_name is not None:
-            idx = abund.columns.get_loc(col_name)
-            query_vector[idx] = float(value)
-            matched_genera += 1
+        genus_key = genus_name.lower().strip()
+        col_indices = genus_to_indices.get(genus_key)
+        if not col_indices:
+            unmatched_genera.append(genus_name.strip())
+            continue
+        numeric_value = float(value)
+        for idx in col_indices:
+            query_vector[idx] = numeric_value
+        matched_genera += 1
+        matched_genera_pairs.append((genus_key, numeric_value))
 
     if matched_genera == 0:
         raise HTTPException(400, "No matching genera found in the abundance matrix")
@@ -3462,28 +3512,79 @@ async def similarity_search(request: Request, req: SimilarityRequest):
     # ── 调用 analysis.py 中的相似性搜索函数 ──
     results = sample_similarity_search(
         query_vector=query_vector,
-        abundance_matrix=abund.values,
-        sample_keys=list(abund.index),
+        abundance_matrix=abund_filtered.values,
+        sample_keys=sample_keys,
         metric=req.metric,
         top_k=req.top_k,
     )
 
-    # ── 补充元数据信息（疾病、国家等） ──
+    meta_lookup = (
+        filtered_meta.drop_duplicates(subset="sample_key")
+        .set_index("sample_key", drop=False)
+    )
+
+    def _collect_diseases(row: pd.Series) -> list[str]:
+        diseases: list[str] = []
+        for col in inform_cols:
+            if col not in row.index:
+                continue
+            value = str(row.get(col, "")).strip()
+            if not value or value.lower() == "nan":
+                continue
+            diseases.append(value)
+        return diseases or ["Unknown"]
+
+    # ── 补充元数据信息（疾病、国家、年龄组、项目） ──
     for item in results:
         key = item["sample_key"]
-        if key in meta.index:
-            row = meta.loc[key]
-            item["disease"] = str(row.get("disease", "Unknown"))
+        if key in meta_lookup.index:
+            row = meta_lookup.loc[key]
+            disease_list = _collect_diseases(row)
+            item["disease"] = disease_list[0]
+            item["disease_list"] = disease_list
             item["country"] = str(row.get("country", "Unknown"))
+            item["age_group"] = str(row.get("age_group", "Unknown")).strip() or "Unknown"
+            item["project_id"] = str(row.get("project", "")).strip()
         else:
             item["disease"] = "Unknown"
+            item["disease_list"] = ["Unknown"]
             item["country"] = "Unknown"
+            item["age_group"] = "Unknown"
+            item["project_id"] = ""
+
+    # ── 轻量 preview 热图载荷：只返回 query + top matches 在少量属上的相对丰度 ──
+    preview_taxa_keys = [genus_key for genus_key, _ in sorted(matched_genera_pairs, key=lambda item: item[1], reverse=True)[:12]]
+    preview_taxa = [genus_display.get(genus_key, genus_key.title()) for genus_key in preview_taxa_keys]
+
+    preview_matrix: list[list[float]] = []
+    query_total = float(query_vector.sum()) or 1.0
+    query_row: list[float] = []
+    for genus_key in preview_taxa_keys:
+        idxs = genus_to_indices.get(genus_key, [])
+        query_row.append(round(float(query_vector[idxs].sum() / query_total * 100.0), 4) if idxs else 0.0)
+    preview_matrix.append(query_row)
+
+    for item in results:
+        sample_key = item["sample_key"]
+        if sample_key not in abund_filtered.index:
+            preview_matrix.append([0.0 for _ in preview_taxa_keys])
+            continue
+        sample_values = abund_filtered.loc[sample_key].to_numpy(dtype=float)
+        sample_total = float(sample_values.sum()) or 1.0
+        row_values: list[float] = []
+        for genus_key in preview_taxa_keys:
+            idxs = genus_to_indices.get(genus_key, [])
+            row_values.append(round(float(sample_values[idxs].sum() / sample_total * 100.0), 4) if idxs else 0.0)
+        preview_matrix.append(row_values)
 
     return {
         "metric": req.metric,
         "top_k": req.top_k,
         "matched_genera": matched_genera,
-        "total_genera": len(col_genus_map),
+        "total_genera": len(genus_to_indices),
+        "unmatched_genera": unmatched_genera[:20],
+        "preview_taxa": preview_taxa,
+        "preview_matrix": preview_matrix,
         "results": results,
     }
 
@@ -3764,15 +3865,19 @@ def _compute_health_disease_genera() -> dict:
 
     INFORM_COLS = [f"inform{i}" for i in range(12)]
 
-    # NC (normal control) samples
-    nc_mask = pd.Series(False, index=meta.index)
-    for col in INFORM_COLS:
-        if col in meta.columns:
-            nc_mask |= meta[col].fillna("").astype(str).str.strip().str.upper() == "NC"
+    # Strict NC: inform0=NC and inform1-11 empty
+    nc_mask = _strict_nc_mask(meta, INFORM_COLS)
     nc_keys = [k for k in meta.loc[nc_mask, "sample_key"].values if k in abund_idx]
 
-    # Disease samples (any disease that is NOT NC)
-    disease_mask = ~nc_mask & meta["disease"].str.strip().str.lower().ne("unknown")
+    # Disease samples: strict non-NC with at least one disease label in inform0-11
+    disease_mask = ~nc_mask
+    any_disease_mask = pd.Series(False, index=meta.index)
+    for col in INFORM_COLS:
+        if col not in meta.columns:
+            continue
+        values = meta[col].fillna("").astype(str).str.strip()
+        any_disease_mask |= (values != "") & (values.str.lower() != "nan") & (values.str.lower() != "nc")
+    disease_mask &= any_disease_mask
     disease_keys = [k for k in meta.loc[disease_mask, "sample_key"].values if k in abund_idx]
 
     # Subsample for performance
@@ -3803,8 +3908,7 @@ def _compute_health_disease_genera() -> dict:
         agg_dis[:, i] = mat_dis[:, idxs].sum(axis=1)
 
     # Test each genus: enriched in NC (health) vs enriched in disease
-    health_genera = []
-    disease_genera = []
+    all_results = []
     nc_stats = {}
 
     for i, genus in enumerate(unique_genera):
@@ -3826,23 +3930,47 @@ def _compute_health_disease_genera() -> dict:
             "mean": round(mean_nc, 6),
             "median": round(float(np.median(vals_nc)), 6),
             "std": round(float(np.std(vals_nc)), 6),
+            "p10": round(float(np.percentile(vals_nc, 10)), 6),
             "p25": round(float(np.percentile(vals_nc, 25)), 6),
             "p75": round(float(np.percentile(vals_nc, 75)), 6),
+            "p90": round(float(np.percentile(vals_nc, 90)), 6),
         }
 
-        if p < 0.05:
-            pseudo = 1e-6
-            log2fc = math.log2((mean_nc + pseudo) / (mean_dis + pseudo))
-            entry = {"genus": genus, "log2fc": round(log2fc, 4), "p_value": round(float(p), 8),
-                     "mean_nc": round(mean_nc, 6), "mean_disease": round(mean_dis, 6)}
-            if mean_nc > mean_dis:
-                health_genera.append(entry)
-            else:
-                disease_genera.append(entry)
+        pseudo = 1e-6
+        log2fc = math.log2((mean_nc + pseudo) / (mean_dis + pseudo))
+        all_results.append({
+            "genus": genus,
+            "log2fc": round(log2fc, 4),
+            "p_value": round(float(p), 8),
+            "mean_nc": round(mean_nc, 6),
+            "mean_disease": round(mean_dis, 6),
+        })
+
+    adjusted_pvals = bh_correction([float(row["p_value"]) for row in all_results])
+    health_genera = []
+    disease_genera = []
+    for row, adjusted_p in zip(all_results, adjusted_pvals):
+        row["adjusted_p"] = round(float(adjusted_p), 8)
+        row["weight"] = round(abs(float(row["log2fc"])), 4)
+        if adjusted_p >= 0.05 or abs(float(row["log2fc"])) < 0.5:
+            continue
+        entry = {
+            "genus": row["genus"],
+            "log2fc": row["log2fc"],
+            "p_value": row["p_value"],
+            "adjusted_p": row["adjusted_p"],
+            "mean_nc": row["mean_nc"],
+            "mean_disease": row["mean_disease"],
+            "weight": row["weight"],
+        }
+        if row["mean_nc"] > row["mean_disease"]:
+            health_genera.append(entry)
+        else:
+            disease_genera.append(entry)
 
     # Sort by absolute log2fc, take top 50
-    health_genera.sort(key=lambda x: abs(x["log2fc"]), reverse=True)
-    disease_genera.sort(key=lambda x: abs(x["log2fc"]), reverse=True)
+    health_genera.sort(key=lambda x: abs(float(x["log2fc"])), reverse=True)
+    disease_genera.sort(key=lambda x: abs(float(x["log2fc"])), reverse=True)
 
     return {
         "health_genera": health_genera[:50],
@@ -3883,6 +4011,8 @@ async def health_index(request: Request, req: HealthIndexRequest):
     # Match user genera
     h_sum = 0.0
     d_sum = 0.0
+    h_weighted = 0.0
+    d_weighted = 0.0
     health_matched = []
     disease_matched = []
     per_genus = []
@@ -3890,35 +4020,61 @@ async def health_index(request: Request, req: HealthIndexRequest):
     for genus, value in req.abundances.items():
         g_lower = genus.strip().lower()
         g_title = genus.strip().title()
+        numeric_value = float(value)
 
         # Check if this is a health or disease genus
         if g_lower in health_set:
-            h_sum += value
-            health_matched.append({"genus": g_title, "abundance": round(value, 6)})
+            weight = float(health_set[g_lower].get("weight", 1.0))
+            h_sum += numeric_value
+            h_weighted += numeric_value * weight
+            health_matched.append({
+                "genus": g_title,
+                "abundance": round(numeric_value, 6),
+                "weight": round(weight, 4),
+                "contribution": 0.0,
+            })
         if g_lower in disease_set:
-            d_sum += value
-            disease_matched.append({"genus": g_title, "abundance": round(value, 6)})
+            weight = float(disease_set[g_lower].get("weight", 1.0))
+            d_sum += numeric_value
+            d_weighted += numeric_value * weight
+            disease_matched.append({
+                "genus": g_title,
+                "abundance": round(numeric_value, 6),
+                "weight": round(weight, 4),
+                "contribution": 0.0,
+            })
 
         # Per-genus deviation from NC reference
         if g_title in nc_stats:
             ref_stat = nc_stats[g_title]
-            deviation = value - ref_stat["mean"]
             status = "normal"
-            if value > ref_stat["p75"] * 1.5:
+            if numeric_value > ref_stat["p75"] * 1.5:
                 status = "high"
-            elif value < ref_stat["p25"] * 0.5:
+            elif numeric_value < ref_stat["p25"] * 0.5:
                 status = "low"
             per_genus.append({
                 "genus": g_title,
-                "user_abundance": round(value, 6),
+                "user_abundance": round(numeric_value, 6),
                 "nc_mean": ref_stat["mean"],
                 "nc_median": ref_stat["median"],
+                "nc_p10": ref_stat["p10"],
+                "nc_p25": ref_stat["p25"],
+                "nc_p75": ref_stat["p75"],
+                "nc_p90": ref_stat["p90"],
                 "status": status,
             })
+
+    total_h_weighted = sum(float(item["abundance"]) * float(item["weight"]) for item in health_matched) or 1e-6
+    total_d_weighted = sum(float(item["abundance"]) * float(item["weight"]) for item in disease_matched) or 1e-6
+    for item in health_matched:
+        item["contribution"] = round(float(item["abundance"]) * float(item["weight"]) / total_h_weighted, 4)
+    for item in disease_matched:
+        item["contribution"] = round(float(item["abundance"]) * float(item["weight"]) / total_d_weighted, 4)
 
     # Calculate raw score
     pseudo = 1e-6
     raw_score = math.log10((h_sum + pseudo) / (d_sum + pseudo))
+    raw_score_weighted = math.log10((h_weighted + pseudo) / (d_weighted + pseudo))
 
     # Use empirical percentile calibration from population data
     # 使用群体数据的经验百分位数校准
@@ -3927,15 +4083,24 @@ async def health_index(request: Request, req: HealthIndexRequest):
     p5 = cal.get("p5", -2.0)
     p95 = cal.get("p95", 2.0)
     score_range = p95 - p5 if p95 != p5 else 1.0
-    normalized = max(0, min(100, (raw_score - p5) / score_range * 100))
+    normalized = max(0, min(100, (raw_score_weighted - p5) / score_range * 100))
 
     # Determine category
-    if normalized >= 70:
+    nc_pop = pop.get("nc_stats", {})
+    good_threshold = float(nc_pop.get("p25", 70))
+    moderate_threshold = float(nc_pop.get("p10", 40))
+    if normalized >= good_threshold:
         category = "good"
-    elif normalized >= 40:
+    elif normalized >= moderate_threshold:
         category = "moderate"
     else:
         category = "attention"
+
+    nc_scores_sorted = np.array(pop.get("nc_scores_sorted", []), dtype=float)
+    if len(nc_scores_sorted) > 0:
+        population_percentile = float(np.searchsorted(nc_scores_sorted, normalized, side="right") / len(nc_scores_sorted) * 100)
+    else:
+        population_percentile = 50.0
 
     # Sort per_genus by absolute deviation
     per_genus.sort(key=lambda x: abs(x["user_abundance"] - x["nc_mean"]), reverse=True)
@@ -3943,13 +4108,15 @@ async def health_index(request: Request, req: HealthIndexRequest):
     return {
         "score": round(normalized, 1),
         "raw_score": round(raw_score, 4),
+        "raw_score_weighted": round(raw_score_weighted, 4),
         "category": category,
+        "population_percentile": round(population_percentile, 1),
         "health_genera_matched": len(health_matched),
         "disease_genera_matched": len(disease_matched),
         "health_genera_sum": round(h_sum, 4),
         "disease_genera_sum": round(d_sum, 4),
-        "health_genera_detail": health_matched[:20],
-        "disease_genera_detail": disease_matched[:20],
+        "health_genera_detail": health_matched,
+        "disease_genera_detail": disease_matched,
         "per_genus_deviation": per_genus[:50],
         "reference": {
             "n_nc_samples": ref.get("n_nc_samples", 0),
@@ -3973,24 +4140,28 @@ def _compute_population_gmhi() -> dict:
     col_names = abund.columns.tolist()
 
     INFORM_COLS = [f"inform{i}" for i in range(12)]
-    nc_mask = pd.Series(False, index=meta.index)
-    for col in INFORM_COLS:
-        if col in meta.columns:
-            nc_mask |= meta[col].fillna("").astype(str).str.strip().str.upper() == "NC"
+    nc_mask = _strict_nc_mask(meta, INFORM_COLS)
     nc_keys = [k for k in meta.loc[nc_mask, "sample_key"].values if k in abund_idx]
-    disease_mask = ~nc_mask & meta["disease"].str.strip().str.lower().ne("unknown")
+    disease_mask = ~nc_mask
+    any_disease_mask = pd.Series(False, index=meta.index)
+    for col in INFORM_COLS:
+        if col not in meta.columns:
+            continue
+        values = meta[col].fillna("").astype(str).str.strip()
+        any_disease_mask |= (values != "") & (values.str.lower() != "nan") & (values.str.lower() != "nc")
+    disease_mask &= any_disease_mask
     disease_keys = [k for k in meta.loc[disease_mask, "sample_key"].values if k in abund_idx]
 
     np.random.seed(42)
     nc_sample = list(np.random.choice(nc_keys, min(2000, len(nc_keys)), replace=False)) if len(nc_keys) > 0 else []
     dis_sample = list(np.random.choice(disease_keys, min(2000, len(disease_keys)), replace=False)) if len(disease_keys) > 0 else []
 
-    health_set = {g["genus"].lower() for g in ref["health_genera"]}
-    disease_set = {g["genus"].lower() for g in ref["disease_genera"]}
+    health_weights = {g["genus"].lower(): float(g.get("weight", 1.0)) for g in ref["health_genera"]}
+    disease_weights = {g["genus"].lower(): float(g.get("weight", 1.0)) for g in ref["disease_genera"]}
 
     genus_labels = [extract_genus(c).lower() for c in col_names]
-    h_cols = [i for i, g in enumerate(genus_labels) if g in health_set]
-    d_cols = [i for i, g in enumerate(genus_labels) if g in disease_set]
+    h_col_weights = [(i, health_weights[g]) for i, g in enumerate(genus_labels) if g in health_weights]
+    d_col_weights = [(i, disease_weights[g]) for i, g in enumerate(genus_labels) if g in disease_weights]
 
     def compute_raw_scores(keys):
         if not keys:
@@ -3999,8 +4170,12 @@ def _compute_population_gmhi() -> dict:
         totals = raw.sum(axis=1, keepdims=True)
         totals[totals == 0] = 1
         rel = raw / totals * 100
-        h_sums = rel[:, h_cols].sum(axis=1) if h_cols else np.zeros(len(keys))
-        d_sums = rel[:, d_cols].sum(axis=1) if d_cols else np.zeros(len(keys))
+        h_sums = np.zeros(len(keys))
+        d_sums = np.zeros(len(keys))
+        for idx, weight in h_col_weights:
+            h_sums += rel[:, idx] * weight
+        for idx, weight in d_col_weights:
+            d_sums += rel[:, idx] * weight
         pseudo = 1e-6
         return np.log10((h_sums + pseudo) / (d_sums + pseudo))
 
@@ -4045,21 +4220,26 @@ def _compute_population_gmhi() -> dict:
             "mean": round(float(np.mean(nc_arr)), 1),
             "median": round(float(np.median(nc_arr)), 1),
             "std": round(float(np.std(nc_arr)), 1),
+            "p10": round(float(np.percentile(nc_arr, 10)), 1),
             "p25": round(float(np.percentile(nc_arr, 25)), 1),
             "p75": round(float(np.percentile(nc_arr, 75)), 1),
+            "p90": round(float(np.percentile(nc_arr, 90)), 1),
         },
         "disease_stats": {
             "n": len(disease_keys),  # actual total, not subsample
             "mean": round(float(np.mean(dis_arr)), 1),
             "median": round(float(np.median(dis_arr)), 1),
             "std": round(float(np.std(dis_arr)), 1),
+            "p10": round(float(np.percentile(dis_arr, 10)), 1),
             "p25": round(float(np.percentile(dis_arr, 25)), 1),
             "p75": round(float(np.percentile(dis_arr, 75)), 1),
+            "p90": round(float(np.percentile(dis_arr, 90)), 1),
         },
         "calibration": {
             "p5": round(p5, 4),
             "p95": round(p95, 4),
         },
+        "nc_scores_sorted": sorted(float(score) for score in nc_scores),
     }
 
 
@@ -4073,8 +4253,8 @@ async def health_index_reference(request: Request):
     ref = _compute_health_disease_genera()
     pop = _compute_population_gmhi()
     return {
-        "health_genera": ref["health_genera"][:20],
-        "disease_genera": ref["disease_genera"][:20],
+        "health_genera": ref["health_genera"],
+        "disease_genera": ref["disease_genera"],
         "n_nc_samples": pop.get("nc_stats", {}).get("n", ref.get("n_nc_samples", 0)),
         "n_disease_samples": pop.get("disease_stats", {}).get("n", ref.get("n_disease_samples", 0)),
         "population": pop,

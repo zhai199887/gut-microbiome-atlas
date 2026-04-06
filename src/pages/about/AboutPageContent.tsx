@@ -260,17 +260,30 @@ const COPY: Record<"en" | "zh", Copy> = {
   },
 };
 
-const AUTHORS = [
-  "Jinxia Zhai",
-  "Yingjie Li",
-  "Jiameng Liu",
-  "Xinyi Su",
-  "Runze Cui",
-  "Dianyu Zheng",
-  "Yuhan Sun",
-  "Jingsheng Yu",
-  "Cong Dai",
-];
+const AUTHORS: Record<"en" | "zh", string[]> = {
+  en: [
+    "Jinxia Zhai",
+    "Yingjie Li",
+    "Jiameng Liu",
+    "Xinyi Su",
+    "Runze Cui",
+    "Dianyu Zheng",
+    "Yuhan Sun",
+    "Jingsheng Yu",
+    "Cong Dai",
+  ],
+  zh: [
+    "翟锦霞",
+    "李迎杰",
+    "刘佳梦",
+    "苏心怡",
+    "崔润泽",
+    "郑殿宇",
+    "孙羽晗",
+    "于景晟",
+    "戴聪",
+  ],
+};
 
 const PIPELINE_STEPS = {
   en: [
@@ -359,7 +372,7 @@ const AboutPageContent = () => {
           <h2 className={classes.cardTitle}>{text.sections.team}</h2>
           <p className={classes.cardText}>{text.teamIntro}</p>
           <div className={classes.tagList}>
-            {AUTHORS.map((author) => (
+            {AUTHORS[locale].map((author) => (
               <span key={author} className={classes.tag}>
                 {author}
               </span>

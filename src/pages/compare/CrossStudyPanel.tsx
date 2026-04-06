@@ -17,7 +17,7 @@ function calcConsistency(marker: CrossStudyMarker): number {
   if (!entries.length) return 0;
   const positive = entries.filter((entry) => entry.log2fc > 0).length;
   const negative = entries.length - positive;
-  return Math.round(Math.max(positive, negative) / entries.length * 100);
+  return Math.round((Math.max(positive, negative) / entries.length) * 100);
 }
 
 function directionColor(direction: CrossStudyMarker["direction"]): string {
@@ -31,6 +31,7 @@ const CrossStudyPanel = ({ taxonomyLevel }: { taxonomyLevel: TaxonomyLevel }) =>
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [diseases, setDiseases] = useState<string[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
+  const [projectSearch, setProjectSearch] = useState("");
   const [disease, setDisease] = useState("");
   const [method, setMethod] = useState<"wilcoxon" | "t-test">("wilcoxon");
   const [view, setView] = useState<CrossStudyView>("forest");
@@ -47,18 +48,50 @@ const CrossStudyPanel = ({ taxonomyLevel }: { taxonomyLevel: TaxonomyLevel }) =>
     Promise.all([
       cachedFetch<{ projects: ProjectInfo[] }>(`${API_BASE}/api/project-list`),
       cachedFetch<{ diseases: string[] }>(`${API_BASE}/api/filter-options`),
-    ]).then(([projectPayload, filterPayload]) => {
-      setProjects(projectPayload.projects ?? []);
-      setDiseases((filterPayload.diseases ?? []).filter((item) => item.toUpperCase() !== "NC"));
-    }).catch(() => {});
+    ])
+      .then(([projectPayload, filterPayload]) => {
+        setProjects(projectPayload.projects ?? []);
+        setDiseases((filterPayload.diseases ?? []).filter((item) => item.toUpperCase() !== "NC"));
+      })
+      .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!projects.length) return;
+    const raw = localStorage.getItem("crossStudyPreselect");
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as { projectIds?: string[]; disease?: string } | string[];
+      const projectIds = Array.isArray(parsed) ? parsed : (parsed.projectIds ?? []);
+      const prefilledDisease = Array.isArray(parsed) ? "" : (parsed.disease ?? "");
+      const allowed = new Set(projects.filter((project) => project.has_control).map((project) => project.project_id));
+      setSelectedProjects(projectIds.filter((projectId) => allowed.has(projectId)));
+      if (prefilledDisease) {
+        setDisease(prefilledDisease);
+      }
+    } catch {
+      // ignore malformed localStorage payload
+    } finally {
+      localStorage.removeItem("crossStudyPreselect");
+    }
+  }, [projects]);
+
   const filteredProjects = useMemo(() => {
-    if (!disease) return projects.filter((project) => project.has_control);
-    return projects.filter(
-      (project) => project.has_control && project.diseases.some((item) => item.toLowerCase() === disease.toLowerCase()),
-    );
-  }, [disease, projects]);
+    const query = projectSearch.trim().toLowerCase();
+    const base = projects.filter((project) => project.has_control);
+    return base
+      .filter((project) => {
+        if (disease && !project.diseases.some((item) => item.toLowerCase() === disease.toLowerCase())) {
+          return false;
+        }
+        if (!query) return true;
+        return (
+          project.project_id.toLowerCase().includes(query) ||
+          project.diseases.some((item) => item.toLowerCase().includes(query))
+        );
+      })
+      .sort((a, b) => b.sample_count - a.sample_count);
+  }, [disease, projectSearch, projects]);
 
   const projectSizeMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -67,6 +100,10 @@ const CrossStudyPanel = ({ taxonomyLevel }: { taxonomyLevel: TaxonomyLevel }) =>
     });
     return map;
   }, [result?.project_summaries]);
+
+  const markers = result?.consensus_markers ?? [];
+  const chartMarkers = markers.slice(0, 24);
+  const projectIds = result?.project_summaries.filter((item) => !item.error).map((item) => item.project_id) ?? [];
 
   const toggleProject = (projectId: string) => {
     setSelectedProjects((previous) => (
@@ -125,6 +162,7 @@ const CrossStudyPanel = ({ taxonomyLevel }: { taxonomyLevel: TaxonomyLevel }) =>
         Meta_log2FC: marker.meta_log2fc,
         Meta_SE: marker.meta_se,
         Meta_P: marker.meta_p,
+        Adjusted_Meta_P: marker.adjusted_meta_p,
         CI_Low: marker.ci_low,
         CI_High: marker.ci_high,
         Direction: marker.direction,
@@ -153,15 +191,13 @@ const CrossStudyPanel = ({ taxonomyLevel }: { taxonomyLevel: TaxonomyLevel }) =>
     }
   };
 
-  const markers = result?.consensus_markers.slice(0, 20) ?? [];
-
   return (
     <div className={classes.panel}>
       <h2 className={classes.title}>{t("crossStudy.title")}</h2>
       <p className={classes.subtitle}>
         {locale === "zh"
-          ? `按 ${taxonomyLevel} 层级做跨研究元分析，查看一致性和异质性。`
-          : `Cross-study meta-analysis at the ${taxonomyLevel} level with consistency and heterogeneity views.`}
+          ? `按 ${taxonomyLevel} 层级做跨研究元分析，查看方向一致性、异质性和候选标志物。`
+          : `Cross-study meta-analysis at the ${taxonomyLevel} level with consistency, heterogeneity, and candidate-marker views.`}
       </p>
 
       <div className={classes.controlRow}>
@@ -170,10 +206,7 @@ const CrossStudyPanel = ({ taxonomyLevel }: { taxonomyLevel: TaxonomyLevel }) =>
           list="cross-study-disease-list"
           className={classes.select}
           value={disease}
-          onChange={(event) => {
-            setDisease(event.target.value);
-            setSelectedProjects([]);
-          }}
+          onChange={(event) => setDisease(event.target.value)}
           placeholder={t("crossStudy.pickDisease")}
         />
         <datalist id="cross-study-disease-list">
@@ -183,25 +216,44 @@ const CrossStudyPanel = ({ taxonomyLevel }: { taxonomyLevel: TaxonomyLevel }) =>
         </datalist>
       </div>
 
-      {disease ? (
-        <div className={classes.projectSection}>
-          <label>{t("crossStudy.selectProjects")} ({selectedProjects.length} {t("crossStudy.selected")})</label>
-          <div className={classes.projectGrid}>
-            {filteredProjects.slice(0, 60).map((project) => (
-              <button
-                key={project.project_id}
-                type="button"
-                className={classes.projectChip}
-                data-active={selectedProjects.includes(project.project_id)}
-                onClick={() => toggleProject(project.project_id)}
-              >
-                <span className={classes.chipId}>{project.project_id}</span>
-                <span className={classes.chipCount}>n={project.sample_count}</span>
-              </button>
-            ))}
-          </div>
+      <div className={classes.controlRow}>
+        <label>{locale === "zh" ? "项目检索" : "Project search"}</label>
+        <input
+          className={classes.select}
+          value={projectSearch}
+          placeholder={locale === "zh" ? "按项目 ID 或疾病关键词过滤…" : "Filter by project ID or disease keyword..."}
+          onChange={(event) => setProjectSearch(event.target.value)}
+        />
+        <span className={classes.metaText}>
+          {filteredProjects.length.toLocaleString("en-US")} {locale === "zh" ? "个候选项目" : "eligible projects"}
+        </span>
+      </div>
+
+      <div className={classes.projectSection}>
+        <label>{t("crossStudy.selectProjects")} ({selectedProjects.length} {t("crossStudy.selected")})</label>
+        <div className={classes.projectGrid}>
+          {filteredProjects.map((project) => (
+            <button
+              key={project.project_id}
+              type="button"
+              className={classes.projectChip}
+              data-active={selectedProjects.includes(project.project_id)}
+              onClick={() => toggleProject(project.project_id)}
+            >
+              <span className={classes.chipId}>{project.project_id}</span>
+              <span className={classes.chipCount}>n={project.sample_count}</span>
+              <span className={classes.chipMeta}>{project.country}</span>
+            </button>
+          ))}
         </div>
-      ) : null}
+        {selectedProjects.length > 12 ? (
+          <p className={classes.softHint}>
+            {locale === "zh"
+              ? "已选项目较多，同步元分析会更慢，但本轮不做硬限制。"
+              : "Large project sets will take longer under the synchronous meta-analysis path, but no hard cap is applied."}
+          </p>
+        ) : null}
+      </div>
 
       <div className={classes.controlRow}>
         <label>{t("crossStudy.method")}</label>
@@ -262,10 +314,10 @@ const CrossStudyPanel = ({ taxonomyLevel }: { taxonomyLevel: TaxonomyLevel }) =>
             ))}
           </div>
 
-          {view === "forest" ? <ForestView svgRef={forestRef} markers={markers} locale={locale} /> : null}
-          {view === "heatmap" ? <HeatmapView svgRef={heatmapRef} markers={markers} projectIds={result.project_summaries.filter((item) => !item.error).map((item) => item.project_id)} /> : null}
-          {view === "consistency" ? <ConsistencyView svgRef={consistencyRef} markers={markers} locale={locale} /> : null}
-          {view === "bubble" ? <BubbleView svgRef={bubbleRef} markers={markers} projectSizeMap={projectSizeMap} locale={locale} /> : null}
+          {view === "forest" ? <ForestView svgRef={forestRef} markers={chartMarkers} locale={locale} /> : null}
+          {view === "heatmap" ? <HeatmapView svgRef={heatmapRef} markers={chartMarkers} projectIds={projectIds} locale={locale} /> : null}
+          {view === "consistency" ? <ConsistencyView svgRef={consistencyRef} markers={chartMarkers} locale={locale} /> : null}
+          {view === "bubble" ? <BubbleView svgRef={bubbleRef} markers={chartMarkers} projectSizeMap={projectSizeMap} locale={locale} /> : null}
           {view === "table" ? (
             <div className={classes.tableWrap}>
               <table className={classes.table}>
@@ -275,6 +327,7 @@ const CrossStudyPanel = ({ taxonomyLevel }: { taxonomyLevel: TaxonomyLevel }) =>
                     <th>log2FC</th>
                     <th>95% CI</th>
                     <th>p</th>
+                    <th>{locale === "zh" ? "BH 校正 p" : "BH-adjusted p"}</th>
                     <th>I2</th>
                     <th>{t("crossStudy.col.direction")}</th>
                     <th>{t("crossStudy.col.nStudies")}</th>
@@ -287,6 +340,7 @@ const CrossStudyPanel = ({ taxonomyLevel }: { taxonomyLevel: TaxonomyLevel }) =>
                       <td>{marker.meta_log2fc.toFixed(3)}</td>
                       <td>[{marker.ci_low.toFixed(2)}, {marker.ci_high.toFixed(2)}]</td>
                       <td>{marker.meta_p < 0.001 ? "<0.001" : marker.meta_p.toFixed(4)}</td>
+                      <td>{marker.adjusted_meta_p < 0.001 ? "<0.001" : marker.adjusted_meta_p.toFixed(4)}</td>
                       <td>{marker.I2.toFixed(1)}%</td>
                       <td>{marker.direction}</td>
                       <td>{marker.n_significant}/{marker.n_studies}</td>
@@ -317,33 +371,34 @@ const ForestView = ({
   markers: CrossStudyMarker[];
   locale: string;
 }) => {
-  const width = 820;
+  const width = 860;
   const rowHeight = 28;
-  const height = Math.max(200, 70 + markers.length * rowHeight);
+  const height = Math.max(220, 84 + markers.length * rowHeight);
   const min = Math.min(...markers.map((marker) => marker.ci_low), -2);
   const max = Math.max(...markers.map((marker) => marker.ci_high), 2);
-  const scale = (value: number) => 240 + (value - min) / Math.max(max - min, 1e-6) * 420;
+  const scale = (value: number) => 260 + ((value - min) / Math.max(max - min, 1e-6)) * 450;
 
   return (
-    <svg ref={svgRef} className="compare-chart" viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", maxWidth: 820 }}>
-      <line x1={scale(0)} x2={scale(0)} y1={44} y2={height - 30} stroke="#6b7280" strokeDasharray="4 4" />
+    <svg ref={svgRef} className="compare-chart" viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", maxWidth: 860 }}>
+      <line x1={scale(0)} x2={scale(0)} y1={48} y2={height - 28} stroke="#6b7280" strokeDasharray="4 4" />
       {markers.map((marker, index) => {
-        const y = 60 + index * rowHeight;
+        const y = 66 + index * rowHeight;
         return (
           <g key={marker.taxon}>
-            <text x={180} y={y + 4} textAnchor="end" fill="currentColor" fontSize="11">
+            <title>{`${marker.taxon}\nlog2FC: ${marker.meta_log2fc.toFixed(3)}\n95% CI: [${marker.ci_low.toFixed(2)}, ${marker.ci_high.toFixed(2)}]\np: ${marker.meta_p.toExponential(2)}\nadj.p: ${marker.adjusted_meta_p.toExponential(2)}\nI2: ${marker.I2.toFixed(1)}%`}</title>
+            <text x={200} y={y + 4} textAnchor="end" fill="currentColor" fontSize="11">
               {marker.taxon.length > 24 ? `${marker.taxon.slice(0, 22)}...` : marker.taxon}
             </text>
             <line x1={scale(marker.ci_low)} x2={scale(marker.ci_high)} y1={y} y2={y} stroke={directionColor(marker.direction)} strokeWidth="2" />
-            <circle cx={scale(marker.meta_log2fc)} cy={y} r={4 + marker.n_significant} fill={directionColor(marker.direction)} />
-            <text x={700} y={y + 4} fill="#94a3b8" fontSize="10">
-              {marker.meta_p < 0.001 ? "<0.001" : marker.meta_p.toFixed(3)} / I2 {marker.I2.toFixed(0)}%
+            <circle cx={scale(marker.meta_log2fc)} cy={y} r={4 + Math.min(marker.n_significant, 4)} fill={directionColor(marker.direction)} />
+            <text x={740} y={y + 4} fill="#94a3b8" fontSize="10">
+              {marker.adjusted_meta_p < 0.001 ? "adj.p <0.001" : `adj.p ${marker.adjusted_meta_p.toFixed(3)}`}
             </text>
           </g>
         );
       })}
-      <text x={width / 2} y={20} textAnchor="middle" fill="currentColor" fontSize="13">
-        {locale === "zh" ? "Forest Plot" : "Forest Plot"}
+      <text x={width / 2} y={22} textAnchor="middle" fill="currentColor" fontSize="13">
+        {locale === "zh" ? "跨研究效应森林图" : "Cross-study forest plot"}
       </text>
     </svg>
   );
@@ -353,25 +408,30 @@ const HeatmapView = ({
   svgRef,
   markers,
   projectIds,
+  locale,
 }: {
   svgRef: RefObject<SVGSVGElement | null>;
   markers: CrossStudyMarker[];
   projectIds: string[];
+  locale: string;
 }) => {
-  const width = 860;
-  const cellWidth = 62;
+  const width = Math.max(880, 260 + projectIds.length * 60);
+  const cellWidth = 58;
   const cellHeight = 24;
-  const height = 120 + markers.length * cellHeight;
-  const color = (value: number) => value >= 0 ? `rgba(34, 197, 94, ${0.15 + Math.abs(value) / 2})` : `rgba(59, 130, 246, ${0.15 + Math.abs(value) / 2})`;
+  const height = 124 + markers.length * cellHeight;
+  const color = (value: number) => value >= 0 ? `rgba(34, 197, 94, ${0.16 + Math.min(Math.abs(value) / 2.5, 0.64)})` : `rgba(59, 130, 246, ${0.16 + Math.min(Math.abs(value) / 2.5, 0.64)})`;
 
   return (
-    <svg ref={svgRef} className="compare-chart" viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", maxWidth: 860 }}>
+    <svg ref={svgRef} className="compare-chart" viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", maxWidth: width }}>
+      <text x={width / 2} y={18} textAnchor="middle" fill="currentColor" fontSize="13">
+        {locale === "zh" ? "项目内 log2FC 热图" : "Per-project log2FC heatmap"}
+      </text>
       {projectIds.map((projectId, col) => (
         <text
           key={projectId}
-          x={250 + col * cellWidth + cellWidth / 2}
+          x={248 + col * cellWidth + cellWidth / 2}
           y={72}
-          transform={`rotate(-40, ${250 + col * cellWidth + cellWidth / 2}, 72)`}
+          transform={`rotate(-40, ${248 + col * cellWidth + cellWidth / 2}, 72)`}
           fill="#94a3b8"
           fontSize="9"
           textAnchor="end"
@@ -386,16 +446,19 @@ const HeatmapView = ({
           </text>
           {projectIds.map((projectId, col) => {
             const value = marker.per_project[projectId]?.log2fc ?? 0;
+            const adj = marker.per_project[projectId]?.p_value;
             return (
               <rect
                 key={`${marker.taxon}-${projectId}`}
-                x={250 + col * cellWidth}
+                x={248 + col * cellWidth}
                 y={84 + row * cellHeight}
                 width={cellWidth - 4}
                 height={cellHeight - 4}
                 rx={4}
                 fill={marker.per_project[projectId] ? color(value) : "rgba(148, 163, 184, 0.12)"}
-              />
+              >
+                <title>{`${marker.taxon}\n${projectId}\nlog2FC: ${value.toFixed(3)}\np: ${adj?.toExponential(2) ?? "NA"}`}</title>
+              </rect>
             );
           })}
         </g>
@@ -422,10 +485,11 @@ const ConsistencyView = ({
       </text>
       {markers.map((marker, index) => {
         const score = calcConsistency(marker);
-        const widthPx = score / 100 * 420;
+        const widthPx = (score / 100) * 420;
         const y = 50 + index * 26;
         return (
           <g key={marker.taxon}>
+            <title>{`${marker.taxon}\nConsistency: ${score}%\nI2: ${marker.I2.toFixed(1)}%\nDirection: ${marker.direction}`}</title>
             <text x={180} y={y + 11} textAnchor="end" fill="currentColor" fontSize="10">
               {marker.taxon.length > 18 ? `${marker.taxon.slice(0, 16)}...` : marker.taxon}
             </text>
@@ -455,20 +519,21 @@ const BubbleView = ({
   const height = 150 + markers.length * 24;
   const min = Math.min(...markers.map((marker) => marker.meta_log2fc), -2);
   const max = Math.max(...markers.map((marker) => marker.meta_log2fc), 2);
-  const scale = (value: number) => 260 + (value - min) / Math.max(max - min, 1e-6) * 480;
+  const scale = (value: number) => 260 + ((value - min) / Math.max(max - min, 1e-6)) * 480;
 
   return (
     <svg ref={svgRef} className="compare-chart" viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", maxWidth: 860 }}>
       <text x={width / 2} y={24} textAnchor="middle" fill="currentColor" fontSize="13">
-        {locale === "zh" ? "Bubble view" : "Bubble view"}
+        {locale === "zh" ? "效应值与样本规模气泡图" : "Effect-size bubble view"}
       </text>
       <line x1={scale(0)} x2={scale(0)} y1={40} y2={height - 30} stroke="#64748b" strokeDasharray="4 4" />
       {markers.map((marker, index) => {
         const y = 56 + index * 24;
         const sampleSize = Object.keys(marker.per_project).reduce((sum, projectId) => sum + (projectSizeMap.get(projectId) ?? 0), 0);
-        const radius = Math.max(5, Math.min(18, Math.sqrt(sampleSize) / 4));
+        const radius = Math.max(4, Math.min(12, Math.sqrt(sampleSize) / 6));
         return (
           <g key={marker.taxon}>
+            <title>{`${marker.taxon}\nlog2FC: ${marker.meta_log2fc.toFixed(3)}\nCombined n: ${sampleSize}\nadj.p: ${marker.adjusted_meta_p.toExponential(2)}`}</title>
             <text x={220} y={y + 4} textAnchor="end" fill="currentColor" fontSize="10">
               {marker.taxon.length > 18 ? `${marker.taxon.slice(0, 16)}...` : marker.taxon}
             </text>
@@ -477,7 +542,7 @@ const BubbleView = ({
               cy={y}
               r={radius}
               fill={directionColor(marker.direction)}
-              opacity={marker.meta_p < 0.05 ? 0.9 : 0.45}
+              opacity={marker.adjusted_meta_p < 0.05 ? 0.9 : 0.45}
             />
             <text x={750} y={y + 4} fill="#94a3b8" fontSize="10">
               n={sampleSize}

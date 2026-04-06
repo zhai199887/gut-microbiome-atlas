@@ -151,6 +151,7 @@ export interface CrossStudyMarker {
   meta_log2fc: number;
   meta_se: number;
   meta_p: number;
+  adjusted_meta_p: number;
   ci_low: number;
   ci_high: number;
   n_studies: number;
@@ -175,8 +176,16 @@ export interface CrossStudyResult {
 export interface ProjectInfo {
   project_id: string;
   sample_count: number;
+  nc_count: number;
+  disease_count: number;
+  n_diseases: number;
   diseases: string[];
   has_control: boolean;
+  country: string;
+  country_list: string[];
+  year: number | null;
+  instrument: string;
+  region_16s: string;
 }
 
 export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -193,5 +202,6 @@ export type Tab =
   | "composition"
   | "heatmap"
   | "correlation"
+  | "crossstudy"
   | "lefse"
   | "permanova";

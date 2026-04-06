@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { useI18n } from "@/i18n";
 import "@/components/tooltip";
@@ -32,6 +32,7 @@ import {
 
 const ComparePage = () => {
   const { t, locale } = useI18n();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
   const [filterLoading, setFilterLoading] = useState(true);
   const [groupA, setGroupA] = useState<GroupFilter>({ country: "", disease: "", age_group: "", sex: "" });
@@ -45,7 +46,9 @@ const ComparePage = () => {
   const [loading, setLoading] = useState(false);
   const [spearmanLoading, setSpearmanLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("bar");
+  const [activeTab, setActiveTab] = useState<Tab>(
+    searchParams.get("tab") === "crossstudy" ? "crossstudy" : "bar",
+  );
 
   useEffect(() => {
     cachedFetch<FilterOptions>(`${API_BASE}/api/filter-options`)
@@ -53,6 +56,16 @@ const ComparePage = () => {
       .catch(() => setError(t("compare.backendError")))
       .finally(() => setFilterLoading(false));
   }, [t]);
+
+  useEffect(() => {
+    if (searchParams.get("tab") === "crossstudy") {
+      setActiveTab("crossstudy");
+      return;
+    }
+    if (activeTab === "crossstudy") {
+      setActiveTab("bar");
+    }
+  }, [activeTab, searchParams]);
 
   useEffect(() => {
     if (filterLoading) return;
@@ -70,13 +83,24 @@ const ComparePage = () => {
         if (!response.ok) return;
         setSampleCounts(await response.json());
       } catch {
-        // Ignore preview errors and keep the workspace usable.
+        // keep workspace usable even if preview requests fail
       } finally {
         setSampleCountLoading(false);
       }
     }, 250);
     return () => window.clearTimeout(timer);
   }, [filterLoading, groupA, groupB]);
+
+  const setWorkspaceTab = (tab: Tab) => {
+    setActiveTab(tab);
+    const next = new URLSearchParams(searchParams);
+    if (tab === "crossstudy") {
+      next.set("tab", "crossstudy");
+    } else {
+      next.delete("tab");
+    }
+    setSearchParams(next, { replace: true });
+  };
 
   const runAnalysis = async () => {
     setLoading(true);
@@ -101,7 +125,7 @@ const ComparePage = () => {
 
       const data: DiffResult = await response.json();
       setResult(data);
-      setActiveTab("bar");
+      setWorkspaceTab("bar");
 
       setSpearmanLoading(true);
       setSpearman(null);
@@ -163,12 +187,48 @@ const ComparePage = () => {
       ["beta", t("compare.tab.beta")],
       ["composition", locale === "zh" ? "组成结构" : "Composition"],
       ["heatmap", locale === "zh" ? "差异热图" : "Heatmap"],
-      ["correlation", locale === "zh" ? "Spearman" : "Spearman"],
+      ["correlation", "Spearman"],
+      ["crossstudy", t("compare.tab.crossStudy")],
     ];
     if (result?.lefse_results) nextTabs.push(["lefse", t("compare.tab.lefse")]);
     if (result?.permanova) nextTabs.push(["permanova", t("compare.tab.permanova")]);
     return nextTabs;
   }, [locale, result?.lefse_results, result?.permanova, t]);
+
+  const renderActivePanel = () => {
+    if (activeTab === "crossstudy") {
+      return <CrossStudyPanel taxonomyLevel={taxLevel} />;
+    }
+
+    if (!result) {
+      return (
+        <div className={classes.emptyPanel}>
+          {locale === "zh"
+            ? "先定义 Group A / Group B 并运行差异分析；如果你要直接做跨研究元分析，切到 Cross-study。"
+            : "Define Group A / Group B and run differential analysis first, or switch to Cross-study for project-level meta-analysis."}
+        </div>
+      );
+    }
+
+    if (activeTab === "bar") return <DiffBarChart result={result} />;
+    if (activeTab === "volcano") return <VolcanoChart result={result} />;
+    if (activeTab === "alpha") return <AlphaBoxChart result={result} />;
+    if (activeTab === "beta") return <BetaPCoAChart result={result} />;
+    if (activeTab === "composition") return <StackedBarChart result={result} />;
+    if (activeTab === "heatmap") return <DiffHeatmap result={result} />;
+    if (activeTab === "correlation") {
+      return spearmanLoading ? (
+        <div className={classes.emptyPanel}>
+          {locale === "zh" ? "正在计算 Spearman 结构…" : "Computing Spearman structure..."}
+        </div>
+      ) : (
+        <SpearmanChart result={spearman} />
+      );
+    }
+    if (activeTab === "lefse") return <LefseResults result={result} />;
+    if (activeTab === "permanova") return <PermanovaResults result={result} />;
+    return null;
+  };
 
   return (
     <div className={classes.page}>
@@ -260,8 +320,8 @@ const ComparePage = () => {
 
       {error ? <div className={classes.error}>{error}</div> : null}
 
-      {result ? (
-        <section className={classes.resultSection}>
+      <section className={classes.resultSection}>
+        {result && activeTab !== "crossstudy" ? (
           <div className={classes.workspaceHeader}>
             <div className={classes.summaryCard}>
               <span>{locale === "zh" ? "工作台摘要" : "Workspace summary"}</span>
@@ -284,51 +344,31 @@ const ComparePage = () => {
               <small>adj. p &lt; 0.05</small>
             </div>
           </div>
+        ) : null}
 
-          <div className={classes.tabs}>
-            {tabs.map(([tabId, label]) => (
-              <button
-                key={tabId}
-                type="button"
-                className={classes.tab}
-                data-active={activeTab === tabId}
-                onClick={() => setActiveTab(tabId)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        <div className={classes.tabs}>
+          {tabs.map(([tabId, label]) => (
+            <button
+              key={tabId}
+              type="button"
+              className={classes.tab}
+              data-active={activeTab === tabId}
+              onClick={() => setWorkspaceTab(tabId)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
-          <div className={classes.chartArea}>
-            {activeTab === "bar" ? <DiffBarChart result={result} /> : null}
-            {activeTab === "volcano" ? <VolcanoChart result={result} /> : null}
-            {activeTab === "alpha" ? <AlphaBoxChart result={result} /> : null}
-            {activeTab === "beta" ? <BetaPCoAChart result={result} /> : null}
-            {activeTab === "composition" ? <StackedBarChart result={result} /> : null}
-            {activeTab === "heatmap" ? <DiffHeatmap result={result} /> : null}
-            {activeTab === "correlation" ? (
-              spearmanLoading ? (
-                <div className={classes.emptyPanel}>
-                  {locale === "zh" ? "正在计算 Spearman 相关结构..." : "Computing Spearman correlation structure..."}
-                </div>
-              ) : (
-                <SpearmanChart result={spearman} />
-              )
-            ) : null}
-            {activeTab === "lefse" ? <LefseResults result={result} /> : null}
-            {activeTab === "permanova" ? <PermanovaResults result={result} /> : null}
-          </div>
+        <div className={classes.chartArea}>{renderActivePanel()}</div>
 
+        {result && activeTab !== "crossstudy" ? (
           <div className={classes.exportRow}>
             <button className={classes.exportBtn} type="button" onClick={exportCsv}>{t("export.csv")}</button>
             <button className={classes.exportBtn} type="button" onClick={exportSvgChart}>{t("export.svg")}</button>
             <button className={classes.exportBtn} type="button" onClick={exportPngChart}>{t("export.png")}</button>
           </div>
-        </section>
-      ) : null}
-
-      <section className={classes.filterSection}>
-        <CrossStudyPanel taxonomyLevel={taxLevel} />
+        ) : null}
       </section>
     </div>
   );

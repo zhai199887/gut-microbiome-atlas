@@ -401,6 +401,129 @@ def _strict_nc_mask(meta: pd.DataFrame, inform_cols: list[str] | None = None) ->
     return mask
 
 
+def _clean_text_series(series: pd.Series) -> pd.Series:
+    """Normalize string series by dropping empty / nan-like values."""
+    values = series.dropna().astype(str).str.strip()
+    return values[(values != "") & (values.str.lower() != "nan")]
+
+
+def _non_nc_disease_mask(meta: pd.DataFrame, inform_cols: list[str] | None = None) -> pd.Series:
+    """Return mask for samples carrying any non-NC disease label."""
+    columns = inform_cols or [f"inform{i}" for i in range(12)]
+    mask = pd.Series(False, index=meta.index)
+    for col in columns:
+        if col not in meta.columns:
+            continue
+        values = meta[col].fillna("").astype(str).str.strip()
+        lower = values.str.lower()
+        mask |= (values != "") & (lower != "nan") & (lower != "nc")
+    return mask
+
+
+def _collect_project_diseases(meta: pd.DataFrame, inform_cols: list[str] | None = None) -> list[str]:
+    """Collect unique non-NC diseases from inform0-11 columns."""
+    columns = inform_cols or [f"inform{i}" for i in range(12)]
+    diseases: set[str] = set()
+    for col in columns:
+        if col not in meta.columns:
+            continue
+        values = _clean_text_series(meta[col])
+        diseases.update(value for value in values if value.lower() != "nc")
+    return sorted(diseases, key=lambda item: item.lower())
+
+
+def _infer_region_16s(instrument: str) -> str:
+    """Heuristic 16S region estimate from sequencer name."""
+    instrument_lower = instrument.lower()
+    if any(token in instrument_lower for token in ("illumina", "nextseq", "miseq")):
+        return "V3-V4 (est.)"
+    if "ion torrent" in instrument_lower or "pgm" in instrument_lower:
+        return "V1-V2 (est.)"
+    if "454" in instrument_lower:
+        return "V1-V3 (est.)"
+    return "Unknown"
+
+
+def _project_mode_value(series: pd.Series, default: str = "Unknown", max_len: int | None = None) -> str:
+    """Return the most common cleaned string value."""
+    values = _clean_text_series(series)
+    if values.empty:
+        return default
+    result = str(values.mode().iloc[0])
+    return result[:max_len] if max_len else result
+
+
+def _sorted_count_rows(counts: dict[str, int], key_name: str, limit: int | None = None) -> list[dict[str, int | str]]:
+    items = sorted(counts.items(), key=lambda item: (-item[1], item[0].lower()))
+    if limit is not None:
+        items = items[:limit]
+    return [{key_name: name, "count": int(count)} for name, count in items]
+
+
+def _series_count_rows(
+    series: pd.Series,
+    key_name: str,
+    limit: int | None = None,
+) -> list[dict[str, int | str]]:
+    values = _clean_text_series(series)
+    counts = values.value_counts()
+    if limit is not None:
+        counts = counts.head(limit)
+    return [{key_name: str(name), "count": int(count)} for name, count in counts.items()]
+
+
+def _disease_count_rows(meta: pd.DataFrame, inform_cols: list[str] | None = None, limit: int | None = None) -> list[dict[str, int | str]]:
+    """Flatten inform columns into disease counts for detail panels."""
+    columns = inform_cols or [f"inform{i}" for i in range(12)]
+    counts: dict[str, int] = {}
+    for col in columns:
+        if col not in meta.columns:
+            continue
+        values = _clean_text_series(meta[col])
+        for value in values:
+            if value.lower() == "nc":
+                continue
+            counts[value] = counts.get(value, 0) + 1
+    return _sorted_count_rows(counts, "disease", limit=limit)
+
+
+def _project_overview(proj: str, grp: pd.DataFrame, inform_cols: list[str] | None = None) -> dict:
+    """Build aggregated project-level summary used by studies endpoints."""
+    columns = inform_cols or [f"inform{i}" for i in range(12)]
+    disease_values = _collect_project_diseases(grp, columns)
+    nc_mask = _strict_nc_mask(grp, columns)
+    disease_mask = _non_nc_disease_mask(grp, columns)
+
+    countries = _clean_text_series(grp["country"]) if "country" in grp.columns else pd.Series(dtype=str)
+    country_counts = countries.value_counts()
+    country_main = str(country_counts.index[0]) if not country_counts.empty else "Unknown"
+    country_list = [str(name) for name in country_counts.index.tolist()]
+
+    instrument_val = _project_mode_value(grp["instrument"], default="Unknown", max_len=40) if "instrument" in grp.columns else "Unknown"
+    region_16s = _infer_region_16s(instrument_val)
+
+    year_val: int | None = None
+    if "year" in grp.columns:
+        years = pd.to_numeric(grp["year"], errors="coerce").dropna().astype(int)
+        if not years.empty:
+            year_val = int(years.mode().iloc[0])
+
+    return {
+        "project_id": str(proj),
+        "sample_count": int(len(grp)),
+        "nc_count": int(nc_mask.sum()),
+        "disease_count": int(disease_mask.sum()),
+        "n_diseases": int(len(disease_values)),
+        "diseases": disease_values,
+        "has_control": bool(nc_mask.any()),
+        "country": country_main,
+        "country_list": country_list,
+        "year": year_val,
+        "instrument": instrument_val,
+        "region_16s": region_16s,
+    }
+
+
 @lru_cache(maxsize=1)
 def load_metabolism_mapping() -> dict:
     """Load curated metabolism mapping JSON."""
@@ -3683,33 +3806,88 @@ async def similarity_search(request: Request, req: SimilarityRequest):
          tags=["Analysis"])
 @limiter.limit("60/minute")
 async def project_list(request: Request):
-    """返回可用项目列表及每个项目的样本数/疾病覆盖。"""
+    """Return project browser payload with summary cards and rich per-project fields."""
+    cache_key = "project_list_v2"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
     meta = get_metadata()
-    if "project" not in meta.columns:
-        raise HTTPException(500, "No 'project' column in metadata")
+    project_col = get_project_column(meta)
+    if project_col is None:
+        raise HTTPException(500, "No project column in metadata")
 
-    INFORM_COLS = [f"inform{i}" for i in range(12)]
-    projects = []
-    for proj, grp in meta.groupby("project"):
-        # Collect all diseases in this project
-        diseases_set: set[str] = set()
-        for col in INFORM_COLS:
-            if col in grp.columns:
-                vals = grp[col].dropna().astype(str).str.strip()
-                diseases_set.update(v for v in vals if v and v.lower() != "nan")
-        has_nc = any(d.upper() == "NC" for d in diseases_set)
-        diseases_set.discard("NC")
-        diseases_set.discard("nc")
-        projects.append({
-            "project_id": str(proj),
-            "sample_count": len(grp),
-            "diseases": sorted(diseases_set)[:20],
-            "has_control": has_nc,
-        })
+    inform_cols = [f"inform{i}" for i in range(12)]
+    projects: list[dict] = []
+    all_countries: set[str] = set()
+    all_diseases: set[str] = set()
+    total_nc = 0
+    total_disease = 0
+    years_seen: list[int] = []
 
-    # Sort by sample count descending
-    projects.sort(key=lambda x: x["sample_count"], reverse=True)
-    return {"projects": projects, "total": len(projects)}
+    for proj, grp in meta.groupby(project_col):
+        overview = _project_overview(str(proj), grp, inform_cols)
+        projects.append(overview)
+        total_nc += overview["nc_count"]
+        total_disease += overview["disease_count"]
+        all_countries.update(overview["country_list"])
+        all_diseases.update(overview["diseases"])
+        if overview["year"] is not None:
+            years_seen.append(int(overview["year"]))
+
+    projects.sort(key=lambda item: item["sample_count"], reverse=True)
+    summary = {
+        "total_projects": len(projects),
+        "total_samples": int(sum(item["sample_count"] for item in projects)),
+        "total_nc": int(total_nc),
+        "total_disease": int(total_disease),
+        "n_countries": len({country for country in all_countries if country and country.lower() != "unknown"}),
+        "n_diseases": len(all_diseases),
+        "year_range": [min(years_seen), max(years_seen)] if years_seen else [],
+    }
+    result = {"projects": projects, "total": len(projects), "summary": summary}
+    set_cached(cache_key, result)
+    return result
+
+
+@app.get("/api/project-detail",
+         summary="Single project detailed profile",
+         description="Detailed breakdown for a single BioProject: age/sex/disease/country distribution.",
+         tags=["Analysis"])
+@limiter.limit("30/minute")
+async def project_detail(request: Request, project_id: str):
+    """Return one project's aggregated breakdown without exposing raw samples."""
+    normalized_project_id = str(project_id or "").strip()
+    if not normalized_project_id:
+        raise HTTPException(400, "project_id is required")
+
+    cache_key = f"project_detail_v1:{normalized_project_id.lower()}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
+    meta = get_metadata()
+    project_col = get_project_column(meta)
+    if project_col is None:
+        raise HTTPException(500, "No project column in metadata")
+
+    proj_meta = meta[meta[project_col].astype(str).str.strip() == normalized_project_id].copy()
+    if proj_meta.empty:
+        raise HTTPException(404, f"Project not found: {normalized_project_id}")
+
+    inform_cols = [f"inform{i}" for i in range(12)]
+    overview = _project_overview(normalized_project_id, proj_meta, inform_cols)
+    result = {
+        **overview,
+        "total_samples": overview["sample_count"],
+        "ncbi_url": f"https://www.ncbi.nlm.nih.gov/bioproject/{normalized_project_id}",
+        "by_disease": _disease_count_rows(proj_meta, inform_cols, limit=20),
+        "by_country": _series_count_rows(proj_meta["country"], "country", limit=10) if "country" in proj_meta.columns else [],
+        "by_age_group": _series_count_rows(proj_meta["age_group"], "age_group", limit=10) if "age_group" in proj_meta.columns else [],
+        "by_sex": _series_count_rows(proj_meta["sex"], "sex", limit=10) if "sex" in proj_meta.columns else [],
+    }
+    set_cached(cache_key, result)
+    return result
 
 
 @app.post("/api/cross-study",
@@ -3731,13 +3909,13 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
     """跨研究元分析：多队列一致性标志物发现"""
     if len(req.project_ids) < 2:
         raise HTTPException(400, "At least 2 projects required")
-    if len(req.project_ids) > 10:
-        raise HTTPException(400, "Maximum 10 projects allowed")
-
     meta = get_metadata()
     abund = get_abundance()
     abund_idx = set(abund.index)
     col_names = abund.columns.tolist()
+    project_col = get_project_column(meta)
+    if project_col is None:
+        raise HTTPException(500, "No project column in metadata")
 
     def _group_by_level(matrix: np.ndarray, cols: list[str], level: str):
         agg, labels, _ = aggregate_by_level(matrix, cols, level)
@@ -3750,7 +3928,7 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
     taxa_global = None
 
     for proj_id in req.project_ids:
-        proj_meta = meta[meta["project"].astype(str) == proj_id]
+        proj_meta = meta[meta[project_col].astype(str).str.strip() == proj_id].copy()
         if len(proj_meta) == 0:
             per_project_results.append({
                 "project_id": proj_id,
@@ -3765,10 +3943,7 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
         for col in INFORM_COLS:
             if col in proj_meta.columns:
                 disease_mask |= proj_meta[col].fillna("").astype(str).str.strip().str.lower() == disease_lower
-        nc_mask = pd.Series(False, index=proj_meta.index)
-        for col in INFORM_COLS:
-            if col in proj_meta.columns:
-                nc_mask |= proj_meta[col].fillna("").astype(str).str.strip().str.lower() == "nc"
+        nc_mask = _strict_nc_mask(proj_meta, INFORM_COLS)
 
         disease_keys = [k for k in proj_meta.loc[disease_mask, "sample_key"].values if k in abund_idx]
         control_keys = [k for k in proj_meta.loc[nc_mask, "sample_key"].values if k in abund_idx]
@@ -3912,9 +4087,13 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
             "per_project": per_project_detail,
         })
 
-    # Sort by meta p-value, filter significant
-    consensus_markers.sort(key=lambda x: x["meta_p"])
-    significant_markers = [m for m in consensus_markers if m["meta_p"] < req.p_threshold]
+    adjusted_meta_p = bh_correction([float(marker["meta_p"]) for marker in consensus_markers])
+    for marker, adjusted_p in zip(consensus_markers, adjusted_meta_p):
+        marker["adjusted_meta_p"] = round(float(adjusted_p), 8)
+
+    # Sort by BH-adjusted meta p-value, then raw meta p-value
+    consensus_markers.sort(key=lambda x: (x["adjusted_meta_p"], x["meta_p"]))
+    significant_markers = [m for m in consensus_markers if m["adjusted_meta_p"] < req.p_threshold]
 
     return {
         "disease": req.disease,
@@ -3930,9 +4109,9 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
             }
             for p in per_project_results
         ],
-        "consensus_markers": significant_markers[:100],
+        "consensus_markers": significant_markers[:300],
         "total_significant": len(significant_markers),
-        "all_markers": consensus_markers[:200],
+        "all_markers": consensus_markers[:500],
     }
 
 

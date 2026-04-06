@@ -379,8 +379,7 @@ def count_unique_genera_from_abundance() -> int:
         return 0
 
     data_columns = columns[1:] if columns[0].strip().lower() in {"sample_id", "sampleid", "sample"} else columns
-    genera = {extract_genus(col).strip() for col in data_columns if extract_genus(col).strip()}
-    return len(genera)
+    return len(data_columns)
 
 
 def build_genus_phylum_map(columns: list[str]) -> dict[str, str]:

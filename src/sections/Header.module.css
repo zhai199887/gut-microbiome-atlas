@@ -3,21 +3,22 @@
   z-index: 10;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1rem;
   padding-top: 92px;
-  padding-bottom: 76px;
+  padding-bottom: 64px;
 }
 
 .heroShell {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(420px, 0.95fr);
+  grid-template-columns: minmax(0, 1.78fr) minmax(360px, 0.92fr);
   align-items: start;
-  gap: 2rem;
+  gap: 1rem;
   width: 100%;
 }
 
 .heroCopy,
-.navPanel {
+.actionPanel,
+.groupCard {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 24px;
   background: linear-gradient(180deg, rgba(18, 26, 49, 0.92), rgba(14, 22, 43, 0.84));
@@ -28,8 +29,9 @@
 .heroCopy {
   display: flex;
   flex-direction: column;
-  gap: 1.6rem;
-  padding: 2rem 2.1rem;
+  gap: 1.9rem;
+  min-height: 100%;
+  padding: 2.25rem 2.35rem;
 }
 
 .kicker {
@@ -77,22 +79,46 @@
 }
 
 .subtitle {
-  max-width: 680px;
+  max-width: 860px;
   margin: 0;
   color: rgba(231, 236, 245, 0.84);
-  font-size: 1.12rem;
-  line-height: 1.72;
+  font-size: 1.14rem;
+  line-height: 1.74;
 }
 
-.quickLinks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+.signalGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
 }
 
-.quickLink,
+.signalCard {
+  min-height: 100%;
+  border: 1px solid rgba(126, 232, 255, 0.18);
+  border-radius: 18px;
+  padding: 1rem 1.05rem;
+  background:
+    linear-gradient(180deg, rgba(126, 232, 255, 0.08), rgba(126, 232, 255, 0.02)),
+    rgba(255, 255, 255, 0.02);
+}
+
+.signalCard h2 {
+  margin: 0;
+  font-size: 1rem;
+  text-align: left;
+}
+
+.signalCard p {
+  margin: 0.45rem 0 0;
+  color: rgba(214, 224, 238, 0.8);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  text-align: left;
+}
+
 .navLink,
-.groupLink {
+.groupLink,
+.actionLink {
   text-decoration: none;
   transition:
     transform 0.18s ease,
@@ -100,26 +126,18 @@
     background 0.18s ease;
 }
 
-.quickLink {
-  border: 1px solid rgba(126, 232, 255, 0.26);
-  border-radius: 999px;
-  padding: 0.6rem 0.95rem;
-  background: rgba(126, 232, 255, 0.08);
-  color: var(--white);
-  font-size: 0.96rem;
-}
-
-.quickLink:hover,
+.actionLink:hover,
 .groupLink:hover,
 .navLink:hover {
   transform: translateY(-1px);
 }
 
-.navPanel {
+.actionPanel {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1.45rem;
+  gap: 1.2rem;
+  min-height: 100%;
+  padding: 1.55rem;
 }
 
 .panelHeader {
@@ -142,28 +160,60 @@
   font-size: 1.4rem;
 }
 
-.groupGrid {
+.panelCopy {
+  margin: 0;
+  color: rgba(213, 223, 238, 0.72);
+  font-size: 0.9rem;
+  line-height: 1.65;
+  text-align: left;
+}
+
+.actionGrid {
   display: grid;
-  gap: 0.95rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.actionLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 54px;
+  border: 1px solid rgba(126, 232, 255, 0.24);
+  border-radius: 14px;
+  padding: 0.8rem 0.9rem;
+  background: rgba(126, 232, 255, 0.08);
+  color: var(--white);
+  font-size: 0.96rem;
+}
+
+.navDeck {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  width: 100%;
 }
 
 .groupCard {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: 1.1rem;
-  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 100%;
+  padding: 1.15rem 1.1rem;
 }
 
 .groupCard h3 {
-  margin: 0 0 0.35rem;
-  font-size: 0.98rem;
+  margin: 0;
+  font-size: 1rem;
+  text-align: left;
 }
 
 .groupCard p {
   margin: 0;
   color: rgba(204, 214, 229, 0.72);
-  font-size: 0.84rem;
-  line-height: 1.55;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  text-align: left;
 }
 
 .groupLinks {
@@ -176,7 +226,7 @@
 .groupLink {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
-  padding: 0.52rem 0.72rem;
+  padding: 0.58rem 0.74rem;
   color: var(--white);
   font-size: 0.9rem;
   background: rgba(255, 255, 255, 0.02);
@@ -250,8 +300,12 @@
     gap: 1.2rem;
   }
 
-  .navPanel {
-    display: none;
+  .actionPanel {
+    order: 2;
+  }
+
+  .navDeck {
+    grid-template-columns: 1fr;
   }
 
   .hamburger {
@@ -280,6 +334,10 @@
     padding: 1.25rem;
   }
 
+  .actionPanel {
+    padding: 1.2rem;
+  }
+
   .h1 {
     font-size: clamp(2rem, 9vw, 2.8rem);
   }
@@ -294,21 +352,17 @@
     height: 1px;
   }
 
-  .quickLinks {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .signalGrid,
+  .actionGrid {
+    grid-template-columns: 1fr;
   }
 
-  .quickLink {
-    text-align: center;
+  .actionLink {
+    min-height: 48px;
   }
 }
 
 @media (max-width: 420px) {
-  .quickLinks {
-    grid-template-columns: 1fr;
-  }
-
   .logo {
     width: 72px;
     height: 72px !important;

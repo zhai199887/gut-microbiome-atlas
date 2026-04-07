@@ -91,12 +91,12 @@ footer {
 }
 
 .home-shell > header {
-  --col: 1480px;
+  --col: 1760px;
 }
 
 .home-shell > main > section,
 .home-shell > main > footer {
-  --col: 1320px;
+  --col: 1560px;
 }
 
 .sub-section {

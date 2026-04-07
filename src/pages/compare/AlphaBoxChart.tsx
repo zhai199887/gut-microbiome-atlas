@@ -19,6 +19,16 @@ const formatP = (p: number | undefined, locale: string) => {
   return `p = ${p.toFixed(3)}`;
 };
 
+const safeSeries = (values: unknown): number[] => {
+  if (!Array.isArray(values)) return [];
+  return values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+};
+
+const shortenLabel = (value: unknown, fallback: string) => {
+  if (typeof value !== "string" || value.trim().length === 0) return fallback;
+  return value.length > 12 ? `${value.slice(0, 11)}...` : value;
+};
+
 const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
   const { locale } = useI18n();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -33,12 +43,15 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
     const margin = { top: 48, right: 20, bottom: 56, left: 56 };
     const panelWidth = (width - margin.left - margin.right) / 3;
     const panelHeight = height - margin.top - margin.bottom;
+    const noDataLabel = locale === "zh" ? "无数据" : "No data";
+    const groupAName = shortenLabel(result.summary?.group_a_name, locale === "zh" ? "A 组" : "Group A");
+    const groupBName = shortenLabel(result.summary?.group_b_name, locale === "zh" ? "B 组" : "Group B");
 
     const alphaGroupA = result.alpha_diversity?.group_a;
     const alphaGroupB = result.alpha_diversity?.group_b;
     const values = PANELS.flatMap((panel) => [
-      ...(alphaGroupA?.[panel.key] ?? []),
-      ...(alphaGroupB?.[panel.key] ?? []),
+      ...safeSeries(alphaGroupA?.[panel.key]),
+      ...safeSeries(alphaGroupB?.[panel.key]),
     ]);
 
     if (!values.length) {
@@ -63,13 +76,14 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
       points: number[],
       color: string,
     ) => {
+      if (!points.length) return;
       const sorted = [...points].sort((a, b) => a - b);
       const q1 = d3.quantile(sorted, 0.25) ?? 0;
       const q2 = d3.quantile(sorted, 0.5) ?? 0;
       const q3 = d3.quantile(sorted, 0.75) ?? 0;
       const iqr = q3 - q1;
       const lower = Math.max(sorted[0] ?? 0, q1 - 1.5 * iqr);
-      const upper = Math.min(sorted.at(-1) ?? 0, q3 + 1.5 * iqr);
+      const upper = Math.min(sorted[sorted.length - 1] ?? 0, q3 + 1.5 * iqr);
       const boxWidth = 56;
 
       group.append("line")
@@ -101,7 +115,9 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
         .attr("stroke-width", 2.2);
 
       const outliers = sorted.filter((value) => value < lower || value > upper);
-      group.selectAll(`.outlier-${xCenter}`)
+      group.append("g")
+        .attr("data-series", `${xCenter}`)
+        .selectAll("circle")
         .data(outliers)
         .join("circle")
         .attr("cx", (_, index) => xCenter + ((index % 3) - 1) * 4)
@@ -117,8 +133,8 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
 
       const xA = panelWidth * 0.3;
       const xB = panelWidth * 0.7;
-      const groupAValues = alphaGroupA?.[panel.key] ?? [];
-      const groupBValues = alphaGroupB?.[panel.key] ?? [];
+      const groupAValues = safeSeries(alphaGroupA?.[panel.key]);
+      const groupBValues = safeSeries(alphaGroupB?.[panel.key]);
 
       if (panelIndex === 0) {
         panelGroup.append("g").call(d3.axisLeft(y).ticks(5)).attr("font-size", 11);
@@ -146,9 +162,7 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
         .attr("text-anchor", "middle")
         .attr("fill", "var(--secondary)")
         .attr("font-size", 10)
-        .text(groupAValues.length > 0
-          ? (result.summary.group_a_name.length > 12 ? `${result.summary.group_a_name.slice(0, 11)}...` : result.summary.group_a_name)
-          : (locale === "zh" ? "无数据" : "No data"));
+        .text(groupAValues.length > 0 ? groupAName : noDataLabel);
 
       panelGroup.append("text")
         .attr("x", xB)
@@ -156,9 +170,7 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
         .attr("text-anchor", "middle")
         .attr("fill", "var(--primary)")
         .attr("font-size", 10)
-        .text(groupBValues.length > 0
-          ? (result.summary.group_b_name.length > 12 ? `${result.summary.group_b_name.slice(0, 11)}...` : result.summary.group_b_name)
-          : (locale === "zh" ? "无数据" : "No data"));
+        .text(groupBValues.length > 0 ? groupBName : noDataLabel);
 
       const bracketY = 18;
       panelGroup.append("path")

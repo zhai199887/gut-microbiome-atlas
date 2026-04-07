@@ -8,9 +8,9 @@
 }
 
 .header {
-  max-width: 1680px;
+  max-width: 1760px;
   margin: 0 auto;
-  padding: 28px 28px 18px;
+  padding: 24px 14px 18px;
   display: grid;
   grid-template-columns: auto 1fr minmax(320px, 420px);
   gap: 20px;
@@ -123,14 +123,14 @@
 }
 
 .content {
-  max-width: 1680px;
+  max-width: 1760px;
   margin: 0 auto;
-  padding: 0 28px 40px;
+  padding: 0 14px 40px;
 }
 
 .loading,
 .error {
-  max-width: 1680px;
+  max-width: 1760px;
   margin: 0 auto;
   padding: 28px;
   color: rgba(255, 255, 255, 0.7);
@@ -285,14 +285,17 @@
 }
 
 :global(.species-gridNetwork) {
-  grid-template-columns: minmax(520px, 1.35fr) minmax(420px, 1fr);
+  grid-template-columns: minmax(260px, 0.46fr) minmax(700px, 1.78fr);
+  gap: 14px;
+  align-items: start;
 }
 
 :global(.species-chartCard) {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 22px;
-  padding: 18px;
+  padding: 20px;
+  min-width: 0;
 }
 
 :global(.species-chartHeader) {
@@ -305,13 +308,13 @@
 
 :global(.species-chartHeader h3) {
   margin: 0;
-  font-size: 1.08rem;
+  font-size: 1.14rem;
 }
 
 :global(.species-chartHeader p) {
   margin: 7px 0 0;
-  font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.96rem;
+  color: rgba(255, 255, 255, 0.82);
   line-height: 1.5;
 }
 
@@ -322,24 +325,26 @@
 }
 
 :global(.species-tableWrap) {
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
+  min-width: 0;
 }
 
 :global(.species-table) {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.94rem;
+  font-size: 1.02rem;
 }
 
 :global(.species-table th),
 :global(.species-table td) {
-  padding: 12px 10px;
+  padding: 13px 12px;
   text-align: left;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 :global(.species-table th) {
-  color: rgba(255, 255, 255, 0.62);
+  color: rgba(255, 255, 255, 0.86);
   font-weight: 600;
 }
 
@@ -381,7 +386,7 @@
   padding: 16px;
 }
 
-@media (max-width: 1320px) {
+@media (max-width: 1120px) {
   :global(.species-gridNetwork) {
     grid-template-columns: 1fr;
   }

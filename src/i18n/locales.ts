@@ -51,7 +51,7 @@ const en = {
   // Overview
   "overview.title": "Overview",
   "overview.intro": "This platform lets you explore over 168,000 publicly available human gut microbiome samples, annotated with age, sex, and disease metadata.",
-  "overview.featureIntro": "Grouped entry points for discovery, statistical analysis, and reusable research outputs.",
+"overview.featureIntro": "",
   "overview.methods": "Data & Methods:",
   "overview.methods.detail": "Taxonomic profiles generated with MetaPhlAn. Differential abundance uses Wilcoxon rank-sum test with Benjamini–Hochberg FDR correction (adj. p < 0.05). Beta diversity computed as Bray–Curtis dissimilarity, visualised by PCoA.",
   "overview.loading": "Loading overview...",
@@ -773,7 +773,7 @@ const zh: Record<keyof typeof en, string> = {
   // Overview
   "overview.title": "概览",
   "overview.intro": "本平台提供超过168,000份公开的人类肠道微生物样本，标注了年龄、性别和疾病元数据。",
-  "overview.featureIntro": "把首页入口按浏览、分析和复用三类整理，避免把整站功能堆成一排同质按钮。",
+"overview.featureIntro": "",
   "overview.methods": "数据与方法：",
   "overview.methods.detail": "分类学谱由MetaPhlAn生成。差异丰度使用Wilcoxon秩和检验结合Benjamini–Hochberg FDR校正（adj. p < 0.05）。Beta多样性使用Bray–Curtis距离，通过PCoA可视化。",
   "overview.loading": "概览加载中...",

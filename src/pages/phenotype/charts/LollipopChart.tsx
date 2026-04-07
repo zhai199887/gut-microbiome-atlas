@@ -1,6 +1,6 @@
 /**
  * LollipopChart — log2FC vs -log10(adj.p), size=prevalence, color=phylum
- * 效应量Lollipop图：参照GMrepo v3 lollipop可视化设计
+ * 效应量Lollipop图：用于展示 log2FC、显著性与流行率
  * X: log2FC, Y: -log10(adjusted_p), 点大小 = 流行率, 颜色 = 门
  */
 import { useEffect, useRef } from "react";

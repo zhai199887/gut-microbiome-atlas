@@ -189,7 +189,7 @@ function drawAssociationNetwork(svgEl: SVGSVGElement, rawData: NetworkData, loca
 
   const nodeRadius = d3.scaleLinear()
     .domain([0, d3.max(nodes, (node) => node.size) ?? 1])
-    .range([7, 28]);
+    .range([9, 30]);
   const edgeWidth = d3.scaleLinear()
     .domain([0, d3.max(edges, (edge) => edge.weight) ?? 1])
     .range([0.7, 3.6]);
@@ -238,7 +238,7 @@ function drawAssociationNetwork(svgEl: SVGSVGElement, rawData: NetworkData, loca
     .selectAll("circle")
     .data(nodes)
     .join("circle")
-    .attr("r", (item) => item.type === "disease" ? nodeRadius(item.size) : 6.2)
+    .attr("r", (item) => item.type === "disease" ? nodeRadius(item.size) : 7)
     .attr("fill", (item) => item.type === "disease" ? "#ff6b6b" : "#4ecdc4")
     .attr("opacity", 0.88)
     .attr("stroke", "rgba(255,255,255,0.22)")
@@ -280,22 +280,22 @@ function drawAssociationNetwork(svgEl: SVGSVGElement, rawData: NetworkData, loca
     .join("text")
     .text((item) => {
       const labelText = item.type === "disease" ? diseaseDisplayNameI18n(item.id, locale) : item.id;
-      return labelText.length > 22 ? `${labelText.slice(0, 20)}...` : labelText;
+      return labelText.length > 24 ? `${labelText.slice(0, 22)}...` : labelText;
     })
-    .attr("font-size", (item) => item.type === "disease" ? 12 : 10)
+    .attr("font-size", (item) => item.type === "disease" ? 13 : 11.5)
     .attr("font-style", (item) => item.type === "genus" ? "italic" : "normal")
-    .attr("font-weight", (item) => item.type === "disease" ? 600 : 400)
+    .attr("font-weight", (item) => item.type === "disease" ? 700 : 500)
     .attr("fill", "currentColor")
     .attr("text-anchor", "middle")
-    .attr("dy", (item) => item.type === "disease" ? -(nodeRadius(item.size) + 7) : -10)
+    .attr("dy", (item) => item.type === "disease" ? -(nodeRadius(item.size) + 9) : -12)
     .style("pointer-events", "none")
     .style("text-shadow", "0 1px 4px rgba(0,0,0,0.9)");
 
   const simulation = d3.forceSimulation(nodes)
-    .force("link", d3.forceLink<NetworkNode, NetworkEdge>(edges).id((item) => item.id).distance(126).strength(0.3))
-    .force("charge", d3.forceManyBody().strength(-220))
+    .force("link", d3.forceLink<NetworkNode, NetworkEdge>(edges).id((item) => item.id).distance(138).strength(0.32))
+    .force("charge", d3.forceManyBody().strength(-250))
     .force("center", d3.forceCenter(width / 2, height / 2))
-    .force("collision", d3.forceCollide().radius((item) => item.type === "disease" ? nodeRadius(item.size) + 10 : 16))
+    .force("collision", d3.forceCollide().radius((item) => item.type === "disease" ? nodeRadius(item.size) + 12 : 18))
     .on("tick", () => {
       link
         .attr("x1", (edge: any) => edge.source.x)

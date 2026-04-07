@@ -1,7 +1,7 @@
 /**
  * Search.tsx — Species Search Engine
  * 物种搜索引擎：输入属名 → 展示该属在疾病/国家/年龄组中的分布
- * Inspired by ResMicroDb species search + GMrepo disease-species profiles
+ * Genus search workspace with disease, country, and age-group profile views
  */
 import { useEffect, useRef, useState, useCallback } from "react";
 import { renderToString } from "react-dom/server";

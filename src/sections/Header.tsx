@@ -45,6 +45,24 @@ const Header = () => {
     [navLinks],
   );
 
+  const signalCards = useMemo(
+    () => [
+      {
+        title: t("header.signal.discovery.title"),
+        description: t("header.signal.discovery.desc"),
+      },
+      {
+        title: t("header.signal.analysis.title"),
+        description: t("header.signal.analysis.desc"),
+      },
+      {
+        title: t("header.signal.reuse.title"),
+        description: t("header.signal.reuse.desc"),
+      },
+    ],
+    [t],
+  );
+
   const groupedLinks = useMemo(
     () => [
       {
@@ -83,16 +101,17 @@ const Header = () => {
             </div>
           </div>
 
-          <div className={classes.quickLinks}>
-            {quickLinks.map(({ to, label }) => (
-              <Link key={to} to={to} className={classes.quickLink}>
-                {label}
-              </Link>
+          <div className={classes.signalGrid}>
+            {signalCards.map((card) => (
+              <article key={card.title} className={classes.signalCard}>
+                <h2>{card.title}</h2>
+                <p>{card.description}</p>
+              </article>
             ))}
           </div>
         </section>
 
-        <aside className={classes.navPanel}>
+        <aside className={classes.actionPanel}>
           <div className={classes.panelHeader}>
             <div>
               <span className={classes.panelEyebrow}>{t("header.quickAccess")}</span>
@@ -101,22 +120,32 @@ const Header = () => {
             <LangSwitch />
           </div>
 
-          <div className={classes.groupGrid}>
-            {groupedLinks.map((group) => (
-              <section key={group.title} className={classes.groupCard}>
-                <h3>{group.title}</h3>
-                <p>{group.description}</p>
-                <div className={classes.groupLinks}>
-                  {group.links.map(({ to, label }) => (
-                    <Link key={to} to={to} className={classes.groupLink}>
-                      {label}
-                    </Link>
-                  ))}
-                </div>
-              </section>
+          <p className={classes.panelCopy}>{t("header.panelCopy")}</p>
+
+          <div className={classes.actionGrid}>
+            {quickLinks.map(({ to, label }) => (
+              <Link key={to} to={to} className={classes.actionLink}>
+                {label}
+              </Link>
             ))}
           </div>
         </aside>
+      </div>
+
+      <div className={classes.navDeck}>
+        {groupedLinks.map((group) => (
+          <section key={group.title} className={classes.groupCard}>
+            <h3>{group.title}</h3>
+            <p>{group.description}</p>
+            <div className={classes.groupLinks}>
+              {group.links.map(({ to, label }) => (
+                <Link key={to} to={to} className={classes.groupLink}>
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </section>
+        ))}
       </div>
 
       <button

@@ -215,6 +215,7 @@ const HealthIndexPanel = () => {
   const { t, locale } = useI18n();
   const [refData, setRefData] = useState<ReferenceData | null>(null);
   const [refLoading, setRefLoading] = useState(true);
+  const [referenceError, setReferenceError] = useState("");
   const [pasteText, setPasteText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -226,10 +227,26 @@ const HealthIndexPanel = () => {
   const gaugeRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     cachedFetch<ReferenceData>(`${API_BASE}/api/health-index/reference`)
-      .then(setRefData)
-      .catch(() => setRefData(null))
-      .finally(() => setRefLoading(false));
+      .then((data) => {
+        if (cancelled) return;
+        setRefData(data);
+        setReferenceError("");
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setRefData(null);
+        setReferenceError(err instanceof Error ? err.message : "");
+      })
+      .finally(() => {
+        if (!cancelled) setRefLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const readFile = (candidate: File) =>
@@ -276,7 +293,8 @@ const HealthIndexPanel = () => {
       const payload: HealthResult = await resp.json();
       setResult(payload);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : (locale === "zh" ? "计算失败" : "Calculation failed"));
+      const detail = err instanceof Error ? err.message : "";
+      setError(detail ? `${t("healthIndex.requestFailed")}: ${detail}` : t("healthIndex.calculateFailed"));
     } finally {
       setLoading(false);
     }
@@ -442,7 +460,15 @@ const HealthIndexPanel = () => {
       {refLoading && (
         <div className={classes.popLoading}>
           <div className="loading-spinner" style={{ width: 24, height: 24 }} />
-          <span>{locale === "zh" ? "正在加载参考分布…" : "Loading reference population..."}</span>
+          <span>{t("healthIndex.referenceLoading")}</span>
+        </div>
+      )}
+
+      {!refLoading && !refData && (
+        <div className={classes.error}>
+          <strong>{t("healthIndex.referenceError")}</strong>
+          <div>{t("healthIndex.referenceErrorDetail")}</div>
+          {referenceError ? <div><code>{referenceError}</code></div> : null}
         </div>
       )}
 

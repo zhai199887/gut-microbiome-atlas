@@ -1,4 +1,4 @@
-# Gut Microbiome Atlas — 深度升级框架 v2.0
+﻿# Gut Microbiome Atlas — 深度升级框架 v2.0
 
 > 基于 10 个竞品微生物组数据库的深度解析，结合我们 168,464 样本的数据优势，构建完整升级路线图。
 > 日期：2026-04-03
@@ -69,14 +69,14 @@
 | 优势维度 | 具体数值 | 竞品对比 |
 |---------|---------|---------|
 | **样本规模** | 168,464 | GMrepo 118K, ResMicroDb 106K，我们是全球最大单一肠道微生物组数据库之一 |
-| **地理覆盖** | 69 国家 | 多数平台 <30 国 |
-| **疾病覆盖** | 218 种独立疾病 | GMrepo 302, Disbiome 240, 我们 218 |
+| **地理覆盖** | 72 国家 | 多数平台 <30 国 |
+| **疾病覆盖** | 224 个条件类别 | GMrepo 302, Disbiome 240, 我们 224 |
 | **属级分辨率** | 4,680 属 | 多数平台 <2,000 属 |
 | **年龄分层** | 8 组（婴儿→百岁老人） | 少有平台提供完整生命周期覆盖 |
 | **实时分析** | 168K 样本在线差异分析 | 多数平台只提供预计算结果 |
 
 **核心卖点提炼**（论文 Abstract 级）：
-> "The largest integrated human gut microbiome atlas with 168,464 samples spanning 66 countries, 218 diseases, and 4,680 genera, providing real-time differential analysis across the full human lifespan."
+> "The largest integrated human gut microbiome atlas with 168,464 samples spanning 72 countries, 224 condition categories, and 4,680 genera, providing real-time differential analysis across the full human lifespan."
 
 ---
 
@@ -231,3 +231,5 @@
 | Phase 3 | 学术核心功能（marker taxa/弦图/共现/API） | 1-2 周 |
 | Phase 4 | 差异化功能（样本搜索/生命周期图/跨国比较） | 2-3 周 |
 | Phase 5 | 论文写作 + 远期功能 | 持续 |
+
+

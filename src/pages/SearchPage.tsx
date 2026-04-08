@@ -10,7 +10,7 @@ const SearchPage = () => {
   const { t } = useI18n();
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "2rem", minHeight: "100vh", color: "var(--white)" }}>
+    <div style={{ maxWidth: 1500, margin: "0 auto", padding: "2rem", minHeight: "100vh", color: "var(--white)" }}>
       <div style={{ marginBottom: "1.5rem" }}>
         <Link to="/" style={{ color: "var(--accent)", textDecoration: "none", fontSize: "0.9rem" }}>
           ← {t("lifecycle.back")}

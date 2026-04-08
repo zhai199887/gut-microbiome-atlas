@@ -10,6 +10,7 @@ import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 import { useData } from "@/data";
 import { cachedFetch } from "@/util/apiCache";
+import { API_BASE } from "@/util/apiBase";
 import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import "@/components/tooltip";
 import CategoryDiseasePanel from "./metabolism/CategoryDiseasePanel";
@@ -37,7 +38,7 @@ interface MatchResult {
   fallback: boolean;
 }
 
-const OVERVIEW_CACHE_KEY = "/api/metabolism-overview";
+const OVERVIEW_CACHE_KEY = `${API_BASE}/api/metabolism-overview`;
 const HEATMAP_DISEASE_LIMIT = 18;
 
 const formatDiseaseLabel = (disease: string, locale: "en" | "zh", maxLen = 32) => {
@@ -209,7 +210,7 @@ const MetabolismPage = () => {
   }, []);
 
   useEffect(() => {
-    cachedFetch<DiseaseListResponse>("/api/disease-list")
+    cachedFetch<DiseaseListResponse>(`${API_BASE}/api/disease-list`)
       .then((data) => {
         setDiseaseOrder(data.diseases.map((item) => item.name));
       })
@@ -230,7 +231,7 @@ const MetabolismPage = () => {
 
     setProfileLoading((prev) => ({ ...prev, [selectedCategoryId]: true }));
     cachedFetch<CategoryProfileResult>(
-      `/api/metabolism-category-profile?category_id=${encodeURIComponent(selectedCategoryId)}`,
+      `${API_BASE}/api/metabolism-category-profile?category_id=${encodeURIComponent(selectedCategoryId)}`,
     )
       .then((data) => {
         setProfileResults((prev) => ({ ...prev, [selectedCategoryId]: data }));

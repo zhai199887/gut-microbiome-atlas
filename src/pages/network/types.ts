@@ -1,3 +1,5 @@
+export { API_BASE } from "@/util/apiBase";
+
 export type NetworkMethod = "spearman" | "sparcc";
 export type ColorMode = "phylum" | "community";
 
@@ -87,5 +89,3 @@ export interface NetworkCompareData {
   rewired_edges: CompareEdge[];
   sign_switched_edges: SignSwitchedEdge[];
 }
-
-export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";

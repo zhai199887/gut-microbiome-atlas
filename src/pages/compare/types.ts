@@ -1,3 +1,5 @@
+export { API_BASE } from "@/util/apiBase";
+
 export interface GroupFilter {
   country: string;
   disease: string;
@@ -188,7 +190,6 @@ export interface ProjectInfo {
   region_16s: string;
 }
 
-export const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 export const TAXONOMY_LEVELS = ["genus", "family", "phylum"] as const;
 export const METHODS = ["wilcoxon", "t-test", "lefse", "permanova"] as const;
 export const BETA_METRICS = ["braycurtis", "aitchison"] as const;

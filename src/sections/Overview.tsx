@@ -71,7 +71,6 @@ const Overview = () => {
     () => [
       {
         title: t("overview.group.discovery.title"),
-        description: t("overview.group.discovery.desc"),
         cards: [
           {
             to: "/phenotype",
@@ -101,7 +100,6 @@ const Overview = () => {
       },
       {
         title: t("overview.group.analysis.title"),
-        description: t("overview.group.analysis.desc"),
         cards: [
           {
             to: "/compare",
@@ -137,7 +135,6 @@ const Overview = () => {
       },
       {
         title: t("overview.group.resources.title"),
-        description: t("overview.group.resources.desc"),
         cards: [
           {
             to: "/download",
@@ -214,7 +211,6 @@ const Overview = () => {
           <section key={group.title} className={classes.featureSection}>
             <header className={classes.featureHeader}>
               <h3>{group.title}</h3>
-              <p>{group.description}</p>
             </header>
 
             <div className={classes.featureList}>

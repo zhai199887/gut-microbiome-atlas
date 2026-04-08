@@ -4,13 +4,12 @@ import * as d3 from "d3";
 
 import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
+import { API_BASE } from "@/util/apiBase";
 import { exportSVG, exportPNG } from "@/util/chartExport";
 import { exportTable } from "@/util/export";
 
 import type { BiomarkerProfileData } from "./types";
 import { formatPValue, formatPrevalence, formatPercent, translateDimensionName } from "./utils";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 interface BiomarkerPanelProps {
   genus: string;

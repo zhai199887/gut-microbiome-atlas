@@ -4,13 +4,12 @@ import { Link } from "react-router-dom";
 import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
+import { API_BASE } from "@/util/apiBase";
 import { exportTable } from "@/util/export";
 import { exportPNG, exportSVG } from "@/util/chartExport";
 import { phylumColor } from "@/util/phylumColors";
 import type { BiomarkerResult, Marker } from "./types";
 import classes from "../DiseasePage.module.css";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 interface Props {
   disease: string;

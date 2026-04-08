@@ -74,11 +74,11 @@ const en = {
   "overview.dataVersion": "Data version:",
   "overview.lastUpdated": "Last updated:",
   "overview.group.discovery.title": "Discovery",
-  "overview.group.discovery.desc": "Browse cohort composition, disease context, genus-centric summaries, and included projects.",
+  "overview.group.discovery.desc": "",
   "overview.group.analysis.title": "Analysis",
-  "overview.group.analysis.desc": "Move from descriptive browsing into differential abundance, interaction, lifecycle, and similarity workflows.",
+  "overview.group.analysis.desc": "",
   "overview.group.resources.title": "Reference",
-  "overview.group.resources.desc": "Export derived results, inspect API contracts, and review citation and licensing boundaries.",
+  "overview.group.resources.desc": "",
 
   // Homepage section titles
   "home.phenotypeOverview": "Phenotype Overview",
@@ -803,11 +803,11 @@ const zh: Record<keyof typeof en, string> = {
   "overview.dataVersion": "数据版本：",
   "overview.lastUpdated": "最后更新：",
   "overview.group.discovery.title": "浏览入口",
-  "overview.group.discovery.desc": "先看队列、疾病和菌属，再决定下一步分析路径。",
+  "overview.group.discovery.desc": "",
   "overview.group.analysis.title": "分析入口",
-  "overview.group.analysis.desc": "把描述性浏览推进到差异统计、网络结构、生命周期和相似性比较。",
+  "overview.group.analysis.desc": "",
   "overview.group.resources.title": "复用入口",
-  "overview.group.resources.desc": "围绕下载、API 和引用整理结果，便于复现和对外说明。",
+  "overview.group.resources.desc": "",
 
   // Homepage section titles
   "home.phenotypeOverview": "表型概览",

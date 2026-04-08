@@ -2,10 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
+import { API_BASE } from "@/util/apiBase";
 
 import type { SearchResponse } from "./types";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 interface InlineGenusSearchProps {
   genus: string;

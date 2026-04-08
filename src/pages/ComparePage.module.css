@@ -235,13 +235,13 @@
   border-radius: var(--rounded);
   padding: 24px;
   display: flex;
-  justify-content: center;
+  justify-content: stretch;
   min-height: 300px;
 }
 
 .chart {
   width: 100%;
-  max-width: 800px;
+  max-width: none;
   height: auto;
 }
 

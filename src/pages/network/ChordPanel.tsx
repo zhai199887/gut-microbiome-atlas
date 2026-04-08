@@ -113,9 +113,9 @@ function drawChord(svgEl: SVGSVGElement, data: ChordData, locale: string) {
     }
   }
 
-  const size = 880;
-  const outerRadius = size / 2 - 140;
-  const innerRadius = outerRadius - 24;
+  const size = 1100;
+  const outerRadius = size / 2 - 170;
+  const innerRadius = outerRadius - 32;
 
   svg.attr("viewBox", `0 0 ${size} ${size}`);
   const g = svg.append("g").attr("transform", `translate(${size / 2}, ${size / 2})`);
@@ -175,15 +175,16 @@ function drawChord(svgEl: SVGSVGElement, data: ChordData, locale: string) {
     .attr("transform", (item) => {
       const angle = ((item as any).angle * 180) / Math.PI - 90;
       const flip = (item as any).angle > Math.PI;
-      return `rotate(${angle}) translate(${outerRadius + 12}) ${flip ? "rotate(180)" : ""}`;
+      return `rotate(${angle}) translate(${outerRadius + 18}) ${flip ? "rotate(180)" : ""}`;
     })
     .attr("text-anchor", (item) => ((item as any).angle > Math.PI ? "end" : "start"))
-    .attr("font-size", 12)
+    .attr("font-size", 15)
+    .attr("font-weight", 600)
     .attr("fill", "currentColor")
     .attr("font-style", (item) => (item.index >= diseases.length ? "italic" : "normal"))
     .text((item) => {
       const label = nameOf(item.index);
-      return label.length > 26 ? `${label.slice(0, 24)}...` : label;
+      return label.length > 34 ? `${label.slice(0, 32)}…` : label;
     });
 
   ribbons.append("title")

@@ -20,7 +20,7 @@ const zScore = (values: number[]) => {
 
 const DiffHeatmap = ({ result }: { result: DiffResult }) => {
   const { locale } = useI18n();
-  const top = result.diff_taxa.slice(0, 20);
+  const top = result.diff_taxa.slice(0, 24);
 
   const matrix = useMemo(() => {
     const meanA = zScore(top.map((row) => row.mean_a));
@@ -39,48 +39,75 @@ const DiffHeatmap = ({ result }: { result: DiffResult }) => {
     "log2FC",
   ];
 
+  const width = 1140;
+  const leftLabelX = 320;
+  const cellStartX = 380;
+  const cellWidth = 200;
+  const rowHeight = 30;
+  const height = 176 + matrix.length * rowHeight;
+
   return (
-    <svg viewBox={`0 0 860 ${140 + matrix.length * 28}`} className={`compare-chart ${classes.chart}`}>
-      <text x={430} y={22} textAnchor="middle" fill="currentColor" fontSize="14">
+    <svg viewBox={`0 0 ${width} ${height}`} className={`compare-chart ${classes.chart}`}>
+      <defs>
+        <linearGradient id="diff-heatmap-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="rgba(59, 130, 246, 0.8)" />
+          <stop offset="50%" stopColor="rgba(148, 163, 184, 0.16)" />
+          <stop offset="100%" stopColor="rgba(34, 197, 94, 0.8)" />
+        </linearGradient>
+      </defs>
+      <text x={width / 2} y={22} textAnchor="middle" fill="currentColor" fontSize="14">
         {locale === "zh" ? "差异热图" : "Differential Heatmap"}
       </text>
-      <text x={430} y={42} textAnchor="middle" fill="var(--light-gray)" fontSize="11">
-        {locale === "zh" ? "对 Top 20 差异分类单元做列内标准化" : "Column-wise standardized values for the top 20 differential taxa"}
+      <text x={width / 2} y={44} textAnchor="middle" fill="var(--light-gray)" fontSize="11">
+        {locale === "zh" ? "对 Top 24 差异分类单元做列内标准化" : "Column-wise standardized values for the top 24 differential taxa"}
+      </text>
+      <text x={760} y={28} fill="var(--light-gray)" fontSize="10">
+        {locale === "zh" ? "标准化值" : "Standardized value"}
+      </text>
+      <rect x={760} y={34} width={170} height={10} rx={999} fill="url(#diff-heatmap-gradient)" />
+      <text x={760} y={60} fill="var(--light-gray)" fontSize="9">
+        {locale === "zh" ? "较低" : "Lower"}
+      </text>
+      <text x={845} y={60} textAnchor="middle" fill="var(--light-gray)" fontSize="9">
+        0
+      </text>
+      <text x={930} y={60} textAnchor="end" fill="var(--light-gray)" fontSize="9">
+        {locale === "zh" ? "较高" : "Higher"}
       </text>
 
-      <text x={220} y={76} textAnchor="end" fill="var(--light-gray)" fontSize="10">
+      <text x={leftLabelX} y={88} textAnchor="end" fill="var(--light-gray)" fontSize="11">
         {locale === "zh" ? "分类群" : "Taxon"}
       </text>
       {columns.map((column, index) => (
-        <text key={column} x={310 + index * 130} y={76} textAnchor="middle" fill="var(--light-gray)" fontSize="10">
+        <text key={column} x={cellStartX + index * cellWidth + cellWidth / 2} y={88} textAnchor="middle" fill="var(--light-gray)" fontSize="11">
           {column}
         </text>
       ))}
 
       {matrix.map((row, rowIndex) => (
         <g key={row.taxon}>
-          <text x={220} y={104 + rowIndex * 28} textAnchor="end" fill="currentColor" fontSize="10">
-            {row.taxon.length > 22 ? `${row.taxon.slice(0, 20)}...` : row.taxon}
+          <text x={leftLabelX} y={118 + rowIndex * rowHeight} textAnchor="end" fill="currentColor" fontSize="11">
+            {row.taxon.length > 34 ? `${row.taxon.slice(0, 32)}…` : row.taxon}
           </text>
-          <text x={220} y={116 + rowIndex * 28} textAnchor="end" fill="var(--light-gray)" fontSize="8">
+          <text x={leftLabelX} y={132 + rowIndex * rowHeight} textAnchor="end" fill="var(--light-gray)" fontSize="9">
             {row.phylum}
           </text>
           {row.values.map((value, colIndex) => (
             <g key={`${row.taxon}-${colIndex}`}>
               <rect
-                x={250 + colIndex * 130}
-                y={88 + rowIndex * 28}
-                width={120}
-                height={22}
+                x={cellStartX + colIndex * cellWidth}
+                y={100 + rowIndex * rowHeight}
+                width={cellWidth - 10}
+                height={24}
                 rx={6}
                 fill={colorForValue(value)}
               />
               <text
-                x={310 + colIndex * 130}
-                y={103 + rowIndex * 28}
+                x={cellStartX + colIndex * cellWidth + (cellWidth - 10) / 2}
+                y={116 + rowIndex * rowHeight}
                 textAnchor="middle"
                 fill="currentColor"
-                fontSize="10"
+                fontSize="11"
               >
                 {value.toFixed(1)}
               </text>

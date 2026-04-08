@@ -19,8 +19,9 @@ const VolcanoChart = ({ result }: { result: DiffResult }) => {
     svg.selectAll("*").remove();
 
     const data = result.diff_taxa;
-    const margin = { top: 30, right: 40, bottom: 60, left: 60 };
-    const W = 600, H = 400;
+    const margin = { top: 34, right: 120, bottom: 72, left: 74 };
+    const W = 980;
+    const H = 560;
     const iW = W - margin.left - margin.right;
     const iH = H - margin.top - margin.bottom;
     const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
@@ -29,10 +30,15 @@ const VolcanoChart = ({ result }: { result: DiffResult }) => {
 
     const xExt = d3.max(data, (d) => Math.abs(d.log2fc)) ?? 1;
     const negLogP = data.map((d) => -Math.log10(Math.max(d.adjusted_p, 1e-300)));
-    const yMax = d3.max(negLogP) ?? 5;
+    const sortedNegLogP = [...negLogP].sort(d3.ascending);
+    const yMax = Math.max(
+      d3.quantile(sortedNegLogP, 0.98) ?? 5,
+      -Math.log10(0.05) * 1.7,
+      4,
+    );
 
     const xScale = d3.scaleLinear().domain([-xExt, xExt]).range([0, iW]);
-    const yScale = d3.scaleLinear().domain([0, yMax * 1.05]).range([iH, 0]);
+    const yScale = d3.scaleSymlog().constant(1).domain([0, yMax * 1.05]).range([iH, 0]);
 
     // Color by significance / 按显著性上色
     const getColor = (d: DiffTaxon) => {
@@ -73,7 +79,7 @@ const VolcanoChart = ({ result }: { result: DiffResult }) => {
       .join("circle")
       .attr("class", "dot")
       .attr("cx", (d) => xScale(d.log2fc))
-      .attr("cy", (_, i) => yScale(negLogP[i]!))
+      .attr("cy", (_, i) => yScale(Math.min(negLogP[i]!, yMax)))
       .attr("r", (d) => d.adjusted_p < 0.05 && Math.abs(d.log2fc) > 1 ? 5 : 3)
       .attr("fill", getColor)
       .attr("opacity", 0.8)
@@ -100,25 +106,36 @@ const VolcanoChart = ({ result }: { result: DiffResult }) => {
       .join("text")
       .attr("class", "label")
       .attr("x", (d) => xScale(d.log2fc) + 6)
-      .attr("y", (d) => yScale(-Math.log10(Math.max(d.adjusted_p, 1e-300))) - 4)
-      .attr("font-size", 9)
+      .attr("y", (d) => yScale(Math.min(-Math.log10(Math.max(d.adjusted_p, 1e-300)), yMax)) - 4)
+      .attr("font-size", 10)
       .attr("fill", "var(--white)")
-      .text((d) => d.taxon.slice(0, 15));
+      .text((d) => (d.taxon.length > 22 ? `${d.taxon.slice(0, 20)}…` : d.taxon));
 
     // Axes / 坐标轴
     g.append("g").attr("transform", `translate(0,${iH})`)
       .call(d3.axisBottom(xScale).ticks(6))
-      .attr("font-size", 11);
-    g.append("g").call(d3.axisLeft(yScale).ticks(5)).attr("font-size", 11);
+      .attr("font-size", 12);
+    g.append("g").call(d3.axisLeft(yScale).ticks(6)).attr("font-size", 12);
+
+    const legend = svg.append("g").attr("transform", `translate(${W - 178},${margin.top + 6})`);
+    [
+      { label: locale === "zh" ? "疾病组富集" : "Disease enriched", color: "var(--secondary)" },
+      { label: locale === "zh" ? "对照组富集" : "Control enriched", color: "var(--primary)" },
+      { label: locale === "zh" ? "未达阈值" : "Below threshold", color: "var(--gray)" },
+    ].forEach((item, index) => {
+      const y = index * 18;
+      legend.append("circle").attr("cx", 0).attr("cy", y).attr("r", 4).attr("fill", item.color);
+      legend.append("text").attr("x", 10).attr("y", y + 4).attr("fill", "currentColor").attr("font-size", 11).text(item.label);
+    });
 
     // Axis labels / 坐标轴标签
     svg.append("text")
       .attr("x", W / 2).attr("y", H - 10)
-      .attr("text-anchor", "middle").attr("fill", "currentColor").attr("font-size", 12)
+      .attr("text-anchor", "middle").attr("fill", "currentColor").attr("font-size", 13)
       .text(locale === "zh" ? "log₂ 差异倍数" : "log₂ Fold Change");
     svg.append("text")
       .attr("transform", `translate(14,${H / 2}) rotate(-90)`)
-      .attr("text-anchor", "middle").attr("fill", "currentColor").attr("font-size", 12)
+      .attr("text-anchor", "middle").attr("fill", "currentColor").attr("font-size", 13)
       .text(locale === "zh" ? "−log₁₀(校正 p)" : "−log₁₀(adj. p)");
   }, [result, locale]);
 

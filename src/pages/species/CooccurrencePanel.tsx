@@ -6,12 +6,11 @@ import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
 import { exportTable } from "@/util/export";
+import { API_BASE } from "@/util/apiBase";
 import { phylumColor } from "@/util/phylumColors";
 
 import type { CooccurrenceResponse, DiseaseListItem } from "./types";
 import { formatPValue, translateDimensionName } from "./utils";
-
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 interface CooccurrencePanelProps {
   genus: string;
@@ -34,7 +33,7 @@ export default function CooccurrencePanel({ genus, phylum }: CooccurrencePanelPr
   useEffect(() => {
     const search = new URLSearchParams({
       genus,
-      top_k: "14",
+      top_k: "18",
     });
     if (disease) search.set("disease", disease);
     cachedFetch<CooccurrenceResponse>(`${API_BASE}/api/species-cooccurrence?${search.toString()}`)
@@ -166,8 +165,8 @@ function drawMiniNetwork(
   const svg = d3.select(svgEl);
   svg.selectAll("*").remove();
 
-  const width = 1020;
-  const height = 580;
+  const width = 1240;
+  const height = 700;
   svg.attr("viewBox", `0 0 ${width} ${height}`);
 
   const rootNode: MiniNode = { id: genus, phylum, r: 0, type: "root" };
@@ -176,9 +175,9 @@ function drawMiniNetwork(
 
   const simulation = d3.forceSimulation<MiniNode>(nodes)
     .force("center", d3.forceCenter(width / 2, height / 2))
-    .force("charge", d3.forceManyBody().strength(-320))
-    .force("link", d3.forceLink<MiniNode, MiniLink>(links).id((node) => node.id).distance((link) => 170 - Math.min(Math.abs(link.r) * 84, 54)))
-    .force("collision", d3.forceCollide(40));
+    .force("charge", d3.forceManyBody().strength(-420))
+    .force("link", d3.forceLink<MiniNode, MiniLink>(links).id((node) => node.id).distance((link) => 220 - Math.min(Math.abs(link.r) * 96, 76)))
+    .force("collision", d3.forceCollide(54));
 
   const link = svg.append("g")
     .selectAll("line")
@@ -191,7 +190,7 @@ function drawMiniNetwork(
     .selectAll("circle")
     .data(nodes)
     .join("circle")
-    .attr("r", (item) => (item.id === genus ? 25 : 15 + Math.abs(item.r) * 7))
+    .attr("r", (item) => (item.id === genus ? 32 : 19 + Math.abs(item.r) * 9))
     .attr("fill", (item) => phylumColor(item.phylum))
     .attr("stroke", "rgba(255,255,255,0.7)")
     .attr("stroke-width", (item) => (item.id === genus ? 2.2 : 1))
@@ -207,11 +206,11 @@ function drawMiniNetwork(
     .selectAll("text")
     .data(nodes)
     .join("text")
-    .attr("font-size", 13.5)
+    .attr("font-size", 16)
     .attr("font-weight", (item) => (item.id === genus ? 700 : 500))
     .attr("text-anchor", "middle")
     .attr("fill", "currentColor")
-    .text((item) => item.id);
+    .text((item) => (item.id.length > 30 ? `${item.id.slice(0, 28)}…` : item.id));
 
   simulation.on("tick", () => {
     link
@@ -226,6 +225,6 @@ function drawMiniNetwork(
 
     labels
       .attr("x", (item) => item.x ?? 0)
-      .attr("y", (item) => (item.y ?? 0) + 36);
+      .attr("y", (item) => (item.y ?? 0) + 48);
   });
 }

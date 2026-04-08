@@ -12,8 +12,9 @@ import { cachedFetch } from "@/util/apiCache";
 import { API_BASE } from "@/util/apiBase";
 import { exportTable } from "@/util/export";
 import { exportSVG, exportPNG } from "@/util/chartExport";
-import { diseaseShortNameI18n } from "@/util/diseaseNames";
+import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import { countryName, AGE_GROUP_ZH, SEX_ZH } from "@/util/countries";
+import { formatAbundancePercent, formatAbundanceTick } from "@/pages/species/utils";
 import "@/components/tooltip";
 import classes from "./Search.module.css";
 
@@ -238,13 +239,13 @@ const SpeciesProfileView = ({ profile }: { profile: SpeciesProfile }) => {
   // Draw disease bar chart / 绘制疾病丰度柱状图
   useEffect(() => {
     if (!diseaseRef.current || profile.by_disease.length === 0) return;
-    drawBarChart(diseaseRef.current, profile.by_disease.slice(0, 20), "var(--primary)", locale, "disease");
+    drawBarChart(diseaseRef.current, profile.by_disease.slice(0, 28), "var(--primary)", locale, "disease");
   }, [profile, locale]);
 
   // Draw country bar chart / 绘制国家丰度柱状图
   useEffect(() => {
     if (!countryRef.current || profile.by_country.length === 0) return;
-    drawBarChart(countryRef.current, profile.by_country.slice(0, 20), "var(--secondary)", locale, "country");
+    drawBarChart(countryRef.current, profile.by_country.slice(0, 24), "var(--secondary)", locale, "country");
   }, [profile, locale]);
 
   // Draw age group bar chart / 绘制年龄组丰度柱状图
@@ -294,7 +295,7 @@ const SpeciesProfileView = ({ profile }: { profile: SpeciesProfile }) => {
             <span className={classes.statLabel}>{t("search.prevalence")}</span>
           </div>
           <div className={classes.statCard}>
-            <span className={classes.statValue}>{profile.mean_abundance.toFixed(4)}%</span>
+            <span className={classes.statValue}>{formatAbundancePercent(profile.mean_abundance)}</span>
             <span className={classes.statLabel}>{t("search.meanAbundance")}</span>
           </div>
         </div>
@@ -345,7 +346,7 @@ const SpeciesProfileView = ({ profile }: { profile: SpeciesProfile }) => {
                 {profile.by_sex.map((s) => (
                   <tr key={s.name}>
                     <td>{s.name}</td>
-                    <td>{s.mean_abundance.toFixed(4)}%</td>
+                    <td>{formatAbundancePercent(s.mean_abundance)}</td>
                     <td>{(s.prevalence * 100).toFixed(1)}%</td>
                     <td>{s.sample_count.toLocaleString("en")}</td>
                   </tr>
@@ -362,7 +363,7 @@ const SpeciesProfileView = ({ profile }: { profile: SpeciesProfile }) => {
 // ── D3 horizontal bar chart / D3 水平柱状图 ─────────────────────────────────
 
 const translateLabel = (name: string, locale: string, type: string): string => {
-  if (type === "disease") return diseaseShortNameI18n(name, locale, 40);
+  if (type === "disease") return diseaseDisplayNameI18n(name, locale);
   if (type === "country") return countryName(name, locale);
   if (type === "age") return locale === "zh" ? (AGE_GROUP_ZH[name] ?? name.replace(/_/g, " ")) : name.replace(/_/g, " ");
   if (type === "sex") return locale === "zh" ? (SEX_ZH[name] ?? name) : name;
@@ -374,22 +375,24 @@ function drawBarChart(svgEl: SVGSVGElement, data: ProfileEntry[], color: string,
   svg.selectAll("*").remove();
 
   const isDisease = nameType === "disease";
-  const leftM = isDisease ? 280 : 180;
-  const margin = { top: 10, right: 80, bottom: 30, left: leftM };
-  const W = 900, H = Math.max(180, data.length * 26 + margin.top + margin.bottom);
+  const leftM = isDisease ? 380 : nameType === "country" ? 240 : 200;
+  const margin = { top: 16, right: 120, bottom: 42, left: leftM };
+  const W = 1260;
+  const H = Math.max(220, data.length * 30 + margin.top + margin.bottom);
   svg.attr("viewBox", `0 0 ${W} ${H}`);
 
   const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
   const iW = W - margin.left - margin.right;
   const iH = H - margin.top - margin.bottom;
 
+  const maxValue = Math.max(d3.max(data, (d) => d.mean_abundance) ?? 0, 0.000001);
   const xScale = d3.scaleLinear()
-    .domain([0, d3.max(data, (d) => d.mean_abundance) ?? 0.001])
+    .domain([0, maxValue * 1.12])
     .range([0, iW]);
   const yScale = d3.scaleBand()
     .domain(data.map((d) => d.name))
     .range([0, iH])
-    .padding(0.2);
+    .padding(0.18);
 
   const rootStyles = getComputedStyle(document.documentElement);
   const resolvedColor = color.startsWith("var(")
@@ -411,7 +414,7 @@ function drawBarChart(svgEl: SVGSVGElement, data: ProfileEntry[], color: string,
       renderToString(
         <div className="tooltip-table">
           <span>{locale === "zh" ? "名称" : "Name"}</span><span>{translateLabel(d.name, locale, nameType)}</span>
-          <span>{locale === "zh" ? "平均丰度" : "Abundance"}</span><span>{d.mean_abundance.toFixed(4)}%</span>
+          <span>{locale === "zh" ? "平均丰度" : "Abundance"}</span><span>{formatAbundancePercent(d.mean_abundance)}</span>
           <span>{locale === "zh" ? "检出率" : "Prevalence"}</span><span>{(d.prevalence * 100).toFixed(1)}%</span>
           <span>{locale === "zh" ? "样本数" : "Samples"}</span><span>{d.sample_count.toLocaleString("en")}</span>
         </div>
@@ -424,20 +427,20 @@ function drawBarChart(svgEl: SVGSVGElement, data: ProfileEntry[], color: string,
     .attr("x", (d) => xScale(d.mean_abundance) + 4)
     .attr("y", (d) => (yScale(d.name) ?? 0) + yScale.bandwidth() / 2 + 1)
     .attr("dominant-baseline", "middle")
-    .attr("font-size", 10)
+    .attr("font-size", 11)
     .attr("fill", "currentColor")
-    .text((d) => `${d.mean_abundance.toFixed(3)}%`);
+    .text((d) => formatAbundancePercent(d.mean_abundance));
 
   g.append("g")
     .call(d3.axisLeft(yScale).tickFormat((d) => {
       const translated = translateLabel(d, locale, nameType);
-      const limit = isDisease ? 38 : 24;
+      const limit = isDisease ? 56 : nameType === "country" ? 28 : 24;
       return translated.length > limit ? translated.slice(0, limit - 2) + "…" : translated;
     }))
-    .attr("font-size", 11);
+    .attr("font-size", 12);
 
   g.append("g")
     .attr("transform", `translate(0,${iH})`)
-    .call(d3.axisBottom(xScale).ticks(4).tickFormat((d) => `${Number(d).toFixed(2)}%`))
-    .attr("font-size", 10);
+    .call(d3.axisBottom(xScale).ticks(5).tickFormat((d) => formatAbundanceTick(Number(d))))
+    .attr("font-size", 11);
 }

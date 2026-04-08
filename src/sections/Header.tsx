@@ -40,57 +40,16 @@ const Header = () => {
     [t],
   );
 
-  const quickLinks = useMemo(
-    () => navLinks.filter((item) => ["/phenotype", "/compare", "/search", "/studies"].includes(item.to)),
-    [navLinks],
-  );
-
-  const signalCards = useMemo(
-    () => [
-      {
-        title: t("header.signal.discovery.title"),
-        description: t("header.signal.discovery.desc"),
-      },
-      {
-        title: t("header.signal.analysis.title"),
-        description: t("header.signal.analysis.desc"),
-      },
-      {
-        title: t("header.signal.reuse.title"),
-        description: t("header.signal.reuse.desc"),
-      },
-    ],
-    [t],
-  );
-
-  const groupedLinks = useMemo(
-    () => [
-      {
-        title: t("header.group.explore"),
-        description: t("header.group.explore.desc"),
-        links: navLinks.filter((item) => ["/", "/phenotype", "/disease", "/search", "/studies"].includes(item.to)),
-      },
-      {
-        title: t("header.group.analysis"),
-        description: t("header.group.analysis.desc"),
-        links: navLinks.filter((item) => ["/compare", "/network", "/metabolism", "/lifecycle", "/similarity"].includes(item.to)),
-      },
-      {
-        title: t("header.group.resources"),
-        description: t("header.group.resources.desc"),
-        links: navLinks.filter((item) => ["/download", "/api-docs", "/about"].includes(item.to)),
-      },
-    ],
-    [navLinks, t],
-  );
-
   return (
     <header className={classes.header}>
       <HeaderBg />
 
       <div className={classes.heroShell}>
         <section className={classes.heroCopy}>
-          <span className={classes.kicker}>{t("header.kicker")}</span>
+          <div className={classes.heroTop}>
+            <span className={classes.kicker}>{t("header.kicker")}</span>
+            <LangSwitch />
+          </div>
 
           <div className={classes.title}>
             <Logo className={classes.logo} />
@@ -100,52 +59,7 @@ const Header = () => {
               <p className={classes.subtitle}>{t("header.subtitle")}</p>
             </div>
           </div>
-
-          <div className={classes.signalGrid}>
-            {signalCards.map((card) => (
-              <article key={card.title} className={classes.signalCard}>
-                <h2>{card.title}</h2>
-                <p>{card.description}</p>
-              </article>
-            ))}
-          </div>
         </section>
-
-        <aside className={classes.actionPanel}>
-          <div className={classes.panelHeader}>
-            <div>
-              <span className={classes.panelEyebrow}>{t("header.quickAccess")}</span>
-              <h2 className={classes.panelTitle}>{t("header.panelTitle")}</h2>
-            </div>
-            <LangSwitch />
-          </div>
-
-          <p className={classes.panelCopy}>{t("header.panelCopy")}</p>
-
-          <div className={classes.actionGrid}>
-            {quickLinks.map(({ to, label }) => (
-              <Link key={to} to={to} className={classes.actionLink}>
-                {label}
-              </Link>
-            ))}
-          </div>
-        </aside>
-      </div>
-
-      <div className={classes.navDeck}>
-        {groupedLinks.map((group) => (
-          <section key={group.title} className={classes.groupCard}>
-            <h3>{group.title}</h3>
-            <p>{group.description}</p>
-            <div className={classes.groupLinks}>
-              {group.links.map(({ to, label }) => (
-                <Link key={to} to={to} className={classes.groupLink}>
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </section>
-        ))}
       </div>
 
       <button

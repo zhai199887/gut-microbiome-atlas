@@ -9,16 +9,11 @@
 }
 
 .heroShell {
-  display: grid;
-  grid-template-columns: minmax(0, 1.78fr) minmax(360px, 0.92fr);
-  align-items: start;
-  gap: 1rem;
+  display: block;
   width: 100%;
 }
 
-.heroCopy,
-.actionPanel,
-.groupCard {
+.heroCopy {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 24px;
   background: linear-gradient(180deg, rgba(18, 26, 49, 0.92), rgba(14, 22, 43, 0.84));
@@ -29,9 +24,16 @@
 .heroCopy {
   display: flex;
   flex-direction: column;
-  gap: 1.9rem;
+  gap: 2.2rem;
   min-height: 100%;
-  padding: 2.25rem 2.35rem;
+  padding: 2.7rem 3rem;
+}
+
+.heroTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
 }
 
 .kicker {
@@ -79,41 +81,11 @@
 }
 
 .subtitle {
-  max-width: 860px;
+  max-width: 1080px;
   margin: 0;
   color: rgba(231, 236, 245, 0.84);
-  font-size: 1.14rem;
-  line-height: 1.74;
-}
-
-.signalGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.9rem;
-}
-
-.signalCard {
-  min-height: 100%;
-  border: 1px solid rgba(126, 232, 255, 0.18);
-  border-radius: 18px;
-  padding: 1rem 1.05rem;
-  background:
-    linear-gradient(180deg, rgba(126, 232, 255, 0.08), rgba(126, 232, 255, 0.02)),
-    rgba(255, 255, 255, 0.02);
-}
-
-.signalCard h2 {
-  margin: 0;
-  font-size: 1rem;
-  text-align: left;
-}
-
-.signalCard p {
-  margin: 0.45rem 0 0;
-  color: rgba(214, 224, 238, 0.8);
-  font-size: 0.9rem;
-  line-height: 1.6;
-  text-align: left;
+  font-size: 1.15rem;
+  line-height: 1.78;
 }
 
 .navLink,
@@ -130,111 +102,6 @@
 .groupLink:hover,
 .navLink:hover {
   transform: translateY(-1px);
-}
-
-.actionPanel {
-  display: flex;
-  flex-direction: column;
-  gap: 1.2rem;
-  min-height: 100%;
-  padding: 1.55rem;
-}
-
-.panelHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.panelEyebrow {
-  display: block;
-  color: rgba(193, 205, 224, 0.74);
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.panelTitle {
-  margin: 0.35rem 0 0;
-  font-size: 1.4rem;
-}
-
-.panelCopy {
-  margin: 0;
-  color: rgba(213, 223, 238, 0.72);
-  font-size: 0.9rem;
-  line-height: 1.65;
-  text-align: left;
-}
-
-.actionGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.actionLink {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 54px;
-  border: 1px solid rgba(126, 232, 255, 0.24);
-  border-radius: 14px;
-  padding: 0.8rem 0.9rem;
-  background: rgba(126, 232, 255, 0.08);
-  color: var(--white);
-  font-size: 0.96rem;
-}
-
-.navDeck {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  width: 100%;
-}
-
-.groupCard {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  min-height: 100%;
-  padding: 1.15rem 1.1rem;
-}
-
-.groupCard h3 {
-  margin: 0;
-  font-size: 1rem;
-  text-align: left;
-}
-
-.groupCard p {
-  margin: 0;
-  color: rgba(204, 214, 229, 0.72);
-  font-size: 0.86rem;
-  line-height: 1.6;
-  text-align: left;
-}
-
-.groupLinks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-  margin-top: 0.85rem;
-}
-
-.groupLink {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  padding: 0.58rem 0.74rem;
-  color: var(--white);
-  font-size: 0.9rem;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.groupLink:hover {
-  border-color: rgba(99, 225, 255, 0.38);
-  background: rgba(99, 225, 255, 0.08);
 }
 
 .buttons {
@@ -296,16 +163,7 @@
   }
 
   .heroShell {
-    grid-template-columns: 1fr;
     gap: 1.2rem;
-  }
-
-  .actionPanel {
-    order: 2;
-  }
-
-  .navDeck {
-    grid-template-columns: 1fr;
   }
 
   .hamburger {
@@ -331,11 +189,7 @@
 
 @media (max-width: 640px) {
   .heroCopy {
-    padding: 1.25rem;
-  }
-
-  .actionPanel {
-    padding: 1.2rem;
+    padding: 1.35rem;
   }
 
   .h1 {
@@ -352,13 +206,9 @@
     height: 1px;
   }
 
-  .signalGrid,
-  .actionGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .actionLink {
-    min-height: 48px;
+  .heroTop {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

@@ -67,6 +67,13 @@
   gap: 0.35rem;
 }
 
+.buttons[data-variant="disease"] {
+  max-height: 320px;
+  overflow-y: auto;
+  align-content: flex-start;
+  padding-right: 0.25rem;
+}
+
 .diseaseSearch {
   width: 100%;
   padding: 0.3rem 0.6rem;
@@ -97,6 +104,12 @@
   white-space: nowrap;
 }
 
+.buttons[data-variant="disease"] .btn {
+  white-space: normal;
+  text-align: left;
+  line-height: 1.35;
+}
+
 .btn:hover {
   border-color: var(--primary);
   color: var(--primary);
@@ -107,19 +120,4 @@
   border-color: var(--primary);
   color: var(--black);
   font-weight: 600;
-}
-
-.toggleAll {
-  align-self: flex-start;
-  background: none;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
-  font-size: 0.8rem;
-  margin-top: 0.4rem;
-  padding: 0;
-}
-
-.toggleAll:hover {
-  color: var(--secondary-light);
 }

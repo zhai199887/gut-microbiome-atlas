@@ -8,10 +8,6 @@
     "answer": "No. Gut Microbiome Atlas is a research platform for exploratory analysis and hypothesis generation. It is not a medical device and should not be used for diagnosis, treatment selection, or patient management."
   },
   {
-    "question": "Why can the public API address change over time?",
-    "answer": "The public API is exposed through an operations layer that may be rotated or restarted. For stable development and reproducibility, use the local FastAPI endpoint or the OpenAPI specification linked on the API page."
-  },
-  {
     "question": "What is the biological resolution of the current atlas?",
     "answer": "The main analytic layer is currently genus-level. Several interfaces historically used the word species, but the implemented statistics, search, and network layers are anchored to verified genus-level abundance data."
   }

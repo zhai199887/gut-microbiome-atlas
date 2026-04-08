@@ -20,7 +20,7 @@ const DiffBarChart = ({ result }: { result: DiffResult }) => {
 
     const data = [...result.diff_taxa]
       .sort((a, b) => a.adjusted_p - b.adjusted_p || Math.abs(b.log2fc) - Math.abs(a.log2fc))
-      .slice(0, 24)
+      .slice(0, 30)
       .sort((a, b) => a.log2fc - b.log2fc);
 
     if (!data.length) {
@@ -34,9 +34,9 @@ const DiffBarChart = ({ result }: { result: DiffResult }) => {
       return;
     }
 
-    const margin = { top: 32, right: 150, bottom: 40, left: 210 };
-    const width = 820;
-    const height = Math.max(360, data.length * 24 + margin.top + margin.bottom);
+    const margin = { top: 40, right: 220, bottom: 52, left: 340 };
+    const width = 1280;
+    const height = Math.max(440, data.length * 28 + margin.top + margin.bottom);
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
     const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
@@ -84,13 +84,13 @@ const DiffBarChart = ({ result }: { result: DiffResult }) => {
     g.append("g")
       .attr("transform", `translate(0,${innerHeight})`)
       .call(d3.axisBottom(x).ticks(6))
-      .attr("font-size", 11);
+      .attr("font-size", 12);
 
     g.append("g")
       .call(
-        d3.axisLeft(y).tickFormat((value) => value.length > 26 ? `${value.slice(0, 24)}...` : value),
+        d3.axisLeft(y).tickFormat((value) => value.length > 38 ? `${value.slice(0, 36)}…` : value),
       )
-      .attr("font-size", 11);
+      .attr("font-size", 12);
 
     svg.append("text")
       .attr("x", margin.left + innerWidth / 2)
@@ -106,7 +106,7 @@ const DiffBarChart = ({ result }: { result: DiffResult }) => {
       .attr("text-anchor", "middle")
       .attr("fill", "var(--light-gray)")
       .attr("font-size", 12)
-      .text(locale === "zh" ? "Top 24 差异分类单元，按门着色" : "Top 24 differential taxa, colored by phylum");
+      .text(locale === "zh" ? "Top 30 差异分类单元，按门着色" : "Top 30 differential taxa, colored by phylum");
 
     const legend = Array.from(new Set(data.map((d) => d.phylum))).slice(0, 6);
     legend.forEach((phylum, index) => {

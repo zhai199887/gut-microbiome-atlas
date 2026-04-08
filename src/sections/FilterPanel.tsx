@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useI18n } from "@/i18n";
 import { useData, setFilters, resetFilters, DEFAULT_FILTERS } from "@/data";
 import { formatNumber } from "@/util/string";
-import { diseaseShortNameI18n } from "@/util/diseaseNames";
+import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import { AGE_GROUP_ZH } from "@/util/countries";
 import classes from "./FilterPanel.module.css";
 
@@ -22,8 +22,6 @@ const FilterPanel = () => {
   const summary = useData((s) => s.summary);
   const filters = useData((s) => s.filters);
   const [diseaseSearch, setDiseaseSearch] = useState("");
-  const [showAllDiseases, setShowAllDiseases] = useState(false);
-
   const allDiseases = useMemo(
     () =>
       summary
@@ -38,11 +36,13 @@ const FilterPanel = () => {
     if (diseaseSearch.trim()) {
       const query = diseaseSearch.trim().toLowerCase();
       return allDiseases
-        .filter((d) => d.toLowerCase().includes(query))
-        .slice(0, 30);
+        .filter((d) => {
+          const displayName = diseaseDisplayNameI18n(d, locale).toLowerCase();
+          return d.toLowerCase().includes(query) || displayName.includes(query);
+        });
     }
-    return showAllDiseases ? allDiseases : (summary?.top20_diseases ?? []);
-  }, [allDiseases, diseaseSearch, showAllDiseases, summary]);
+    return allDiseases;
+  }, [allDiseases, diseaseSearch, locale]);
 
   const countFiltered = () => {
     if (!summary) return 0;
@@ -157,28 +157,19 @@ const FilterPanel = () => {
             value={diseaseSearch}
             onChange={(event) => setDiseaseSearch(event.target.value)}
           />
-          <div className={classes.buttons}>
+          <div className={classes.buttons} data-variant="disease">
             {displayDiseases.map((d) => (
               <button
                 key={d}
                 className={classes.btn}
                 data-active={filters.diseases.includes(d)}
                 onClick={() => toggleDisease(d)}
-                title={d}
+                title={diseaseDisplayNameI18n(d, locale)}
               >
-                {diseaseShortNameI18n(d, locale, 20)}
+                {diseaseDisplayNameI18n(d, locale)}
               </button>
             ))}
           </div>
-          {!diseaseSearch.trim() && (
-            <button
-              type="button"
-              className={classes.toggleAll}
-              onClick={() => setShowAllDiseases((current) => !current)}
-            >
-              {showAllDiseases ? t("filter.showLess") : t("filter.showAll", { n: String(allDiseases.length) })}
-            </button>
-          )}
         </div>
       </div>
     </section>

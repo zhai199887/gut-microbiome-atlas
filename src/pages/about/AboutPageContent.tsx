@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+
+import SubpageHeader from "@/components/SubpageHeader";
 import { useI18n } from "@/i18n";
+import Footer from "@/sections/Footer";
 import { cachedFetch } from "@/util/apiCache";
 import { API_BASE } from "@/util/apiBase";
-import Header from "@/sections/Header";
-import Footer from "@/sections/Footer";
+
 import faqEn from "./faq.en.json";
 import faqZh from "./faq.zh.json";
 import classes from "../CitePage.module.css";
@@ -42,7 +43,6 @@ type FaqItem = {
 };
 
 type Copy = {
-  back: string;
   title: string;
   subtitle: string;
   sections: {
@@ -78,15 +78,13 @@ type Copy = {
   privacyText: string;
   disclaimerText: string;
   contactLabel: string;
-  noteLabel: string;
   statsCards: Array<{ key: keyof StatsPayload | "contact"; label: string; fallback: string }>;
 };
 
 const COPY: Record<"en" | "zh", Copy> = {
   en: {
-    back: "Back to Home",
     title: "About & Cite",
-    subtitle: "Research context, licensing, citation guidance, and operations notes for the active Gut Microbiome Atlas deployment.",
+    subtitle: "Research background, dataset scope, citation guidance, licensing boundaries, and release history for Gut Microbiome Atlas.",
     sections: {
       team: "Research Team",
       data: "Data Sources / Pipeline / Statistics",
@@ -100,7 +98,7 @@ const COPY: Record<"en" | "zh", Copy> = {
       privacy: "Privacy / Disclaimer",
     },
     teamIntro:
-      "The platform is maintained as a collaborative gut microbiome analysis resource anchored to the author group of the Gut Microbiome Atlas manuscript. Team descriptions below follow verifiable author and affiliation information only; no speculative role labels are added.",
+      "The platform is maintained as a collaborative gut microbiome analysis resource anchored to the author group of the Gut Microbiome Atlas manuscript.",
     teamAffiliations:
       "Primary affiliations include the Department of Gastroenterology, The First Hospital of China Medical University; The First Affiliated Hospital of Jinzhou Medical University; and Peking Union Medical College Hospital.",
     dataIntro:
@@ -109,27 +107,27 @@ const COPY: Record<"en" | "zh", Copy> = {
     pipelineLabel: "Processing Pipeline",
     statsLabel: "Current Dataset Snapshot",
     citeIntro:
-      "Use the paper citation for manuscripts that describe the atlas scientifically, and the software citation for workflows or reproducible computational usage of the platform itself.",
+      "Use the paper citation for manuscripts describing the atlas scientifically, and the software citation for workflows or reproducible computational use of the platform.",
     paper: "Paper",
     software: "Software",
     copy: "Copy BibTeX",
     copied: "Copied",
     fundingText:
-      "This work was supported by the National Natural Science Foundation of China (grant No.82270571 and grant No.82570632 to Cong Dai).",
+      "This work was supported by the National Natural Science Foundation of China (grant No. 82270571 and No. 82570632 to Cong Dai).",
     licenseProcessed:
       "Processed atlas-level statistics and derived aggregate visual outputs are described under a CC BY 4.0 sharing model.",
     licenseSource:
-      "Platform source code is released under the MIT License, following the repository license in the active main workspace.",
+      "Platform source code is released under the MIT License, following the repository license in the active workspace.",
     licenseRaw:
       "Original raw sequencing data remain governed by the terms of their original repositories, BioProject records, and accession-specific reuse restrictions.",
     fairItems: [
-      "Findable: project-level identifiers, disease labels, and genus entities are surfaced through searchable interfaces and documented APIs.",
-      "Accessible: core derived statistics are exposed through the web UI, human-readable API docs, and OpenAPI specification.",
+      "Findable: project identifiers, disease labels, and genus entities are surfaced through searchable interfaces and documented APIs.",
+      "Accessible: core derived statistics are exposed through the web UI, human-readable API docs, and the OpenAPI specification.",
       "Interoperable: outputs are exported in JSON, CSV, and TSV using stable field names for downstream scripting.",
       "Reusable: methods, caveats, and licensing boundaries are documented so the derived atlas outputs can be reused responsibly.",
     ],
     relatedLinks: [
-      { label: "GitHub", url: "https://github.com/zhai199887/gut-microbiome-atlas", desc: "Active source repository and issue context." },
+      { label: "GitHub", url: "https://github.com/zhai199887/gut-microbiome-atlas", desc: "Source repository and issue context." },
       { label: "NCBI BioProject", url: "https://www.ncbi.nlm.nih.gov/bioproject", desc: "Primary accession registry for included cohorts." },
       { label: "NCBI SRA", url: "https://www.ncbi.nlm.nih.gov/sra", desc: "Raw sequencing archive for original submissions." },
       { label: "MGnify", url: "https://www.ebi.ac.uk/metagenomics/", desc: "Reference metagenomics resource for comparative context." },
@@ -137,23 +135,23 @@ const COPY: Record<"en" | "zh", Copy> = {
     versionRows: [
       {
         date: "2026-04-06",
-        label: "Studies + Download/API/About release",
-        detail: "Projects Browser, Cross-study workspace, export endpoints, API docs workspace, and About page restructuring aligned to the active main branch.",
+        label: "Studies, Download, API, and About refresh",
+        detail: "Projects browser, cross-study workspace, export endpoints, API documentation, and the citation workspace were updated together.",
       },
       {
         date: "2026-04-05 to 2026-04-06",
         label: "Similarity / Lifecycle / Genus Search refresh",
-        detail: "Weighted GMHI, similarity preview heatmap, lifecycle compare workspace, and public-facing renaming from species search to genus-oriented search.",
+        detail: "Weighted GMHI, similarity preview heatmap, lifecycle compare workspace, and genus-oriented search views were refined.",
       },
       {
         date: "2026-04-03 to 2026-04-05",
         label: "Home / Compare / Diseases / Network / Metabolism upgrade wave",
-        detail: "Core atlas modules were rebuilt into research workspaces with richer statistics, downloadability, and cross-study behaviors.",
+        detail: "Core atlas modules were rebuilt into research workspaces with richer statistics, exportability, and cross-study behaviors.",
       },
       {
         date: "2026-03-28",
         label: "Initial public atlas baseline",
-        detail: "Initial overview, map, phenotype, search, and core page scaffold released.",
+        detail: "Overview, map, phenotype, search, and core page scaffolds were first released.",
       },
     ],
     privacyText:
@@ -161,7 +159,6 @@ const COPY: Record<"en" | "zh", Copy> = {
     disclaimerText:
       "The platform provides exploratory statistical outputs and literature-curated interpretations. It does not provide medical advice, diagnostic judgment, or treatment recommendations.",
     contactLabel: "Contact",
-    noteLabel: "Operational Note",
     statsCards: [
       { key: "total_samples", label: "Samples", fallback: "168,464" },
       { key: "total_projects", label: "Projects", fallback: "482" },
@@ -172,9 +169,8 @@ const COPY: Record<"en" | "zh", Copy> = {
     ],
   },
   zh: {
-    back: "返回首页",
-    title: "引用与关于",
-    subtitle: "说明当前 Gut Microbiome Atlas 主分支部署的科研背景、许可边界、引用方式和运维注意事项。",
+    title: "关于与引用",
+    subtitle: "说明 Gut Microbiome Atlas 的研究背景、数据范围、引用方式、许可边界与版本历史。",
     sections: {
       team: "研究团队",
       data: "数据来源 / 流程 / 统计",
@@ -188,32 +184,32 @@ const COPY: Record<"en" | "zh", Copy> = {
       privacy: "隐私 / 免责声明",
     },
     teamIntro:
-      "平台由 Gut Microbiome Atlas 稿件作者团队相关成员协作维护。这里仅展示当前页面和稿件中可以核实的作者与机构信息，不虚构职位分工。",
+      "平台由 Gut Microbiome Atlas 稿件相关作者团队协作维护，用于支持肠道微生物组的队列级浏览、比较分析和结果复用。",
     teamAffiliations:
-      "主要机构包括：中国医科大学附属第一医院消化内科、锦州医科大学附属第一医院、北京协和医院。",
+      "主要机构包括：中国医科大学附属第一医院消化内科、锦州医科大学附属第一医院以及北京协和医院。",
     dataIntro:
-      "Gut Microbiome Atlas 整合公开数据库中的人类肠道微生物组队列，并统一到 genus 层级分析框架中，用于跨研究浏览、可视化和假设生成。",
+      "Gut Microbiome Atlas 整合公开数据库中的人类肠道微生物组队列，并统一到 genus 层级分析框架中，用于跨研究浏览、可视化和假设生成。当前发布版本包含 225 个非 NC 条件标签，另加 1 个 NC 类别，共 226 个条件类别。",
     sourceLabel: "数据来源",
     pipelineLabel: "处理流程",
-    statsLabel: "当前数据集快照",
+    statsLabel: "当前数据快照",
     citeIntro:
-      "如果你是在论文中描述 Atlas 本身，请引用 Paper；如果你是在复现实验流程或平台功能，请同时给出 Software 引用。",
+      "若论文描述的是 Atlas 本身，请使用论文引用；若引用的是平台工作流、程序化访问或复现实验，请同时给出软件引用。",
     paper: "论文引用",
     software: "软件引用",
     copy: "复制 BibTeX",
     copied: "已复制",
     fundingText:
-      "This work was supported by the National Natural Science Foundation of China (grant No.82270571 and grant No.82570632 to Cong Dai).",
+      "本研究获得国家自然科学基金资助（Cong Dai：82270571、82570632）。",
     licenseProcessed:
-      "平台处理后的 atlas 级统计结果和聚合可视化输出，按 CC BY 4.0 的保守口径说明共享边界。",
+      "平台处理后的 atlas 级统计结果和聚合可视化输出按 CC BY 4.0 口径说明共享边界。",
     licenseSource:
-      "平台源码遵循主仓库中的 MIT License。",
+      "平台源代码遵循主仓库中的 MIT License。",
     licenseRaw:
-      "原始测序数据仍然受其原始数据库、BioProject 记录和 accession 级许可约束，平台不改变原始许可。",
+      "原始测序数据仍受原始数据库、BioProject 记录及 accession 级使用条款约束，平台不改变原始许可。",
     fairItems: [
       "Findable：项目编号、疾病标签和 genus 实体均可通过页面检索和 API 检索定位。",
-      "Accessible：核心衍生统计可通过网页界面、人类可读 API 文档和 OpenAPI 规范访问。",
-      "Interoperable：输出支持 JSON、CSV、TSV，并使用稳定字段名以便脚本接入。",
+      "Accessible：核心衍生统计可通过网页界面、API 文档和 OpenAPI 规范访问。",
+      "Interoperable：输出支持 JSON、CSV、TSV，并使用稳定字段名便于脚本接入。",
       "Reusable：平台明确写出方法、限制和许可边界，减少衍生结果被误用的风险。",
     ],
     relatedLinks: [
@@ -225,36 +221,35 @@ const COPY: Record<"en" | "zh", Copy> = {
     versionRows: [
       {
         date: "2026-04-06",
-        label: "Studies + Download/API/About 版本",
-        detail: "完成 Projects Browser、Cross-study 工作台、下载接口、API 文档工作台和 About 页面重构，并全部落到主分支。",
+        label: "Studies、Download、API、About 更新",
+        detail: "Projects Browser、Cross-study 工作区、导出接口、API 文档与 About 页面同步更新。",
       },
       {
         date: "2026-04-05 至 2026-04-06",
-        label: "Similarity / Lifecycle / Genus Search 升级",
-        detail: "完成加权 GMHI、相似性热图、生命周期对比工作台，以及对外命名从 Species Search 校正为以 genus 为主。",
+        label: "Similarity / Lifecycle / Genus Search 更新",
+        detail: "加权 GMHI、相似性热图预览、生命周期比较工作区以及 genus 检索视图得到补强。",
       },
       {
         date: "2026-04-03 至 2026-04-05",
-        label: "Home / Compare / Diseases / Network / Metabolism 升级波次",
-        detail: "核心模块被重构为科研型工作台，补齐了统计、下载和跨研究行为。",
+        label: "Home / Compare / Diseases / Network / Metabolism 升级",
+        detail: "核心模块重构为面向研究的工作区，增强了统计展示、导出能力和跨研究分析行为。",
       },
       {
         date: "2026-03-28",
-        label: "初始公开基线",
-        detail: "发布首页、地图、表型、检索等基础模块骨架。",
+        label: "首个公开基线版本",
+        detail: "初步发布首页、地图、表型概览、检索及核心页面骨架。",
       },
     ],
     privacyText:
-      "平台仅用于科研探索。不要上传可识别的临床个人信息。用户提交的 abundance profile 应被视为研究输入，而不是受监管的临床记录。",
+      "平台仅用于科研探索，请勿提交可识别的个人临床信息。用户上传的 abundance profile 应视为研究输入，而非受监管的临床记录。",
     disclaimerText:
-      "平台提供的是探索性统计结果和文献策展式解释，不构成医疗建议、诊断结论或治疗意见。",
+      "平台提供的是探索性统计结果与文献整理信息，不构成医疗建议、诊断结论或治疗意见。",
     contactLabel: "联系方式",
-    noteLabel: "运维说明",
     statsCards: [
       { key: "total_samples", label: "样本数", fallback: "168,464" },
       { key: "total_projects", label: "项目数", fallback: "482" },
-      { key: "total_diseases", label: "疾病数", fallback: "218" },
-      { key: "total_countries", label: "国家数", fallback: "66" },
+      { key: "total_condition_categories", label: "条件类别", fallback: "226" },
+      { key: "total_countries", label: "国家数", fallback: "72" },
       { key: "total_genera", label: "菌属数", fallback: "4,680" },
       { key: "contact", label: "联系邮箱", fallback: "cdai@cmu.edu.cn" },
     ],
@@ -276,11 +271,11 @@ const AUTHORS: Record<"en" | "zh", string[]> = {
   zh: [
     "翟锦霞",
     "李迎杰",
-    "刘佳梦",
-    "苏心怡",
+    "刘佳萌",
+    "苏欣怡",
     "崔润泽",
-    "郑殿宇",
-    "孙羽晗",
+    "郑典钰",
+    "孙羽涵",
     "于景晟",
     "戴聪",
   ],
@@ -295,9 +290,9 @@ const PIPELINE_STEPS = {
   ],
   zh: [
     "从公共数据库和项目级元数据中收集人类肠道微生物组队列。",
-    "统一疾病、国家、年龄段、性别和项目等元数据字段。",
-    "将分类丰度整理到已经验证的 genus 层级分析框架中。",
-    "在衍生丰度矩阵上计算疾病对照、生命周期、相似性、网络和跨研究统计。",
+    "统一整理疾病、国家、年龄组、性别和项目等元数据字段。",
+    "将分类丰度映射到经过核对的 genus 层级分析框架中。",
+    "在衍生丰度矩阵上计算疾病对照、生命周期、相似性、网络和跨研究统计结果。",
   ],
 };
 
@@ -308,9 +303,9 @@ const DATA_SOURCES = {
     "Internal harmonization layers that map project, disease, and phenotype fields into shared analysis categories.",
   ],
   zh: [
-    "与 BioProject 和测序数据库记录关联的公开微生物组队列元数据。",
+    "与 BioProject 及测序数据库记录关联的公开微生物组队列元数据。",
     "用于 atlas 统计和可视化的 genus 层级衍生丰度矩阵。",
-    "把项目、疾病和表型字段整理为统一分析类别的内部标准化层。",
+    "将项目、疾病和表型字段映射到统一分析类别的标准化整理层。",
   ],
 };
 
@@ -329,23 +324,10 @@ const AboutPageContent = () => {
   }, []);
 
   const activeBibtex = citationTab === "paper" ? PAPER_BIBTEX : SOFTWARE_BIBTEX;
-  const dataIntroText = locale === "zh"
-    ? "Gut Microbiome Atlas 整合公开数据库中的人类肠道微生物组队列，并统一到 genus 层级分析框架中，用于跨研究浏览、可视化和假设生成。当前发布版包含 225 个非 NC 条件标签，再加 1 个 NC 类别，合计 226 个条件类别。"
-    : text.dataIntro;
-  const statsCards = locale === "zh"
-    ? [
-        { key: "total_samples" as const, label: "样本数", fallback: "168,464" },
-        { key: "total_projects" as const, label: "项目数", fallback: "482" },
-        { key: "total_condition_categories" as const, label: "条件类别", fallback: "226" },
-        { key: "total_countries" as const, label: "国家数", fallback: "72" },
-        { key: "total_genera" as const, label: "菌属数", fallback: "4,680" },
-        { key: "contact" as const, label: "联系邮箱", fallback: "cdai@cmu.edu.cn" },
-      ]
-    : text.statsCards;
 
   const statRows = useMemo(
     () =>
-      statsCards.map((item) => ({
+      text.statsCards.map((item) => ({
         label: item.label,
         value:
           item.key === "contact"
@@ -354,7 +336,7 @@ const AboutPageContent = () => {
               ? Number(stats[item.key]).toLocaleString()
               : item.fallback,
       })),
-    [stats, statsCards],
+    [stats, text.statsCards],
   );
 
   const handleCopy = async () => {
@@ -365,19 +347,15 @@ const AboutPageContent = () => {
 
   return (
     <>
-      <Header />
+      <SubpageHeader title={text.title} subtitle={text.subtitle} />
       <main className={classes.page}>
-        <Link to="/" className={classes.backLink}>
-          {text.back}
-        </Link>
-
         <header className={classes.hero}>
           <div>
             <h1 className={classes.pageTitle}>{text.title}</h1>
             <p className={classes.heroText}>{text.subtitle}</p>
           </div>
           <div className={classes.heroMeta}>
-            <span>{stats?.version ?? (locale === "zh" ? "主分支部署" : "main-branch deployment")}</span>
+            <span>{stats?.version ?? "2026 release"}</span>
             <span>{stats?.last_updated ?? "2026-04-06"}</span>
           </div>
         </header>
@@ -397,7 +375,7 @@ const AboutPageContent = () => {
 
         <section className={classes.card}>
           <h2 className={classes.cardTitle}>{text.sections.data}</h2>
-          <p className={classes.cardText}>{dataIntroText}</p>
+          <p className={classes.cardText}>{text.dataIntro}</p>
 
           <div className={classes.subsection}>
             <h3>{text.sourceLabel}</h3>
@@ -460,12 +438,6 @@ const AboutPageContent = () => {
         <section className={classes.card}>
           <h2 className={classes.cardTitle}>{text.sections.funding}</h2>
           <p className={classes.cardText}>{text.fundingText}</p>
-          <p className={classes.note}>
-            <strong>{text.noteLabel}:</strong>{" "}
-            {locale === "zh"
-              ? "当前生产前端展示的是 GitHub main 分支对应的 Vercel 部署；涉及后端测试时，必须先确认主目录 api 服务已重启到最新代码。"
-              : "The production frontend is expected to reflect the latest Vercel deployment from the GitHub main branch. Any backend-dependent testing should confirm that the main api workspace has been restarted to the latest code."}
-          </p>
         </section>
 
         <section className={classes.card}>

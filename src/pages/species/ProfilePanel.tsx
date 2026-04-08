@@ -36,7 +36,7 @@ export default function ProfilePanel({ profile }: ProfilePanelProps) {
     const filtered = significantOnly
       ? profile.by_disease.filter((item) => item.significant)
       : profile.by_disease;
-    return filtered.slice(0, 30);
+    return filtered.slice(0, 34);
   }, [profile.by_disease, significantOnly]);
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export default function ProfilePanel({ profile }: ProfilePanelProps) {
 
   useEffect(() => {
     if (!countryRef.current || profile.by_country.length === 0) return;
-    drawDistributionChart(countryRef.current, profile.by_country.slice(0, 20), metric, locale, "country", "#06b6d4");
+    drawDistributionChart(countryRef.current, profile.by_country.slice(0, 24), metric, locale, "country", "#06b6d4");
   }, [locale, metric, profile.by_country]);
 
   useEffect(() => {
@@ -191,9 +191,9 @@ function drawDiseaseChart(
   svg.selectAll("*").remove();
 
   const rows = [...data];
-  const width = 980;
-  const height = Math.max(260, rows.length * 28 + 110);
-  const margin = { top: 22, right: 130, bottom: 42, left: 250 };
+  const width = 1420;
+  const height = Math.max(320, rows.length * 32 + 128);
+  const margin = { top: 26, right: 190, bottom: 46, left: 420 };
   svg.attr("viewBox", `0 0 ${width} ${height}`);
 
   const plotWidth = width - margin.left - margin.right;
@@ -222,6 +222,7 @@ function drawDiseaseChart(
     .attr("y", -6)
     .attr("text-anchor", "middle")
     .attr("font-size", 11)
+    .attr("font-weight", 600)
     .attr("fill", "currentColor")
     .attr("opacity", 0.72)
     .text(metric === "abundance" ? "NC baseline mean" : "NC baseline prevalence");
@@ -255,7 +256,7 @@ function drawDiseaseChart(
     .attr("x", (row) => x(accessor(row)) + 6)
     .attr("y", (row) => (y(row.name) ?? 0) + y.bandwidth() / 2 + 1)
     .attr("dominant-baseline", "middle")
-    .attr("font-size", 11)
+    .attr("font-size", 12)
     .attr("fill", "currentColor")
     .text((row) => {
       const value = accessor(row);
@@ -269,7 +270,7 @@ function drawDiseaseChart(
     .attr("x", (row) => x(accessor(row)) + 68)
     .attr("y", (row) => (y(row.name) ?? 0) + y.bandwidth() / 2 + 1)
     .attr("dominant-baseline", "middle")
-    .attr("font-size", 11)
+    .attr("font-size", 12)
     .attr("fill", "#facc15")
     .text((row) => starsForPValue(row.adjusted_p));
 
@@ -277,15 +278,15 @@ function drawDiseaseChart(
     .call(
       d3.axisLeft(y).tickFormat((value) => {
         const label = translateDimensionName(String(value), locale, "disease");
-        return label.length > 34 ? `${label.slice(0, 33)}…` : label;
+        return label.length > 56 ? `${label.slice(0, 54)}…` : label;
       }),
     )
-    .attr("font-size", 11);
+    .attr("font-size", 12);
 
   root.append("g")
     .attr("transform", `translate(0,${plotHeight})`)
     .call(d3.axisBottom(x).ticks(5).tickFormat((value) => metric === "abundance" ? formatAbundanceTick(Number(value)) : `${Number(value).toFixed(1)}%`))
-    .attr("font-size", 11);
+    .attr("font-size", 12);
 }
 
 function drawDistributionChart(
@@ -299,9 +300,9 @@ function drawDistributionChart(
   const svg = d3.select(svgEl);
   svg.selectAll("*").remove();
 
-  const width = 920;
-  const height = Math.max(240, data.length * 28 + 90);
-  const margin = { top: 18, right: 90, bottom: 42, left: type === "country" ? 190 : 170 };
+  const width = 1180;
+  const height = Math.max(260, data.length * 30 + 96);
+  const margin = { top: 20, right: 120, bottom: 44, left: type === "country" ? 260 : 210 };
   svg.attr("viewBox", `0 0 ${width} ${height}`);
 
   const plotWidth = width - margin.left - margin.right;
@@ -340,7 +341,7 @@ function drawDistributionChart(
     .attr("x", (row) => x(accessor(row)) + 6)
     .attr("y", (row) => (y(row.name) ?? 0) + y.bandwidth() / 2 + 1)
     .attr("dominant-baseline", "middle")
-    .attr("font-size", 11)
+    .attr("font-size", 12)
     .attr("fill", "currentColor")
     .text((row) => {
       const value = accessor(row);
@@ -351,14 +352,14 @@ function drawDistributionChart(
     .call(
       d3.axisLeft(y).tickFormat((value) => {
         const label = translateDimensionName(String(value), locale, type);
-        const limit = type === "country" ? 22 : 18;
+        const limit = type === "country" ? 34 : 24;
         return label.length > limit ? `${label.slice(0, limit - 1)}…` : label;
       }),
     )
-    .attr("font-size", 11);
+    .attr("font-size", 12);
 
   root.append("g")
     .attr("transform", `translate(0,${plotHeight})`)
     .call(d3.axisBottom(x).ticks(4).tickFormat((value) => metric === "abundance" ? formatAbundanceTick(Number(value)) : `${Number(value).toFixed(1)}%`))
-    .attr("font-size", 11);
+    .attr("font-size", 12);
 }

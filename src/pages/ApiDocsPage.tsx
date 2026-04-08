@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+
+import SubpageHeader from "@/components/SubpageHeader";
 import { useI18n } from "@/i18n";
-import { LOCAL_API_BASE, PUBLIC_API_BASE, resolveApiBase } from "@/util/apiBase";
-import Header from "@/sections/Header";
 import Footer from "@/sections/Footer";
+import { resolveApiBase } from "@/util/apiBase";
+
 import { API_DOC_CATEGORIES, API_DOC_ENDPOINTS } from "./apiDocs/endpoints";
 import type { ApiEndpoint } from "./apiDocs/types";
 import css from "./ApiDocsPage.module.css";
@@ -11,14 +12,11 @@ import css from "./ApiDocsPage.module.css";
 const ACTIVE_API_BASE = resolveApiBase();
 
 type LocaleCopy = {
-  back: string;
   title: string;
   subtitle: string;
-  note: string;
-  localApi: string;
-  publicApi: string;
-  activeApi: string;
+  apiBase: string;
   openapi: string;
+  swagger: string;
   categories: Record<(typeof API_DOC_CATEGORIES)[number], string>;
   overviewTitle: string;
   overviewText: string;
@@ -44,19 +42,15 @@ type LocaleCopy = {
   size: string;
   bodyPlaceholder: string;
   invalidJson: string;
-  publicWarning: string;
 };
 
 const COPY: Record<"en" | "zh", LocaleCopy> = {
   en: {
-    back: "Back to Home",
     title: "API Documentation",
-    subtitle: "Human-readable API workspace with executable examples for local and public environments.",
-    note: "The public API URL is an operations endpoint and may change. Use localhost or /api/openapi.json for stable development references.",
-    localApi: "Local API",
-    publicApi: "Public API",
-    activeApi: "Active Base URL",
+    subtitle: "Interactive endpoint reference for atlas queries, analysis workflows, and reproducible programmatic access.",
+    apiBase: "API base",
     openapi: "OpenAPI Spec",
+    swagger: "Swagger UI",
     categories: {
       all: "All",
       overview: "Overview",
@@ -68,12 +62,12 @@ const COPY: Record<"en" | "zh", LocaleCopy> = {
       studies: "Studies",
       download: "Download",
     },
-    overviewTitle: "Research-Oriented API Scope",
+    overviewTitle: "API Scope",
     overviewText:
-      "This documentation emphasizes reproducible analysis workflows: project browsing, disease-centric statistics, co-occurrence networks, weighted GMHI scoring, and export endpoints for aggregated results.",
+      "The current API covers project browsing, disease and genus statistics, differential analysis, network relationships, similarity search, and aggregated result export for downstream scripting and integration.",
     errorTitle: "Error Handling",
     errorText:
-      "Common response codes: 400 for invalid biological filters or insufficient samples, 404 for missing genus/project resources, 422 for malformed request bodies, 429 for rate limiting, and 500 for server-side calculation failures.",
+      "Common response codes include 400 for invalid filters or insufficient samples, 404 for missing resources, 422 for malformed request bodies, 429 for rate limiting, and 500 for server-side calculation failures.",
     endpointTitle: "Endpoints",
     params: "Parameters",
     requestBody: "Request Body",
@@ -94,21 +88,17 @@ const COPY: Record<"en" | "zh", LocaleCopy> = {
     size: "Payload",
     bodyPlaceholder: "Editable JSON body",
     invalidJson: "Invalid JSON body. Fix the request body before retrying.",
-    publicWarning: "Public API is suitable for demos, not for permanent manuscript citations.",
   },
   zh: {
-    back: "返回首页",
     title: "API 文档",
-    subtitle: "面向科研使用场景的人类可读 API 工作台，支持本地和公网双环境示例。",
-    note: "公网 API 地址属于运维入口，可能变化。稳定开发引用请优先使用 localhost 或 /api/openapi.json。",
-    localApi: "本地 API",
-    publicApi: "公网 API",
-    activeApi: "当前基地址",
+    subtitle: "面向图谱检索、分析工作流和程序化复用的交互式接口参考。",
+    apiBase: "API 基址",
     openapi: "OpenAPI 规范",
+    swagger: "Swagger UI",
     categories: {
       all: "全部",
       overview: "总览",
-      species: "物种检索",
+      species: "菌属检索",
       disease: "疾病",
       network: "网络",
       analysis: "分析",
@@ -116,12 +106,12 @@ const COPY: Record<"en" | "zh", LocaleCopy> = {
       studies: "研究项目",
       download: "下载",
     },
-    overviewTitle: "科研导向接口范围",
+    overviewTitle: "接口覆盖范围",
     overviewText:
-      "这份文档按真实科研工作流组织接口：项目浏览、疾病统计、共现网络、加权 GMHI，以及聚合分析结果下载，而不是只按技术层级堆接口。",
+      "当前 API 覆盖研究项目浏览、疾病与菌属统计、差异分析、网络关系、相似性检索以及聚合结果导出，方便将平台工作流接入脚本与外部应用。",
     errorTitle: "错误处理",
     errorText:
-      "常见响应码：400 表示筛选条件无效或样本不足，404 表示属名或项目不存在，422 表示请求体格式错误，429 表示触发限流，500 表示服务端计算失败。",
+      "常见响应码包括 400（筛选条件无效或样本不足）、404（请求资源不存在）、422（请求体格式错误）、429（触发限流）和 500（服务端计算失败）。",
     endpointTitle: "接口列表",
     params: "参数",
     requestBody: "请求体",
@@ -131,7 +121,7 @@ const COPY: Record<"en" | "zh", LocaleCopy> = {
     requestPreview: "请求预览",
     tryIt: "立即试跑",
     response: "响应结果",
-    responseMeta: "响应元信息",
+    responseMeta: "响应信息",
     copy: "复制",
     copied: "已复制",
     python: "Python",
@@ -141,8 +131,7 @@ const COPY: Record<"en" | "zh", LocaleCopy> = {
     duration: "耗时",
     size: "大小",
     bodyPlaceholder: "可编辑 JSON 请求体",
-    invalidJson: "请求体 JSON 无法解析，请先修正后再重试。",
-    publicWarning: "公网 API 适合演示，不适合作为长期论文引用地址。",
+    invalidJson: "请求体 JSON 无法解析，请修正后再重试。",
   },
 };
 
@@ -192,6 +181,20 @@ function buildPythonExample(base: string, endpoint: ApiEndpoint): string {
   ].join("\n");
 }
 
+function toRList(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `c(${value.map((item) => toRList(item)).join(", ")})`;
+  }
+  if (value && typeof value === "object") {
+    const pairs = Object.entries(value as Record<string, unknown>)
+      .map(([key, inner]) => `${key} = ${toRList(inner)}`)
+      .join(", ");
+    return `list(${pairs})`;
+  }
+  if (typeof value === "string") return `"${value}"`;
+  return String(value);
+}
+
 function buildRExample(base: string, endpoint: ApiEndpoint): string {
   const url = buildUrl(base, endpoint);
   if (endpoint.method === "GET") {
@@ -214,20 +217,6 @@ function buildRExample(base: string, endpoint: ApiEndpoint): string {
     "stop_for_status(res)",
     'cat(content(res, "text", encoding = "UTF-8"))',
   ].join("\n");
-}
-
-function toRList(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `c(${value.map((item) => toRList(item)).join(", ")})`;
-  }
-  if (value && typeof value === "object") {
-    const pairs = Object.entries(value as Record<string, unknown>)
-      .map(([key, inner]) => `${key} = ${toRList(inner)}`)
-      .join(", ");
-    return `list(${pairs})`;
-  }
-  if (typeof value === "string") return `"${value}"`;
-  return String(value);
 }
 
 function buildCurlExample(base: string, endpoint: ApiEndpoint): string {
@@ -335,44 +324,31 @@ const ApiDocsPage = () => {
 
   return (
     <>
-      <Header />
+      <SubpageHeader title={text.title} subtitle={text.subtitle} />
       <main className={css.page}>
-        <Link to="/" className={css.back}>
-          {text.back}
-        </Link>
-
-        <header className={css.hero}>
-          <div>
-            <h1 className={css.title}>{text.title}</h1>
-            <p className={css.subtitle}>{text.subtitle}</p>
-          </div>
+        <section className={css.hero}>
           <div className={css.badges}>
             <a className={css.badge} href={`${ACTIVE_API_BASE}/api/openapi.json`} target="_blank" rel="noreferrer">
               {text.openapi}
             </a>
             <a className={css.badge} href={`${ACTIVE_API_BASE}/api/docs`} target="_blank" rel="noreferrer">
-              Swagger UI
+              {text.swagger}
             </a>
           </div>
-        </header>
-
-        <section className={css.warning}>
-          <p>{text.note}</p>
-          <p>{text.publicWarning}</p>
         </section>
 
         <section className={css.infoCards}>
           <div className={css.infoCard}>
-            <h3>{text.localApi}</h3>
-            <code>{LOCAL_API_BASE}</code>
+            <h3>{text.apiBase}</h3>
+            <code>{`${ACTIVE_API_BASE}/api`}</code>
           </div>
           <div className={css.infoCard}>
-            <h3>{text.publicApi}</h3>
-            <code>{PUBLIC_API_BASE}</code>
+            <h3>{text.openapi}</h3>
+            <code>{`${ACTIVE_API_BASE}/api/openapi.json`}</code>
           </div>
           <div className={css.infoCard}>
-            <h3>{text.activeApi}</h3>
-            <code>{ACTIVE_API_BASE}</code>
+            <h3>{text.swagger}</h3>
+            <code>{`${ACTIVE_API_BASE}/api/docs`}</code>
           </div>
         </section>
 
@@ -435,11 +411,11 @@ const ApiDocsPage = () => {
                     <span className={css.summary}>{endpoint.summary}</span>
                   </button>
 
-                  {isOpen && (
+                  {isOpen ? (
                     <div className={css.endpointBody}>
                       <p className={css.description}>{endpoint.description}</p>
 
-                      {endpoint.params && endpoint.params.length > 0 && (
+                      {endpoint.params && endpoint.params.length > 0 ? (
                         <div className={css.block}>
                           <h3>{text.params}</h3>
                           <table className={css.table}>
@@ -463,7 +439,7 @@ const ApiDocsPage = () => {
                             </tbody>
                           </table>
                         </div>
-                      )}
+                      ) : null}
 
                       <div className={css.grid}>
                         <div className={css.block}>
@@ -481,7 +457,7 @@ const ApiDocsPage = () => {
                         </div>
                       </div>
 
-                      {endpoint.defaultBody && (
+                      {endpoint.defaultBody ? (
                         <div className={css.block}>
                           <h3>{text.requestBody}</h3>
                           <textarea
@@ -489,12 +465,10 @@ const ApiDocsPage = () => {
                             spellCheck={false}
                             aria-label={text.bodyPlaceholder}
                             value={bodyDraft}
-                            onChange={(event) =>
-                              setBodyDrafts((prev) => ({ ...prev, [key]: event.target.value }))
-                            }
+                            onChange={(event) => setBodyDrafts((prev) => ({ ...prev, [key]: event.target.value }))}
                           />
                         </div>
-                      )}
+                      ) : null}
 
                       <div className={css.block}>
                         <h3>{text.errorHandling}</h3>
@@ -541,7 +515,7 @@ const ApiDocsPage = () => {
                         </button>
                       </div>
 
-                      {responseMeta[key] && (
+                      {responseMeta[key] ? (
                         <div className={css.block}>
                           <h3>{text.responseMeta}</h3>
                           <div className={css.metaRow}>
@@ -550,16 +524,16 @@ const ApiDocsPage = () => {
                             <span>{text.size}: {formatBytes(responseMeta[key].bytes)}</span>
                           </div>
                         </div>
-                      )}
+                      ) : null}
 
-                      {responses[key] && (
+                      {responses[key] ? (
                         <div className={css.block}>
                           <h3>{text.response}</h3>
                           <pre className={css.responseBlock}>{responses[key]}</pre>
                         </div>
-                      )}
+                      ) : null}
                     </div>
-                  )}
+                  ) : null}
                 </article>
               );
             })}

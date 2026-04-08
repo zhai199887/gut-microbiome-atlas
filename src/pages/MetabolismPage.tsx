@@ -10,7 +10,7 @@ import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 import { useData } from "@/data";
 import { cachedFetch } from "@/util/apiCache";
-import { diseaseShortNameI18n } from "@/util/diseaseNames";
+import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import "@/components/tooltip";
 import CategoryDiseasePanel from "./metabolism/CategoryDiseasePanel";
 import MetabolismOverviewHeatmap from "./metabolism/MetabolismOverviewHeatmap";
@@ -39,6 +39,11 @@ interface MatchResult {
 
 const OVERVIEW_CACHE_KEY = "/api/metabolism-overview";
 const HEATMAP_DISEASE_LIMIT = 18;
+
+const formatDiseaseLabel = (disease: string, locale: "en" | "zh", maxLen = 32) => {
+  const full = diseaseDisplayNameI18n(disease, locale);
+  return full.length > maxLen ? `${full.slice(0, maxLen - 3)}...` : full;
+};
 
 const normalize = (value: string) => value.trim().toLowerCase();
 
@@ -558,9 +563,9 @@ const CategoryDetail = ({
       .domain([0, maxValue])
       .interpolator(d3.interpolate(colorBlack, colorPrimary));
 
-    const cellWidth = 56;
+    const cellWidth = 64;
     const cellHeight = 28;
-    const margin = { top: 140, right: 24, bottom: 26, left: 220 };
+    const margin = { top: 170, right: 24, bottom: 26, left: 320 };
     const width = margin.left + margin.right + diseases.length * cellWidth;
     const height = margin.top + margin.bottom + genera.length * cellHeight;
 
@@ -592,7 +597,7 @@ const CategoryDetail = ({
             <span>{locale === "zh" ? "属" : "Genus"}</span>
             <span>{cell.genus}</span>
             <span>{locale === "zh" ? "疾病" : "Disease"}</span>
-            <span>{diseaseShortNameI18n(cell.disease, locale, 36)}</span>
+            <span>{diseaseDisplayNameI18n(cell.disease, locale)}</span>
             <span>{locale === "zh" ? "丰度" : "Abundance"}</span>
             <span>{(cell.value * 100).toFixed(3)}%</span>
           </div>,
@@ -605,11 +610,11 @@ const CategoryDetail = ({
     chart.append("g")
       .call(
         d3.axisTop(xScale)
-          .tickFormat((tick) => diseaseShortNameI18n(String(tick), locale, 18)),
+          .tickFormat((tick) => formatDiseaseLabel(String(tick), locale, 32)),
       )
       .attr("font-size", 11)
       .selectAll("text")
-      .attr("transform", "rotate(-40)")
+      .attr("transform", "rotate(-52)")
       .attr("text-anchor", "start");
 
     const legendWidth = Math.min(diseases.length * cellWidth, 200);

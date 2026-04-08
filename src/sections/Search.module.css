@@ -2,7 +2,7 @@
 
 .searchContainer {
   position: relative;
-  max-width: 600px;
+  max-width: 980px;
   margin: 0 auto 2rem;
 }
 
@@ -114,7 +114,7 @@
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  max-width: 600px;
+  max-width: 980px;
   margin: 0.8rem auto 1.5rem;
 }
 
@@ -159,6 +159,7 @@
 /* Profile container / 画像容器 */
 .profileContainer {
   margin-top: 1.5rem;
+  width: 100%;
 }
 
 .profileHeader {
@@ -206,14 +207,14 @@
 /* Charts grid / 图表网格 */
 .chartsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(480px, 100%), 1fr));
+  grid-template-columns: 1fr;
   gap: 2rem;
 }
 
 .chartBlock {
-  padding: 1rem;
+  padding: 1.2rem 1.25rem;
   border: 1px solid var(--gray);
-  border-radius: 8px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.02);
 }
 
@@ -227,7 +228,8 @@
 
 .profileChart {
   width: 100%;
-  max-width: 520px;
+  max-width: none;
+  min-height: 320px;
 }
 
 /* Sex table / 性别分布表 */

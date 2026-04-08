@@ -3,9 +3,9 @@ import { Link } from "react-router-dom";
 
 import { useI18n } from "@/i18n";
 import { cachedFetch } from "@/util/apiCache";
-import { LOCAL_API_BASE, PUBLIC_API_BASE, resolveApiBase } from "@/util/apiBase";
+import { resolveApiBase } from "@/util/apiBase";
 import { countryName } from "@/util/countries";
-import { diseaseShortNameI18n } from "@/util/diseaseNames";
+import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 
 import classes from "./DownloadPage.module.css";
 
@@ -55,9 +55,9 @@ const copy = {
       analysisText:
         "Download the same aggregated outputs used by Compare, Network, and Lifecycle rather than reconstructing them manually.",
       codeEyebrow: "Code Examples",
-      codeTitle: "Local and public access",
+      codeTitle: "API access examples",
       codeText:
-        "Use localhost for development and validation. The public cpolar address is convenient for remote demos but is an operational endpoint and may change.",
+        "Use the active site API to fetch aggregated outputs, exported files, and the OpenAPI specification.",
     },
     cards: {
       summaryTitle: "Summary statistics",
@@ -100,7 +100,7 @@ const copy = {
     },
     helper: {
       publicNote:
-        "Public endpoint note: this cpolar URL reflects the current tunnel target and should not be treated as a permanent paper citation URL.",
+        "The examples below point to the current active site endpoint.",
       formatNote:
         "Every download response includes generation date, version, and citation guidance in HTTP headers.",
       diffNote: "Exports the statistically ranked result table, not raw abundance matrices.",
@@ -133,9 +133,9 @@ const copy = {
       analysisTitle: "模块分析导出",
       analysisText: "直接下载 Compare、Network、Lifecycle 等模块已经计算好的聚合结果，而不是自己重跑一遍。",
       codeEyebrow: "代码示例",
-      codeTitle: "本地与公网访问",
+      codeTitle: "接口访问示例",
       codeText:
-        "开发和验收优先使用 localhost。本页同时给出当前公网 API，但 cpolar 地址属于运维层入口，后续可能变化。",
+        "以下示例演示如何通过当前站点接口获取聚合结果、导出文件和读取 OpenAPI 规范。",
     },
     cards: {
       summaryTitle: "汇总统计",
@@ -178,7 +178,7 @@ const copy = {
     },
     helper: {
       publicNote:
-        "公网说明：这里展示的是当前 cpolar 地址，方便远程演示，但不应当被当作永久论文链接。",
+        "以下示例均指向当前站点接口地址。",
       formatNote:
         "所有下载响应都会在 HTTP 头里带上生成时间、版本号和引用提示。",
       diffNote: "这里导出的是统计排序后的结果表，不是原始丰度矩阵。",
@@ -383,7 +383,7 @@ const DownloadPage = () => {
     () =>
       diseases.map((item) => ({
         value: item.name,
-        label: diseaseShortNameI18n(item.name, locale, 48),
+        label: diseaseDisplayNameI18n(item.name, locale),
         hint: typeof item.sample_count === "number" ? `n=${item.sample_count}` : undefined,
       })),
     [diseases, locale],
@@ -432,9 +432,9 @@ const DownloadPage = () => {
     </label>
   );
 
-  const localPythonExample = `import requests
+  const pythonExample = `import requests
 
-base = "${LOCAL_API_BASE}"
+base = "${ACTIVE_API_BASE}"
 summary = requests.get(f"{base}/api/download/summary-stats", params={"format": "json"}).json()
 diff_rows = requests.get(
     f"{base}/api/download/diff-results",
@@ -444,11 +444,22 @@ diff_rows = requests.get(
 print(summary["total_samples"])
 print(diff_rows[0]["genus"], diff_rows[0]["log2fc"])`;
 
-  const publicCurlExample = `BASE="${PUBLIC_API_BASE}"
+  const curlExample = `BASE="${ACTIVE_API_BASE}"
 
-curl -s "${PUBLIC_API_BASE}/api/download/summary-stats?format=json"
-curl -s "${PUBLIC_API_BASE}/api/download/biomarkers?disease=CRC&lda_threshold=2.0&format=csv" -o crc_biomarkers.csv
-curl -s "${PUBLIC_API_BASE}/api/openapi.json" -o gut_microbiome_atlas_openapi.json`;
+curl -s "${ACTIVE_API_BASE}/api/download/summary-stats?format=json"
+curl -s "${ACTIVE_API_BASE}/api/download/biomarkers?disease=CRC&lda_threshold=2.0&format=csv" -o crc_biomarkers.csv
+curl -s "${ACTIVE_API_BASE}/api/openapi.json" -o gut_microbiome_atlas_openapi.json`;
+
+  const codeEyebrow = locale === "zh" ? "程序化访问" : "Programmatic Access";
+  const codeTitle = locale === "zh" ? "接口与下载示例" : "API and Download Examples";
+  const codeText = locale === "zh"
+    ? "以下示例展示如何通过当前站点接口获取聚合结果、导出文件和读取 OpenAPI 规范。"
+    : "Use the examples below to fetch aggregated outputs, download result files, and inspect the OpenAPI specification from the active site.";
+  const pythonCardTitle = locale === "zh" ? "Python 示例" : "Python Example";
+  const curlCardTitle = locale === "zh" ? "cURL 示例" : "cURL Example";
+  const apiEndpointLabel = locale === "zh" ? "接口地址" : "Endpoint";
+  const openapiLabel = locale === "zh" ? "OpenAPI 规范" : "OpenAPI Spec";
+  const swaggerLabel = locale === "zh" ? "Swagger UI" : "Swagger UI";
 
   return (
     <div className={classes.page}>
@@ -772,39 +783,37 @@ curl -s "${PUBLIC_API_BASE}/api/openapi.json" -o gut_microbiome_atlas_openapi.js
 
       <section className={classes.section}>
         <div className={classes.sectionHeader}>
-          <span>{text.sections.codeEyebrow}</span>
-          <h2>{text.sections.codeTitle}</h2>
-          <p>{text.sections.codeText}</p>
+          <span>{codeEyebrow}</span>
+          <h2>{codeTitle}</h2>
+          <p>{codeText}</p>
         </div>
 
         <div className={classes.codeGrid}>
           <article className={classes.codeCard}>
             <div className={classes.codeHeader}>
-              <h3>{text.envTitle.local}</h3>
-              <span>{text.labels.localApi}</span>
+              <h3>{pythonCardTitle}</h3>
+              <span>{apiEndpointLabel}</span>
             </div>
-            <p className={classes.endpointLine}>{LOCAL_API_BASE}</p>
-            <pre className={classes.codeBlock}>{localPythonExample}</pre>
+            <p className={classes.endpointLine}>{`${ACTIVE_API_BASE}/api`}</p>
+            <pre className={classes.codeBlock}>{pythonExample}</pre>
           </article>
 
           <article className={classes.codeCard}>
             <div className={classes.codeHeader}>
-              <h3>{text.envTitle.public}</h3>
-              <span>{text.labels.publicApi}</span>
+              <h3>{curlCardTitle}</h3>
+              <span>{apiEndpointLabel}</span>
             </div>
-            <p className={classes.endpointLine}>{PUBLIC_API_BASE}</p>
-            <pre className={classes.codeBlock}>{publicCurlExample}</pre>
+            <p className={classes.endpointLine}>{`${ACTIVE_API_BASE}/api`}</p>
+            <pre className={classes.codeBlock}>{curlExample}</pre>
           </article>
         </div>
 
-        <p className={classes.publicNote}>{text.helper.publicNote}</p>
-
         <div className={classes.docsRow}>
           <a className={classes.secondaryButton} href={`${ACTIVE_API_BASE}/api/openapi.json`} target="_blank" rel="noreferrer">
-            {text.labels.openDocs}
+            {openapiLabel}
           </a>
           <a className={classes.secondaryButton} href={`${ACTIVE_API_BASE}/api/docs`} target="_blank" rel="noreferrer">
-            {text.labels.openSwagger}
+            {swaggerLabel}
           </a>
         </div>
       </section>

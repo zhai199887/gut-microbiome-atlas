@@ -5,7 +5,7 @@ import Placeholder from "@/components/Placeholder";
 import type { AbundanceSummary } from "@/data";
 import { useI18n } from "@/i18n";
 import { useData } from "@/data";
-import { diseaseShortNameI18n } from "@/util/diseaseNames";
+import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import { AGE_GROUP_ZH, SEX_ZH } from "@/util/countries";
 import { getCssVariable } from "@/util/dom";
 import { formatNumber } from "@/util/string";
@@ -90,20 +90,20 @@ const PhenotypeCharts = () => {
         </div>
         <div className="sub-section">
           <h3>{t("home.top20Diseases")}</h3>
-          <svg id="disease-chart" className="chart" viewBox="-240 -20 760 560" style={{ minHeight: 420 }} />
+          <svg id="disease-chart" className="chart" viewBox="-360 -20 980 590" style={{ minHeight: 440 }} />
         </div>
       </div>
       <div className="sub-section" style={{ marginTop: "1.5rem" }}>
         <h3>{t("home.heatmapTitle")}</h3>
         {/* viewBox: left=-160(y轴标签), top=-80(列头), width=1100(图+图例), height=580(含旋转标签) */}
-        <svg id="heatmap" className="chart" viewBox="-160 -80 1100 580" />
+        <svg id="heatmap" className="chart" viewBox="-220 -96 1320 640" />
       </div>
       <div className="sub-section" style={{ marginTop: "1.5rem" }}>
         <h3>{t("home.topGeneraTitle")}</h3>
         <p style={{ color: "var(--light-gray)", fontSize: "0.85rem" }}>
           {t("home.topGeneraDesc")}
         </p>
-        <svg id="genus-rank-chart" className="chart" viewBox="-180 -20 860 600" />
+        <svg id="genus-rank-chart" className="chart" viewBox="-220 -20 960 620" />
       </div>
     </section>
   );
@@ -115,8 +115,10 @@ const ageName = (key: string, locale: string) =>
   locale === "zh" ? (AGE_GROUP_ZH[key] ?? key.replace(/_/g, " ")) : key.replace(/_/g, " ");
 const sexName = (key: string, locale: string) =>
   locale === "zh" ? (SEX_ZH[key] ?? key) : key;
-const dName = (key: string, locale: string, maxLen = 22) =>
-  diseaseShortNameI18n(key, locale, maxLen);
+const dName = (key: string, locale: string, maxLen = 52) => {
+  const full = diseaseDisplayNameI18n(key, locale);
+  return full.length > maxLen ? `${full.slice(0, maxLen - 3)}...` : full;
+};
 
 const drawAgeChart = (
   ageCounts: Record<string, number>,
@@ -177,7 +179,7 @@ const drawDiseaseChart = (diseaseCounts: Record<string, number>, activeDiseases:
   const svg = d3.select<SVGSVGElement, unknown>("#disease-chart");
   if (!svg.node()) return;
   svg.selectAll("*").remove();
-  const W = 420, H = 530;
+  const W = 520, H = 530;
   const primary = getCssVariable("--primary");
   const secondary = getCssVariable("--secondary");
   const data = Object.entries(diseaseCounts).sort((a, b) => b[1] - a[1]).slice(0, 20);
@@ -197,11 +199,11 @@ const drawDiseaseChart = (diseaseCounts: Record<string, number>, activeDiseases:
     .attr("role", "graphics-symbol")
     .attr("data-tooltip", ([name, count]) => renderToString(
       <div className="tooltip-table">
-        <span>{locale === "zh" ? "\u75be\u75c5" : "Disease"}</span><span>{dName(name, locale, 30)}</span>
+        <span>{locale === "zh" ? "\u75be\u75c5" : "Disease"}</span><span>{dName(name, locale, 56)}</span>
         <span>{locale === "zh" ? "\u6837\u672c\u6570" : "Samples"}</span><span>{formatNumber(count, false)}</span>
       </div>,
     ));
-  svg.append("g").call(d3.axisLeft(yScale).tickFormat((d) => dName(d, locale, 30))).attr("font-size", "14px");
+  svg.append("g").call(d3.axisLeft(yScale).tickFormat((d) => dName(d, locale, 46))).attr("font-size", "14px");
   svg.append("g").attr("transform", `translate(0,${H})`).call(d3.axisBottom(xScale).ticks(4).tickFormat((d) => formatNumber(Number(d)))).attr("font-size", "14px");
 };
 
@@ -215,9 +217,9 @@ const drawHeatmap = (
   svg.selectAll("*").remove();
 
   // Layout constants / 布局常量
-  const W = 800, H = 320;
+  const W = 940, H = 320;
   const LEGEND_W = 14;
-  const LEGEND_GAP = 30;   // gap between heatmap and legend
+  const LEGEND_GAP = 42;
   const primary = getCssVariable("--primary");
 
   const ages = AGE_ORDER.filter((a) => crossData.some((r) => r.age_group === a));
@@ -286,10 +288,10 @@ const drawHeatmap = (
   // 疾病名不截断（最长40字符），旋转-45°便于阅读
   svg.append("g")
     .attr("transform", `translate(0,${H})`)
-    .call(d3.axisBottom(xScale).tickFormat((d) => dName(d, locale, 40)))
+    .call(d3.axisBottom(xScale).tickFormat((d) => dName(d, locale, 54)))
     .attr("font-size", "11px")
     .selectAll("text")
-    .attr("transform", "rotate(-45)")
+    .attr("transform", "rotate(-52)")
     .attr("text-anchor", "end")
     .attr("dx", "-0.5em")
     .attr("dy", "0.1em")
@@ -356,7 +358,7 @@ const drawGenusRankChart = (
   if (!svg.node()) return;
   svg.selectAll("*").remove();
 
-  const W = 520;
+  const W = 620;
   const H = 540;
   const genusAbundance: Record<string, number> = {};
   const phylumMap = abundance.phylum_map ?? PHYLUM_MAP;

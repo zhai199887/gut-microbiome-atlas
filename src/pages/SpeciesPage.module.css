@@ -8,7 +8,7 @@
 }
 
 .header {
-  max-width: 1760px;
+  max-width: 1880px;
   margin: 0 auto;
   padding: 24px 14px 18px;
   display: grid;
@@ -123,7 +123,7 @@
 }
 
 .content {
-  max-width: 1760px;
+  max-width: 1880px;
   margin: 0 auto;
   padding: 0 14px 40px;
 }
@@ -281,12 +281,12 @@
 }
 
 :global(.species-gridProfile) {
-  grid-template-columns: repeat(auto-fit, minmax(min(520px, 100%), 1fr));
+  grid-template-columns: 1fr;
 }
 
 :global(.species-gridNetwork) {
-  grid-template-columns: minmax(260px, 0.46fr) minmax(700px, 1.78fr);
-  gap: 14px;
+  grid-template-columns: minmax(760px, 1.45fr) minmax(520px, 1fr);
+  gap: 18px;
   align-items: start;
 }
 
@@ -296,6 +296,10 @@
   border-radius: 22px;
   padding: 20px;
   min-width: 0;
+}
+
+:global(.species-gridProfile .species-chartCard) {
+  padding: 24px;
 }
 
 :global(.species-chartHeader) {
@@ -308,13 +312,13 @@
 
 :global(.species-chartHeader h3) {
   margin: 0;
-  font-size: 1.14rem;
+  font-size: 1.18rem;
 }
 
 :global(.species-chartHeader p) {
   margin: 7px 0 0;
-  font-size: 0.96rem;
-  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.98rem;
+  color: rgba(255, 255, 255, 0.88);
   line-height: 1.5;
 }
 
@@ -322,6 +326,7 @@
   width: 100%;
   height: auto;
   display: block;
+  min-height: 340px;
 }
 
 :global(.species-tableWrap) {
@@ -333,7 +338,7 @@
 :global(.species-table) {
   width: 100%;
   border-collapse: collapse;
-  font-size: 1.02rem;
+  font-size: 1.06rem;
 }
 
 :global(.species-table th),
@@ -386,7 +391,7 @@
   padding: 16px;
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 1480px) {
   :global(.species-gridNetwork) {
     grid-template-columns: 1fr;
   }

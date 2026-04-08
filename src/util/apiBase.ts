@@ -1,5 +1,5 @@
 export const LOCAL_API_BASE = "http://localhost:8000";
-export const PUBLIC_API_BASE = "https://32c774a.r12.cpolar.top";
+export const PUBLIC_API_BASE = "https://compendiumwebsite.vercel.app";
 const LOCAL_API_PORT = "8000";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
@@ -40,6 +40,7 @@ export function resolveApiBase(): string {
     if (LOCAL_HOSTS.has(host)) {
       return `${window.location.protocol}//${host}:${LOCAL_API_PORT}`;
     }
+    return stripTrailingSlash(window.location.origin);
   }
 
   return PUBLIC_API_BASE;

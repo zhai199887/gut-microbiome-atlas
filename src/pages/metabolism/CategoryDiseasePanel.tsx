@@ -2,11 +2,16 @@ import { useEffect, useRef } from "react";
 import { renderToString } from "react-dom/server";
 import * as d3 from "d3";
 import { useI18n } from "@/i18n";
-import { diseaseShortNameI18n } from "@/util/diseaseNames";
+import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import type { CategoryProfileResult, MetabolismCategory } from "./types";
 import classes from "../MetabolismPage.module.css";
 
 const MAX_ROWS = 20;
+
+const formatDiseaseLabel = (disease: string, locale: string, maxLen = 56) => {
+  const full = diseaseDisplayNameI18n(disease, locale);
+  return full.length > maxLen ? `${full.slice(0, maxLen - 3)}...` : full;
+};
 
 interface Props {
   category: MetabolismCategory;
@@ -36,9 +41,9 @@ const CategoryDiseasePanel = ({ category, result }: Props) => {
     const mutedColor = rootStyles.getPropertyValue("--gray").trim() || "#7d8699";
     const gridColor = rootStyles.getPropertyValue("--dark-gray").trim() || "#2c3344";
 
-    const width = 980;
-    const margin = { top: 24, right: 90, bottom: 40, left: 240 };
-    const rowHeight = 30;
+    const width = 1260;
+    const margin = { top: 24, right: 96, bottom: 40, left: 430 };
+    const rowHeight = 32;
     const height = margin.top + margin.bottom + rows.length * rowHeight;
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
@@ -111,7 +116,7 @@ const CategoryDiseasePanel = ({ category, result }: Props) => {
         renderToString(
           <div className="tooltip-table">
             <span>{locale === "zh" ? "疾病" : "Disease"}</span>
-            <span>{diseaseShortNameI18n(row.disease, locale, 40)}</span>
+            <span>{diseaseDisplayNameI18n(row.disease, locale)}</span>
             <span>{locale === "zh" ? "log2FC" : "log2FC"}</span>
             <span>{row.log2fc.toFixed(3)}</span>
             <span>{locale === "zh" ? "疾病组均值" : "Disease mean"}</span>
@@ -146,7 +151,7 @@ const CategoryDiseasePanel = ({ category, result }: Props) => {
       .attr("text-anchor", "end")
       .attr("font-size", 12)
       .attr("fill", textColor)
-      .text((row) => diseaseShortNameI18n(row.disease, locale, 28));
+      .text((row) => formatDiseaseLabel(row.disease, locale, 56));
 
     chart.selectAll(".count-label")
       .data(rows)

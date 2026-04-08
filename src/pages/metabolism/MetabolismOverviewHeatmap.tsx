@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { renderToString } from "react-dom/server";
 import * as d3 from "d3";
 import { useI18n } from "@/i18n";
-import { diseaseShortNameI18n } from "@/util/diseaseNames";
+import { diseaseDisplayNameI18n } from "@/util/diseaseNames";
 import type { MetabolismOverviewResult } from "./types";
 import classes from "../MetabolismPage.module.css";
 
@@ -10,6 +10,11 @@ interface Props {
   data: MetabolismOverviewResult;
   onSelectCategory: (categoryId: string) => void;
 }
+
+const formatDiseaseLabel = (disease: string, locale: string, maxLen = 32) => {
+  const full = diseaseDisplayNameI18n(disease, locale);
+  return full.length > maxLen ? `${full.slice(0, maxLen - 3)}...` : full;
+};
 
 const MetabolismOverviewHeatmap = ({ data, onSelectCategory }: Props) => {
   const { t, locale } = useI18n();
@@ -28,10 +33,10 @@ const MetabolismOverviewHeatmap = ({ data, onSelectCategory }: Props) => {
     const mutedColor = rootStyles.getPropertyValue("--gray").trim() || "#7d8699";
     const gridColor = rootStyles.getPropertyValue("--dark-gray").trim() || "#2c3344";
 
-    const cellWidth = 44;
+    const cellWidth = 56;
     const cellHeight = 28;
-    const width = 1160;
-    const margin = { top: 150, right: 40, bottom: 30, left: 280 };
+    const width = 1440;
+    const margin = { top: 186, right: 44, bottom: 34, left: 340 };
     const height = margin.top + margin.bottom + data.categories.length * cellHeight;
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
@@ -101,7 +106,7 @@ const MetabolismOverviewHeatmap = ({ data, onSelectCategory }: Props) => {
             <span>{locale === "zh" ? "类别" : "Category"}</span>
             <span>{cell.categoryName}</span>
             <span>{locale === "zh" ? "疾病" : "Disease"}</span>
-            <span>{diseaseShortNameI18n(cell.disease, locale, 40)}</span>
+            <span>{diseaseDisplayNameI18n(cell.disease, locale)}</span>
             <span>{locale === "zh" ? "log2FC" : "log2FC"}</span>
             <span>{cell.value === null ? "NA" : cell.value.toFixed(3)}</span>
             <span>{locale === "zh" ? "匹配属数" : "Matched genera"}</span>
@@ -115,12 +120,12 @@ const MetabolismOverviewHeatmap = ({ data, onSelectCategory }: Props) => {
     chart.append("g")
       .call(
         d3.axisTop(xScale)
-          .tickFormat((tick) => diseaseShortNameI18n(String(tick), locale, 18)),
+          .tickFormat((tick) => formatDiseaseLabel(String(tick), locale, 32)),
       )
       .attr("font-size", 11)
       .attr("color", mutedColor)
       .selectAll("text")
-      .attr("transform", "rotate(-42)")
+      .attr("transform", "rotate(-52)")
       .attr("text-anchor", "start");
 
     chart.selectAll(".row-label")

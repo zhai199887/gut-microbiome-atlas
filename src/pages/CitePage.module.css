@@ -1,7 +1,7 @@
 .page {
-  max-width: 1120px;
+  max-width: 1460px;
   margin: 0 auto;
-  padding: 2rem 1.5rem 4rem;
+  padding: 1.4rem 1.5rem 4rem;
 }
 
 .backLink {
@@ -29,7 +29,7 @@
 
 .heroText {
   margin: 0.6rem 0 0;
-  max-width: 760px;
+  max-width: 900px;
   line-height: 1.7;
   color: #506070;
 }

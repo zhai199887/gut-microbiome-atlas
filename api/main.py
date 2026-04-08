@@ -3713,11 +3713,12 @@ AGE_GROUP_ORDER = ["Infant", "Child", "Adolescent", "Adult", "Older_Adult", "Old
 def _lifecycle_filter_meta(meta: pd.DataFrame, disease: str = "", country: str = "") -> pd.DataFrame:
     """Filter metadata for lifecycle views using disease/country selectors."""
     filtered = meta.copy()
+    disease_value = str(disease).strip()
 
-    if disease and disease.strip():
-        filtered = filtered[_inform_label_mask(filtered, disease)]
-    else:
+    if disease_value.upper() == "NC":
         filtered = filtered[_strict_nc_mask(filtered)]
+    elif disease_value:
+        filtered = filtered[_inform_label_mask(filtered, disease)]
 
     if country and country.strip():
         filtered = filtered[filtered["country"].fillna("").astype(str).str.upper() == country.strip().upper()]
@@ -3940,7 +3941,7 @@ def _lifecycle_internal(
     kruskal_results = _lifecycle_kruskal_results(rel, sample_ages, age_groups_present, top_genus_names, genus_indices)
 
     result = {
-        "disease": disease or "Healthy (NC)",
+        "disease": disease or "All Samples (Global)",
         "country": country or "All",
         "total_samples": len(valid_keys),
         "genera": top_genus_names + ["Other"],
@@ -3992,7 +3993,7 @@ def lifecycle_compare(
         return cached
 
     disease_seed = _lifecycle_internal(disease=disease, country=country, top_genera=top_genera, use_cache=True)
-    nc_seed = _lifecycle_internal(disease="", country=country, top_genera=top_genera, use_cache=True)
+    nc_seed = _lifecycle_internal(disease="NC", country=country, top_genera=top_genera, use_cache=True)
 
     union_genera: list[str] = []
     for genus in disease_seed["genera"] + nc_seed["genera"]:
@@ -4009,7 +4010,7 @@ def lifecycle_compare(
         use_cache=False,
     )
     nc_result = _lifecycle_internal(
-        disease="",
+        disease="NC",
         country=country,
         top_genera=shared_top_genera,
         fixed_genera=union_genera,

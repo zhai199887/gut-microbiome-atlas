@@ -111,6 +111,9 @@ const LifecyclePage = () => {
   const compareNcSvgRef = useRef<SVGSVGElement>(null);
 
   const diseaseLabel = (name: string) => {
+    if (!name || !name.trim() || name === "All Samples (Global)") {
+      return t("lifecycle.allDiseases");
+    }
     if (name === "Healthy (NC)" || name === "NC") {
       return locale === "zh" ? "健康对照 (NC)" : "Healthy (NC)";
     }
@@ -136,12 +139,13 @@ const LifecyclePage = () => {
   }, []);
 
   const sortedDiseases = useMemo(() => sortDiseaseItemsByName(diseases), [diseases]);
+  const canCompare = Boolean(disease && disease.trim() && disease.toUpperCase() !== "NC");
 
   useEffect(() => {
-    if (!disease && viewMode === "compare") {
+    if (!canCompare && viewMode === "compare") {
       setViewMode("area");
     }
-  }, [disease, viewMode]);
+  }, [canCompare, viewMode]);
 
   useEffect(() => {
     setLoading(true);
@@ -154,7 +158,7 @@ const LifecyclePage = () => {
     params.set("top_genera", topN.toString());
 
     const run = async () => {
-      if (viewMode === "compare" && disease) {
+      if (viewMode === "compare" && canCompare) {
         const response = await cachedFetch<LifecycleDualData>(`${API_BASE}/api/lifecycle-compare?${params.toString()}`);
         setDualData(response);
         setData(null);
@@ -173,7 +177,7 @@ const LifecyclePage = () => {
         setError(locale === "zh" ? "后端未启动或生命周期接口不可用" : `Lifecycle API error: ${(err as Error).message}`);
       })
       .finally(() => setLoading(false));
-  }, [country, disease, locale, topN, viewMode]);
+  }, [canCompare, country, disease, locale, topN, viewMode]);
 
   useEffect(() => {
     if (viewMode !== "area" || !singleSvgRef.current || !data || data.data.length === 0) return;
@@ -338,7 +342,7 @@ const LifecyclePage = () => {
           <label>{t("lifecycle.viewMode")}</label>
           <select className={classes.select} value={viewMode} onChange={(e) => setViewMode(e.target.value as "area" | "compare")}>
             <option value="area">{t("lifecycle.modeNormal")}</option>
-            <option value="compare" disabled={!disease}>{t("lifecycle.modeCompare")}</option>
+            <option value="compare" disabled={!canCompare}>{t("lifecycle.modeCompare")}</option>
           </select>
         </div>
       </div>

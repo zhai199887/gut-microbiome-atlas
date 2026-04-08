@@ -612,11 +612,11 @@ const en = {
 
   // Lifecycle page
   "lifecycle.title": "Lifecycle Microbiome Atlas",
-  "lifecycle.subtitle": "Gut microbiome composition across 8 life stages",
+  "lifecycle.subtitle": "Gut microbiome composition across 8 life stages, with global and disease-vs-NC comparison views",
   "lifecycle.back": "← Back to Home",
   "lifecycle.filterDisease": "Filter by Disease",
   "lifecycle.filterCountry": "Filter by Country",
-  "lifecycle.allDiseases": "All (Healthy)",
+  "lifecycle.allDiseases": "All Samples (Global)",
   "lifecycle.allCountries": "All Countries",
   "lifecycle.stackedArea": "Stacked Area Chart",
   "lifecycle.transition": "Key Transitions",
@@ -625,7 +625,7 @@ const en = {
   "lifecycle.simpsonIndex": "Simpson Diversity Index (1-D)",
   "lifecycle.topN": "Displayed Genera",
   "lifecycle.viewMode": "View Mode",
-  "lifecycle.modeNormal": "Single Trajectory",
+  "lifecycle.modeNormal": "Single / Global Trajectory",
   "lifecycle.modeCompare": "Disease vs Healthy Control",
   "lifecycle.transitionTop3": "Top 3 Transition Genera",
   "lifecycle.kruskalSig": "Genera with Significant Age Variation",
@@ -1346,11 +1346,11 @@ const zh: Record<keyof typeof en, string> = {
 
   // Lifecycle page
   "lifecycle.title": "全生命周期微生物组图谱",
-  "lifecycle.subtitle": "8 个生命阶段的肠道菌群组成变化",
+  "lifecycle.subtitle": "8 个生命阶段的菌群轨迹，支持全局视图与疾病 vs NC 对比",
   "lifecycle.back": "← 返回首页",
   "lifecycle.filterDisease": "按疾病筛选",
   "lifecycle.filterCountry": "按国家筛选",
-  "lifecycle.allDiseases": "全部（健康人）",
+  "lifecycle.allDiseases": "全部样本（全局）",
   "lifecycle.allCountries": "所有国家",
   "lifecycle.stackedArea": "堆叠面积图",
   "lifecycle.transition": "关键转折点",
@@ -1359,7 +1359,7 @@ const zh: Record<keyof typeof en, string> = {
   "lifecycle.simpsonIndex": "Simpson 多样性指数 (1-D)",
   "lifecycle.topN": "展示属数",
   "lifecycle.viewMode": "展示模式",
-  "lifecycle.modeNormal": "单一轨迹",
+  "lifecycle.modeNormal": "单一 / 全局轨迹",
   "lifecycle.modeCompare": "疾病 vs 健康对照",
   "lifecycle.transitionTop3": "Top 3 变化菌属",
   "lifecycle.kruskalSig": "Kruskal-Wallis 显著变化菌属",
@@ -1372,7 +1372,6 @@ const zh: Record<keyof typeof en, string> = {
   "lifecycle.ageGroup.oldestOld": "高龄老人",
   "lifecycle.ageGroup.centenarian": "百岁老人",
   "lifecycle.ageGroup.unknown": "未知",
-
   // API Documentation
   "nav.apiDocs": "API",
   "apiDocs.title": "API 文档",

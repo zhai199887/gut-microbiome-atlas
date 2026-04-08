@@ -30,6 +30,12 @@ INVALID_GENERA = {
     "sp",
 }
 INFORM_COLS = [f"inform{i}" for i in range(12)]
+HEALTHY_CONTROL_ALIASES = {"nc", "healthy control", "helminth uninfected control"}
+CONTROL_GROUP_REMAP_LABELS = {
+    "No_Fecal occult blood positive,without severe underlying bowel disease",
+}
+CONTROL_GROUP_REMAP_LABELS_LOWER = {label.lower() for label in CONTROL_GROUP_REMAP_LABELS}
+EXCLUDED_DISEASE_ALIASES = {"dss colitis"}
 
 
 def is_valid_genus(name: str) -> bool:
@@ -44,23 +50,60 @@ def is_valid_genus(name: str) -> bool:
     return True
 
 
-def disease_mask(meta: pd.DataFrame, disease: str) -> pd.Series:
-    mask = pd.Series(False, index=meta.index)
-    disease_lower = disease.strip().lower()
+def normalize_inform_label(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    label = str(value).strip()
+    if not label:
+        return ""
+    lower = label.lower()
+    if lower in {"nan", "unknown"}:
+        return ""
+    if lower in CONTROL_GROUP_REMAP_LABELS_LOWER:
+        return "NC"
+    if lower in HEALTHY_CONTROL_ALIASES:
+        return "NC"
+    if lower in EXCLUDED_DISEASE_ALIASES:
+        return ""
+    return label
+
+
+def primary_condition_series(meta: pd.DataFrame) -> pd.Series:
+    if "inform-all" not in meta.columns:
+        return pd.Series("", index=meta.index, dtype=object)
+    return meta["inform-all"].fillna("").astype(str).str.strip().map(normalize_inform_label)
+
+
+def primary_condition_mask(meta: pd.DataFrame, label: str) -> pd.Series:
+    normalized = normalize_inform_label(label)
+    if not normalized:
+        return pd.Series(False, index=meta.index, dtype=bool)
+    primary = primary_condition_series(meta)
+    return primary.str.lower() == normalized.lower()
+
+
+def inform_label_mask(meta: pd.DataFrame, label: str) -> pd.Series:
+    normalized = normalize_inform_label(label)
+    if not normalized:
+        return pd.Series(False, index=meta.index, dtype=bool)
+    if normalized.lower() == "nc":
+        return primary_condition_mask(meta, "NC")
+
+    mask = pd.Series(False, index=meta.index, dtype=bool)
     for col in INFORM_COLS:
-        if col in meta.columns:
-            values = meta[col].fillna("").astype(str).str.strip().str.lower()
-            mask |= values == disease_lower
+        if col not in meta.columns:
+            continue
+        values = meta[col].fillna("").astype(str).str.strip().map(normalize_inform_label)
+        mask |= values.str.lower() == normalized.lower()
     return mask
+
+
+def disease_mask(meta: pd.DataFrame, disease: str) -> pd.Series:
+    return inform_label_mask(meta, disease)
 
 
 def control_mask(meta: pd.DataFrame) -> pd.Series:
-    mask = pd.Series(False, index=meta.index)
-    for col in INFORM_COLS:
-        if col in meta.columns:
-            values = meta[col].fillna("").astype(str).str.strip().str.lower()
-            mask |= values == "nc"
-    return mask
+    return primary_condition_mask(meta, "NC")
 
 
 def _matched_keys(meta: pd.DataFrame, abundance_df: pd.DataFrame) -> list[str]:

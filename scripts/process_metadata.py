@@ -41,6 +41,9 @@ INFORM_COLS = [f"inform{i}" for i in range(12)]
 
 
 def locate_source_csv() -> Path:
+    platform_copy = ROOT.parent / "data" / "metadata.csv"
+    if platform_copy.exists():
+        return platform_copy
     matches = sorted(glob.glob(r"D:\**\result_with_age_sex_with_age_group_meta.csv", recursive=True))
     if not matches:
         raise FileNotFoundError("Cannot find result_with_age_sex_with_age_group_meta.csv under D:\\")
@@ -128,14 +131,29 @@ def strict_nc_mask(df: pd.DataFrame) -> pd.Series:
     return inform_all == "NC"
 
 
+def primary_condition_series(df: pd.DataFrame) -> pd.Series:
+    if "inform-all" not in df.columns:
+        return pd.Series("", index=df.index, dtype=object)
+    return df["inform-all"].fillna("").astype(str).str.strip().map(normalize_inform_label)
+
+
+def primary_condition_counts(df: pd.DataFrame, *, include_nc: bool = True) -> Counter:
+    primary = primary_condition_series(df)
+    primary = primary[primary != ""]
+    if not include_nc:
+        primary = primary[primary.str.lower() != "nc"]
+    return Counter({str(name): int(count) for name, count in primary.value_counts().items()})
+
+
 def row_inform_labels(row: pd.Series) -> list[str]:
     if normalize_inform_label(row.get("inform-all", "")) == "NC":
         return ["NC"]
     labels: list[str] = []
     for col in INFORM_COLS:
         label = normalize_inform_label(row.get(col, ""))
-        if label:
-            labels.append(label)
+        if not label or label.lower() == "nc":
+            continue
+        labels.append(label)
     return labels
 
 
@@ -168,7 +186,7 @@ def standardize_metadata(df: pd.DataFrame) -> pd.DataFrame:
 
     apply_control_group_remap(df)
 
-    fill_mask = df["inform-all"].ne("") & df["inform0"].eq("")
+    fill_mask = df["inform-all"].ne("") & df["inform0"].eq("") & df["inform-all"].map(normalize_inform_label).ne("NC")
     if fill_mask.any():
         df.loc[fill_mask, "inform0"] = df.loc[fill_mask, "inform-all"]
 
@@ -294,9 +312,7 @@ def main() -> None:
     special_population_counts = Counter({
         label: count for label, count in union_counter.items() if label_kind(label) == "special_population"
     })
-    healthy_control_counts = Counter({
-        label: count for label, count in union_counter.items() if label_kind(label) == "healthy_control"
-    })
+    healthy_control_counts = Counter({"NC": int(primary_condition_counts(df, include_nc=True).get("NC", 0))})
 
     top20_diseases = [
         label

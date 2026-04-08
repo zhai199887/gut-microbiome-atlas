@@ -372,7 +372,7 @@ const DownloadPage = () => {
       cachedFetch<FilterOptionsResponse>(`${ACTIVE_API_BASE}/api/filter-options`),
     ])
       .then(([diseasePayload, genusPayload, filterPayload]) => {
-        setDiseases((diseasePayload.diseases ?? []).filter((item) => item.name !== "NC"));
+        setDiseases(diseasePayload.diseases ?? []);
         setGenera(genusPayload.genera ?? []);
         setCountries(filterPayload.countries ?? []);
       })

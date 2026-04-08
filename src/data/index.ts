@@ -28,6 +28,7 @@ export type MetadataSummary = {
   age_counts: Record<string, number>;
   sex_counts: Record<string, number>;
   disease_counts: Record<string, number>;
+  healthy_control_counts?: Record<string, number>;
   country_counts: Record<string, number>;
   region_counts: Record<string, number>;
   age_sex_cross: { age_group: string; sex: string; count: number }[];

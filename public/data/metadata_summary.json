@@ -1753,7 +1753,7 @@
     "inform0": {
       "healthy_control": {
         "labels": 1,
-        "samples": 78691
+        "samples": 78426
       },
       "disease": {
         "labels": 206,

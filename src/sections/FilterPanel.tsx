@@ -22,14 +22,23 @@ const FilterPanel = () => {
   const summary = useData((s) => s.summary);
   const filters = useData((s) => s.filters);
   const [diseaseSearch, setDiseaseSearch] = useState("");
+  const diseaseCountMap = useMemo(() => {
+    if (!summary) return {} as Record<string, number>;
+    const next: Record<string, number> = { ...summary.disease_counts };
+    const ncCount = summary.healthy_control_counts?.NC;
+    if (typeof ncCount === "number" && ncCount > 0) {
+      next.NC = ncCount;
+    }
+    return next;
+  }, [summary]);
   const allDiseases = useMemo(
     () =>
       summary
-        ? Object.keys(summary.disease_counts)
-            .filter((d) => d !== "unknown" && d !== "NC")
-            .sort((a, b) => (summary.disease_counts[b] ?? 0) - (summary.disease_counts[a] ?? 0))
+        ? Object.keys(diseaseCountMap)
+            .filter((d) => d !== "unknown")
+            .sort((a, b) => (diseaseCountMap[b] ?? 0) - (diseaseCountMap[a] ?? 0))
         : [],
-    [summary],
+    [diseaseCountMap, summary],
   );
 
   const displayDiseases = useMemo(() => {

@@ -5,7 +5,7 @@ import * as d3 from "d3";
 import { useI18n } from "@/i18n";
 
 import classes from "../ComparePage.module.css";
-import type { DiffResult } from "./types";
+import type { AlphaStats, DiffResult } from "./types";
 
 const PANELS = [
   { key: "shannon", titleEn: "Shannon", titleZh: "Shannon 指数" },
@@ -65,21 +65,23 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
       return;
     }
 
+    // drawBox uses server-side full-population stats when available (exact median/IQR),
+    // falling back to computing from the subsample array.
     const drawBox = (
       panelGroup: d3.Selection<SVGGElement, unknown, null, undefined>,
       yScale: d3.ScaleLinear<number, number>,
       xCenter: number,
       points: number[],
       color: string,
+      exactStats?: AlphaStats,
     ) => {
-      if (!points.length) return;
+      if (!points.length && !exactStats) return;
       const sorted = [...points].sort((left, right) => left - right);
-      const q1 = d3.quantile(sorted, 0.25) ?? 0;
-      const median = d3.quantile(sorted, 0.5) ?? 0;
-      const q3 = d3.quantile(sorted, 0.75) ?? 0;
-      const iqr = q3 - q1;
-      const lower = Math.max(sorted[0] ?? 0, q1 - 1.5 * iqr);
-      const upper = Math.min(sorted[sorted.length - 1] ?? 0, q3 + 1.5 * iqr);
+      const q1 = exactStats?.q1 ?? (d3.quantile(sorted, 0.25) ?? 0);
+      const median = exactStats?.median ?? (d3.quantile(sorted, 0.5) ?? 0);
+      const q3 = exactStats?.q3 ?? (d3.quantile(sorted, 0.75) ?? 0);
+      const lower = exactStats?.whisker_low ?? Math.max(sorted[0] ?? 0, q1 - 1.5 * (q3 - q1));
+      const upper = exactStats?.whisker_high ?? Math.min(sorted[sorted.length - 1] ?? 0, q3 + 1.5 * (q3 - q1));
       const boxWidth = 56;
 
       panelGroup.append("line")
@@ -110,16 +112,18 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
         .attr("stroke", color)
         .attr("stroke-width", 2.2);
 
-      const outliers = sorted.filter((value) => value < lower || value > upper);
-      panelGroup.append("g")
-        .selectAll("circle")
-        .data(outliers)
-        .join("circle")
-        .attr("cx", (_, index) => xCenter + ((index % 3) - 1) * 4)
-        .attr("cy", (value) => yScale(value))
-        .attr("r", 2.6)
-        .attr("fill", color)
-        .attr("opacity", 0.55);
+      // Scatter dots for the subsample (jitter within ±8px)
+      if (sorted.length > 0) {
+        panelGroup.append("g")
+          .selectAll("circle")
+          .data(sorted)
+          .join("circle")
+          .attr("cx", (_, i) => xCenter + ((i % 5) - 2) * 3.5)
+          .attr("cy", (value) => yScale(Math.min(value, yScale.domain()[1]!)))
+          .attr("r", 2.2)
+          .attr("fill", color)
+          .attr("opacity", 0.35);
+      }
     };
 
     PANELS.forEach((panel, panelIndex) => {
@@ -128,8 +132,12 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
 
       const groupAValues = safeSeries(alphaGroupA?.[panel.key]);
       const groupBValues = safeSeries(alphaGroupB?.[panel.key]);
+      const statsA = alphaGroupA?.stats?.[panel.key as keyof typeof alphaGroupA.stats];
+      const statsB = alphaGroupB?.stats?.[panel.key as keyof typeof alphaGroupB.stats];
       const panelValues = [...groupAValues, ...groupBValues];
-      const panelMax = Math.max(d3.max(panelValues) ?? 1, 1);
+      // Use whisker_high from stats for y-axis if available (represents true full-population range)
+      const statsMax = Math.max(statsA?.whisker_high ?? 0, statsB?.whisker_high ?? 0);
+      const panelMax = Math.max(d3.max(panelValues) ?? 1, statsMax, 1);
       const yScale = d3.scaleLinear()
         .domain([0, panelMax])
         .nice()
@@ -140,11 +148,14 @@ const AlphaBoxChart = ({ result }: { result: DiffResult }) => {
 
       panelGroup.append("g").call(d3.axisLeft(yScale).ticks(5)).attr("font-size", 11);
 
-      if (groupAValues.length > 0) {
-        drawBox(panelGroup, yScale, xA, groupAValues, "var(--secondary)");
+      const statsA = alphaGroupA?.stats?.[panel.key as keyof typeof alphaGroupA.stats];
+      const statsB = alphaGroupB?.stats?.[panel.key as keyof typeof alphaGroupB.stats];
+
+      if (groupAValues.length > 0 || statsA) {
+        drawBox(panelGroup, yScale, xA, groupAValues, "var(--secondary)", statsA);
       }
-      if (groupBValues.length > 0) {
-        drawBox(panelGroup, yScale, xB, groupBValues, "var(--primary)");
+      if (groupBValues.length > 0 || statsB) {
+        drawBox(panelGroup, yScale, xB, groupBValues, "var(--primary)", statsB);
       }
 
       panelGroup.append("text")

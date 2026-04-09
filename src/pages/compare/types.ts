@@ -50,10 +50,23 @@ export interface PermanovaResult {
   n_b: number;
 }
 
+export interface AlphaStats {
+  median: number;
+  q1: number;
+  q3: number;
+  whisker_low: number;
+  whisker_high: number;
+}
+
 export interface AlphaGroup {
   shannon: number[];
   simpson: number[];
   chao1: number[];
+  stats?: {
+    shannon: AlphaStats;
+    simpson: AlphaStats;
+    chao1: AlphaStats;
+  };
 }
 
 export interface BetaPoint {

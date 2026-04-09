@@ -12,7 +12,7 @@ import classes from "../CitePage.module.css";
 
 const PAPER_BIBTEX = `@unpublished{zhai2026gutbiomedb,
   title   = {GutBiomeDB: An Integrated Human Gut Microbiome Database},
-  author  = {Zhai, Jinxia and Li, Yingjie and Liu, Jiameng and Su, Xinyi and Cui, Runze and Zheng, Dianyu and Sun, Yuhan and Yu, Jingsheng and Dai, Cong},
+  author  = {Zhai, Jinxia and Li, Yingjie and Liu, Jiameng and Su, Xinyi and Cui, Runze and Zheng, Dianyu and Sun, Yuhan and Dai, Cong},
   note    = {Manuscript in preparation},
   year    = {2026}
 }`;

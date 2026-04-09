@@ -146,8 +146,8 @@ const BetaPCoAChart = ({ result }: { result: DiffResult }) => {
       .text(locale === "zh" ? "95% 置信椭圆展示组内离散度" : "95% confidence ellipses show within-group dispersion");
 
     [
-      { color: "var(--secondary)", label: result.summary.group_a_name },
-      { color: "var(--primary)", label: result.summary.group_b_name },
+      { color: "var(--secondary)", label: result.summary.group_a_name, n: groupA.length },
+      { color: "var(--primary)", label: result.summary.group_b_name, n: groupB.length },
     ].forEach((item, index) => {
       const legendX = width - margin.right + 12;
       const legendY = margin.top + 16 + index * 22;
@@ -156,16 +156,47 @@ const BetaPCoAChart = ({ result }: { result: DiffResult }) => {
         .attr("cy", legendY)
         .attr("r", 5)
         .attr("fill", item.color);
+      const displayLabel = item.label.length > 14 ? `${item.label.slice(0, 13)}...` : item.label;
       svg.append("text")
         .attr("x", legendX + 14)
         .attr("y", legendY + 4)
         .attr("fill", "var(--light-gray)")
         .attr("font-size", 10)
-        .text(item.label.length > 18 ? `${item.label.slice(0, 16)}...` : item.label);
+        .text(`${displayLabel} (n=${item.n})`);
     });
 
+    // PERMANOVA stats box — mirrors the paper figure
+    const perm = result.permanova;
+    if (perm) {
+      const bx = margin.left + innerWidth - 192;
+      const by = margin.top + 10;
+      const bw = 190;
+      const bh = 70;
+      svg.append("rect")
+        .attr("x", bx).attr("y", by)
+        .attr("width", bw).attr("height", bh)
+        .attr("rx", 5)
+        .attr("fill", "var(--card-bg, #fff)")
+        .attr("stroke", "var(--border, #ccc)")
+        .attr("stroke-width", 1)
+        .attr("opacity", 0.9);
+      const permLines = [
+        { text: "PERMANOVA", bold: true },
+        { text: `R² = ${perm.r_squared.toFixed(4)},  F = ${perm.f_statistic.toFixed(2)}`, bold: false },
+        { text: `p = ${perm.p_value} (${perm.permutations} perm.)`, bold: false },
+      ];
+      permLines.forEach((line, i) => {
+        svg.append("text")
+          .attr("x", bx + 10).attr("y", by + 18 + i * 18)
+          .attr("fill", "currentColor")
+          .attr("font-size", i === 0 ? 11 : 10)
+          .attr("font-weight", line.bold ? 700 : 400)
+          .text(line.text);
+      });
+    }
+
     svg.attr("viewBox", `0 0 ${width} ${height}`);
-  }, [current, locale, result.summary.group_a_name, result.summary.group_b_name]);
+  }, [current, locale, result.summary.group_a_name, result.summary.group_b_name, result.permanova]);
 
   if (!current) {
     return null;

@@ -15,7 +15,8 @@ const PANELS = [
 
 const formatP = (pValue: number | undefined, locale: string) => {
   if (pValue == null || Number.isNaN(pValue)) return locale === "zh" ? "p 不可用" : "p unavailable";
-  if (pValue < 0.001) return "p < 0.001";
+  if (pValue === 0) return "p < 1e-300";
+  if (pValue < 0.001) return `p = ${pValue.toExponential(2)}`;
   return `p = ${pValue.toFixed(3)}`;
 };
 

@@ -1582,6 +1582,15 @@ def spearman_analysis(request: Request, req: SpearmanAnalysisRequest):
     if len(selected_keys) < 6:
         raise HTTPException(400, "Need at least 6 matched samples for Spearman analysis")
 
+    # Cap to 2000 samples to keep computation fast (seed-42 random subsample)
+    MAX_SPEARMAN_SAMPLES = 2000
+    if len(selected_keys) > MAX_SPEARMAN_SAMPLES:
+        import numpy as _np
+        _rng = _np.random.default_rng(42)
+        selected_keys = [selected_keys[i] for i in sorted(
+            _rng.choice(len(selected_keys), MAX_SPEARMAN_SAMPLES, replace=False).tolist()
+        )]
+
     return run_spearman_analysis(
         abundance_df=abund,
         sample_keys=selected_keys,

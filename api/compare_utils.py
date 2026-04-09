@@ -149,6 +149,35 @@ def _adaptive_round_p_value(p_value: float) -> float:
     return p_value
 
 
+def _random_subsample_list(lst: list, n: int = 500) -> list:
+    """Return a seed-42 random subsample of up to n elements (preserves order)."""
+    if len(lst) <= n:
+        return lst
+    rng = np.random.default_rng(RANDOM_SEED)
+    indices = sorted(rng.choice(len(lst), n, replace=False).tolist())
+    return [lst[i] for i in indices]
+
+
+def _boxplot_stats(values: list[float]) -> dict:
+    """Full-population boxplot statistics for exact display."""
+    if not values:
+        return {"median": 0.0, "q1": 0.0, "q3": 0.0, "whisker_low": 0.0, "whisker_high": 0.0}
+    arr = np.array(values, dtype=float)
+    q1 = float(np.percentile(arr, 25))
+    median = float(np.median(arr))
+    q3 = float(np.percentile(arr, 75))
+    iqr = q3 - q1
+    whisker_low = float(max(float(arr.min()), q1 - 1.5 * iqr))
+    whisker_high = float(min(float(arr.max()), q3 + 1.5 * iqr))
+    return {
+        "median": round(median, 6),
+        "q1": round(q1, 6),
+        "q3": round(q3, 6),
+        "whisker_low": round(whisker_low, 6),
+        "whisker_high": round(whisker_high, 6),
+    }
+
+
 def _bh_neg_log10(neg_log10_values: Sequence[float]) -> list[float]:
     n = len(neg_log10_values)
     if n == 0:
@@ -437,7 +466,7 @@ def run_compare_analysis(
     method: str,
     group_a_name: str,
     group_b_name: str,
-    max_diff_taxa: int | None = 250,
+    max_diff_taxa: int | None = None,
 ) -> dict:
     columns = abundance_df.columns.tolist()
     raw_a = abundance_df.loc[list(valid_a)].values.astype(float)
@@ -513,16 +542,28 @@ def run_compare_analysis(
     chao1_a = [round(chao1_richness(row), 6) for row in raw_agg_a]
     chao1_b = [round(chao1_richness(row), 6) for row in raw_agg_b]
 
+    # Use seed-42 random subsample (≤500/group) for scatter display — matches paper Methods.
+    # Pre-computed full-population statistics are sent separately for exact boxplot drawing.
     alpha_diversity = {
         "group_a": {
-            "shannon": shannon_a[:500],
-            "simpson": simpson_a[:500],
-            "chao1": chao1_a[:500],
+            "shannon": _random_subsample_list(shannon_a),
+            "simpson": _random_subsample_list(simpson_a),
+            "chao1": _random_subsample_list(chao1_a),
+            "stats": {
+                "shannon": _boxplot_stats(shannon_a),
+                "simpson": _boxplot_stats(simpson_a),
+                "chao1": _boxplot_stats(chao1_a),
+            },
         },
         "group_b": {
-            "shannon": shannon_b[:500],
-            "simpson": simpson_b[:500],
-            "chao1": chao1_b[:500],
+            "shannon": _random_subsample_list(shannon_b),
+            "simpson": _random_subsample_list(simpson_b),
+            "chao1": _random_subsample_list(chao1_b),
+            "stats": {
+                "shannon": _boxplot_stats(shannon_b),
+                "simpson": _boxplot_stats(simpson_b),
+                "chao1": _boxplot_stats(chao1_b),
+            },
         },
     }
 

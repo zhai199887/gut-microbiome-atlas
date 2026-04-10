@@ -386,8 +386,8 @@ const ForestView = ({
         return (
           <g key={marker.taxon}>
             <title>{`${marker.taxon}\nlog2FC: ${marker.meta_log2fc.toFixed(3)}\n95% CI: [${marker.ci_low.toFixed(2)}, ${marker.ci_high.toFixed(2)}]\np: ${marker.meta_p.toExponential(2)}\nadj.p: ${marker.adjusted_meta_p.toExponential(2)}\nI2: ${marker.I2.toFixed(1)}%`}</title>
-            <text x={200} y={y + 4} textAnchor="end" fill="currentColor" fontSize="11">
-              {marker.taxon.length > 24 ? `${marker.taxon.slice(0, 22)}...` : marker.taxon}
+            <text x={180} y={y + 4} textAnchor="end" fill="currentColor" fontSize="11">
+              {marker.taxon.length > 28 ? `${marker.taxon.slice(0, 26)}...` : marker.taxon}
             </text>
             <line x1={scale(marker.ci_low)} x2={scale(marker.ci_high)} y1={y} y2={y} stroke={directionColor(marker.direction)} strokeWidth="2" />
             <circle cx={scale(marker.meta_log2fc)} cy={y} r={4 + Math.min(marker.n_significant, 4)} fill={directionColor(marker.direction)} />
@@ -434,25 +434,25 @@ const HeatmapView = ({
           <stop offset="100%" stopColor="rgba(34, 197, 94, 0.8)" />
         </linearGradient>
       </defs>
-      <text x={legendX} y={28} fill="#cbd5e1" fontSize="10">
+      <text x={legendX} y={8} fill="#cbd5e1" fontSize="10">
         log2FC
       </text>
       <rect
         x={legendX}
-        y={34}
+        y={14}
         width={150}
         height={10}
         rx={999}
         fill="url(#cross-study-heatmap-gradient)"
         stroke="rgba(148, 163, 184, 0.22)"
       />
-      <text x={legendX} y={58} fill="#94a3b8" fontSize="9">
+      <text x={legendX} y={38} fill="#94a3b8" fontSize="9">
         {locale === "zh" ? "对照富集 (-)" : "Control-enriched (-)"}
       </text>
-      <text x={legendX + 74} y={58} textAnchor="middle" fill="#94a3b8" fontSize="9">
+      <text x={legendX + 74} y={38} textAnchor="middle" fill="#94a3b8" fontSize="9">
         0
       </text>
-      <text x={legendX + 150} y={58} textAnchor="end" fill="#94a3b8" fontSize="9">
+      <text x={legendX + 150} y={38} textAnchor="end" fill="#94a3b8" fontSize="9">
         {locale === "zh" ? "疾病富集 (+)" : "Disease-enriched (+)"}
       </text>
       <text x={width / 2} y={18} textAnchor="middle" fill="currentColor" fontSize="13">
@@ -473,8 +473,8 @@ const HeatmapView = ({
       ))}
       {markers.map((marker, row) => (
         <g key={marker.taxon}>
-          <text x={220} y={rowStartY + row * cellHeight + 15} textAnchor="end" fill="currentColor" fontSize="10">
-            {marker.taxon.length > 18 ? `${marker.taxon.slice(0, 16)}...` : marker.taxon}
+          <text x={205} y={rowStartY + row * cellHeight + 15} textAnchor="end" fill="currentColor" fontSize="10">
+            {marker.taxon.length > 26 ? `${marker.taxon.slice(0, 24)}...` : marker.taxon}
           </text>
           {projectIds.map((projectId, col) => {
             const value = marker.per_project[projectId]?.log2fc ?? 0;
@@ -522,8 +522,8 @@ const ConsistencyView = ({
         return (
           <g key={marker.taxon}>
             <title>{`${marker.taxon}\nConsistency: ${score}%\nI2: ${marker.I2.toFixed(1)}%\nDirection: ${marker.direction}`}</title>
-            <text x={180} y={y + 11} textAnchor="end" fill="currentColor" fontSize="10">
-              {marker.taxon.length > 18 ? `${marker.taxon.slice(0, 16)}...` : marker.taxon}
+            <text x={165} y={y + 11} textAnchor="end" fill="currentColor" fontSize="10">
+              {marker.taxon.length > 26 ? `${marker.taxon.slice(0, 24)}...` : marker.taxon}
             </text>
             <rect x={200} y={y} width={widthPx} height={18} rx={5} fill={directionColor(marker.direction)} opacity="0.85" />
             <text x={630} y={y + 12} fill="#94a3b8" fontSize="10">
@@ -566,8 +566,8 @@ const BubbleView = ({
         return (
           <g key={marker.taxon}>
             <title>{`${marker.taxon}\nlog2FC: ${marker.meta_log2fc.toFixed(3)}\nCombined n: ${sampleSize}\nadj.p: ${marker.adjusted_meta_p.toExponential(2)}`}</title>
-            <text x={220} y={y + 4} textAnchor="end" fill="currentColor" fontSize="10">
-              {marker.taxon.length > 18 ? `${marker.taxon.slice(0, 16)}...` : marker.taxon}
+            <text x={205} y={y + 4} textAnchor="end" fill="currentColor" fontSize="10">
+              {marker.taxon.length > 26 ? `${marker.taxon.slice(0, 24)}...` : marker.taxon}
             </text>
             <circle
               cx={scale(marker.meta_log2fc)}

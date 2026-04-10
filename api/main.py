@@ -189,6 +189,7 @@ def warmup_data():
                 logging.warning(f"Warmup failed: {url} -> {e}")
 
         direct_warmups = [
+            ("network default", lambda: getattr(microbe_disease_network, "__wrapped__", microbe_disease_network)(None, 15, 30)),
             ("disease-profile NC", lambda: getattr(disease_profile, "__wrapped__", disease_profile)(None, "NC", 40)),
             ("lifecycle global", lambda: getattr(lifecycle_atlas, "__wrapped__", lifecycle_atlas)(None, "", "", 10)),
             ("lifecycle compare IBD", lambda: getattr(lifecycle_compare, "__wrapped__", lifecycle_compare)(None, "IBD", "", 10)),
@@ -4472,13 +4473,17 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
 
         # Per-taxon differential test
         taxa_results = []
+        pseudo = 1e-6
         for i, taxon in enumerate(taxa):
             vals_d = agg_d[:, i]
             vals_c = agg_c[:, i]
             mean_d = float(np.mean(vals_d))
             mean_c = float(np.mean(vals_c))
-            pseudo = 1e-6
-            log2fc = math.log2((mean_d + pseudo) / (mean_c + pseudo))
+            # Effect size: difference in mean log2-transformed relative abundances
+            # (pseudocount 1e-6), per paper Methods — matches log-scale SE below
+            log2_d = np.log2(vals_d + pseudo)
+            log2_c = np.log2(vals_c + pseudo)
+            log2fc = float(np.mean(log2_d) - np.mean(log2_c))
 
             try:
                 if req.method == "wilcoxon":
@@ -4488,8 +4493,11 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
             except Exception:
                 p = 1.0
 
-            # Standard error of mean difference
-            se = float(np.sqrt(np.var(vals_d) / len(vals_d) + np.var(vals_c) / len(vals_c)))
+            # SE on log-transformed scale using sample variance (ddof=1)
+            se = float(np.sqrt(
+                np.var(log2_d, ddof=1) / len(log2_d) +
+                np.var(log2_c, ddof=1) / len(log2_c)
+            ))
             taxa_results.append({
                 "taxon": taxon,
                 "log2fc": round(log2fc, 4),

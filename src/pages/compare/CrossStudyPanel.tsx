@@ -440,7 +440,7 @@ const HeatmapView = ({
       <rect
         x={legendX}
         y={14}
-        width={150}
+        width={200}
         height={10}
         rx={999}
         fill="url(#cross-study-heatmap-gradient)"
@@ -449,10 +449,10 @@ const HeatmapView = ({
       <text x={legendX} y={38} fill="#94a3b8" fontSize="9">
         {locale === "zh" ? "对照富集 (-)" : "Control-enriched (-)"}
       </text>
-      <text x={legendX + 74} y={38} textAnchor="middle" fill="#94a3b8" fontSize="9">
+      <text x={legendX + 100} y={38} textAnchor="middle" fill="#94a3b8" fontSize="9">
         0
       </text>
-      <text x={legendX + 150} y={38} textAnchor="end" fill="#94a3b8" fontSize="9">
+      <text x={legendX + 200} y={38} textAnchor="end" fill="#94a3b8" fontSize="9">
         {locale === "zh" ? "疾病富集 (+)" : "Disease-enriched (+)"}
       </text>
       <text x={width / 2} y={18} textAnchor="middle" fill="currentColor" fontSize="13">

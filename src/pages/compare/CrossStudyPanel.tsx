@@ -390,8 +390,8 @@ const ForestView = ({
             <text x={180} y={y + 4} textAnchor="end" fill="currentColor" fontSize="11">
               {marker.taxon.length > 28 ? `${marker.taxon.slice(0, 26)}...` : marker.taxon}
             </text>
-            <line x1={scale(marker.ci_low)} x2={scale(marker.ci_high)} y1={y} y2={y} stroke={directionColor(marker.direction)} strokeWidth="2" />
-            <circle cx={scale(marker.meta_log2fc)} cy={y} r={4 + Math.min(marker.n_significant, 4)} fill={directionColor(marker.direction)} />
+            <line x1={scale(marker.ci_low)} x2={scale(marker.ci_high)} y1={y} y2={y} stroke={directionColor(marker.meta_log2fc > 0 ? "disease" : "control")} strokeWidth="2" />
+            <circle cx={scale(marker.meta_log2fc)} cy={y} r={4 + Math.min(marker.n_significant, 4)} fill={directionColor(marker.meta_log2fc > 0 ? "disease" : "control")} />
             <text x={740} y={y + 4} fill="#94a3b8" fontSize="10">
               {marker.adjusted_meta_p < 0.001 ? "adj.p <0.001" : `adj.p ${marker.adjusted_meta_p.toFixed(3)}`}
             </text>
@@ -535,7 +535,7 @@ const ConsistencyView = ({
             <text x={165} y={y + 11} textAnchor="end" fill="currentColor" fontSize="10">
               {marker.taxon.length > 26 ? `${marker.taxon.slice(0, 24)}...` : marker.taxon}
             </text>
-            <rect x={200} y={y} width={widthPx} height={18} rx={5} fill={directionColor(marker.direction)} opacity="0.85" />
+            <rect x={200} y={y} width={widthPx} height={18} rx={5} fill={directionColor(marker.meta_log2fc > 0 ? "disease" : "control")} opacity="0.85" />
             <text x={630} y={y + 12} fill="#94a3b8" fontSize="10">
               {score}% / I2 {marker.I2.toFixed(0)}%
             </text>
@@ -592,7 +592,7 @@ const BubbleView = ({
               cx={scale(marker.meta_log2fc)}
               cy={y}
               r={radius}
-              fill={directionColor(marker.direction)}
+              fill={directionColor(marker.meta_log2fc > 0 ? "disease" : "control")}
               opacity={marker.adjusted_meta_p < 0.05 ? 0.9 : 0.45}
             />
             <text x={750} y={y + 4} fill="#94a3b8" fontSize="10">

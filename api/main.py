@@ -4023,7 +4023,7 @@ def _lifecycle_internal(
 ) -> dict:
     """Compute lifecycle atlas data with optional fixed genera for compare mode."""
     fixed_part = ",".join(fixed_genera or [])
-    cache_key = f"lifecycle:v6:{disease}:{country}:{top_genera}:{fixed_part}"
+    cache_key = f"lifecycle:v7:{disease}:{country}:{top_genera}:{fixed_part}"
     if use_cache:
         cached = get_cached(cache_key)
         if cached:
@@ -4195,18 +4195,29 @@ def _lifecycle_internal(
             df_w = n_perm - k_perm
             f_obs = (ss_between / df_a) / (ss_within / df_w) if ss_within > 0 and df_w > 0 else 0.0
             r_sq = ss_between / ss_total
-            # Permutation test
+            # Permutation test (vectorized inner loop)
             n_permutations = 999
+            # Pre-encode group labels as integer array for fast indexing
+            unique_groups = list(age_groups_present)
+            group_sizes = np.array([int((labels_arr == ag).sum()) for ag in unique_groups])
+            label_ints = np.zeros(n_perm, dtype=np.int32)
+            for gi, ag in enumerate(unique_groups):
+                label_ints[labels_arr == ag] = gi
+
+            def _ss_within_fast(lab_ints: np.ndarray) -> float:
+                sw = 0.0
+                for gi in range(len(unique_groups)):
+                    idx = np.where(lab_ints == gi)[0]
+                    ni = len(idx)
+                    if ni < 2:
+                        continue
+                    sw += float(D2[np.ix_(idx, idx)].sum()) / (2.0 * ni)
+                return sw
+
             f_count = 0
             for _ in range(n_permutations):
-                perm_labels = rng.permutation(labels_arr)
-                ss_w_perm = 0.0
-                for ag in age_groups_present:
-                    m = perm_labels == ag
-                    n_g = m.sum()
-                    if n_g < 2:
-                        continue
-                    ss_w_perm += float(np.sum(D2[np.ix_(m, m)])) / (2.0 * n_g)
+                perm_ints = rng.permutation(label_ints)
+                ss_w_perm = _ss_within_fast(perm_ints)
                 ss_b_perm = ss_total - ss_w_perm
                 f_perm = (ss_b_perm / df_a) / (ss_w_perm / df_w) if ss_w_perm > 0 else 0.0
                 if f_perm >= f_obs:

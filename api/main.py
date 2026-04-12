@@ -4164,9 +4164,7 @@ def _lifecycle_internal(
                     chosen = ag_idx
                 sub_indices.extend(chosen.tolist())
                 sub_labels.extend([ag] * len(chosen))
-            # Use species-level relative abundance (not genus-aggregated) for PERMANOVA
-            # to match paper methodology (Bray-Curtis on full species resolution)
-            sub_matrix = rel[sub_indices]
+            sub_matrix = genus_rel[sub_indices]
             dist_mat = cdist(sub_matrix, sub_matrix, metric="braycurtis")
             n_perm = len(sub_indices)
             k_perm = len(age_groups_present)

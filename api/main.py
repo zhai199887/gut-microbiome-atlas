@@ -4023,7 +4023,7 @@ def _lifecycle_internal(
 ) -> dict:
     """Compute lifecycle atlas data with optional fixed genera for compare mode."""
     fixed_part = ",".join(fixed_genera or [])
-    cache_key = f"lifecycle:v4:{disease}:{country}:{top_genera}:{fixed_part}"
+    cache_key = f"lifecycle:v5:{disease}:{country}:{top_genera}:{fixed_part}"
     if use_cache:
         cached = get_cached(cache_key)
         if cached:
@@ -4164,7 +4164,9 @@ def _lifecycle_internal(
                     chosen = ag_idx
                 sub_indices.extend(chosen.tolist())
                 sub_labels.extend([ag] * len(chosen))
-            sub_matrix = genus_rel[sub_indices]
+            # Use species-level relative abundance (not genus-aggregated) for PERMANOVA
+            # to match paper methodology (Bray-Curtis on full species resolution)
+            sub_matrix = rel[sub_indices]
             dist_mat = cdist(sub_matrix, sub_matrix, metric="braycurtis")
             n_perm = len(sub_indices)
             k_perm = len(age_groups_present)
@@ -4233,7 +4235,12 @@ def _lifecycle_internal(
             eta2_si = (float(h_si) - k_alpha + 1) / (n_alpha - k_alpha) if n_alpha > k_alpha else 0.0
             all_sh = np.concatenate(sh_groups)
             all_si = np.concatenate(si_groups)
-            ordinal_all = np.array([age_ordinal_map[sample_ages[i]] for i in known_indices])
+            # Build ordinal ages in the same grouped order as all_sh/all_si
+            # (all Infants first, then Children, etc.) to ensure alignment
+            ordinal_all = np.concatenate([
+                np.full(len(age_to_idx[ag]), age_ordinal_map[ag])
+                for ag in age_groups_present
+            ])
             rho_sh, p_rho_sh = stats.spearmanr(ordinal_all, all_sh)
             rho_si, p_rho_si = stats.spearmanr(ordinal_all, all_si)
             alpha_stats = {

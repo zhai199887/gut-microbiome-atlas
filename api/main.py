@@ -61,6 +61,10 @@ METADATA_PATH = os.getenv("METADATA_PATH", "")  # set via .env.local
 ABUNDANCE_PATH = os.getenv("ABUNDANCE_PATH", "")  # set via .env.local
 ADMIN_TOKEN    = os.getenv("ADMIN_TOKEN", "")
 
+# ── 缓存版本号：自动使用 main.py 文件哈希，代码一改缓存自动失效 ────────────
+import hashlib as _hashlib
+CACHE_BUST = _hashlib.md5(open(__file__, "rb").read()).hexdigest()[:8]
+
 # Validate at startup — use logging so warnings are never silently swallowed
 # 启动时校验：使用 logging 确保警告不会被静默丢弃
 if not METADATA_PATH:
@@ -189,7 +193,7 @@ def warmup_data():
                 logging.warning(f"Warmup failed: {url} -> {e}")
 
         direct_warmups = [
-            ("network default", lambda: getattr(microbe_disease_network, "__wrapped__", microbe_disease_network)(None, 15, 30)),
+            ("network default", lambda: getattr(microbe_disease_network, "__wrapped__", microbe_disease_network)(None, 12, 15)),
             ("disease-profile NC", lambda: getattr(disease_profile, "__wrapped__", disease_profile)(None, "NC", 40)),
             ("lifecycle global", lambda: getattr(lifecycle_atlas, "__wrapped__", lifecycle_atlas)(None, "", "", 10)),
             ("lifecycle compare IBD", lambda: getattr(lifecycle_compare, "__wrapped__", lifecycle_compare)(None, "IBD", "", 10)),
@@ -214,12 +218,18 @@ def warmup_data():
                 ),
             ),
         ]
-        for label, func in direct_warmups:
+        # 并行预热：所有重计算 endpoint 同时开始，总预热时间 ≈ 最慢单项（而非串行累加）
+        import concurrent.futures as _cf
+        def _run_warmup(item):
+            label, func = item
             try:
                 func()
                 logging.info(f"Warmup OK: direct {label}")
             except Exception as e:
                 logging.warning(f"Warmup failed: direct {label} -> {e}")
+        with _cf.ThreadPoolExecutor(max_workers=4) as _pool:
+            list(_pool.map(_run_warmup, direct_warmups))
+        logging.info("All direct warmups completed")
 
     def _preload_data():
         # Avoid blocking startup on the full abundance matrix so health checks
@@ -244,6 +254,38 @@ def warmup_data():
 
 _RESULT_CACHE: dict[str, tuple[float, float, dict]] = {}
 _CACHE_TTL = 3600  # 1 hour
+
+# 磁盘持久化缓存目录（重启后无需重算）
+_DISK_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_disk_cache")
+os.makedirs(_DISK_CACHE_DIR, exist_ok=True)
+_DISK_CACHE_TTL = 86400 * 7  # 7 天
+
+def _disk_cache_path(key: str) -> str:
+    safe = key.replace(":", "_").replace("/", "_")
+    return os.path.join(_DISK_CACHE_DIR, f"{safe}_v{CACHE_BUST}.json")
+
+def get_disk_cached(key: str):
+    """Load from disk cache if fresh; returns None if missing/expired."""
+    path = _disk_cache_path(key)
+    try:
+        if not os.path.exists(path):
+            return None
+        age = datetime.now().timestamp() - os.path.getmtime(path)
+        if age > _DISK_CACHE_TTL:
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+def set_disk_cached(key: str, val: dict):
+    """Persist result to disk cache."""
+    path = _disk_cache_path(key)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(val, f, ensure_ascii=False)
+    except Exception as e:
+        logging.warning(f"Disk cache write failed for {key}: {e}")
 
 def get_cached(key: str):
     """Return cached result if exists and not expired."""
@@ -2815,6 +2857,11 @@ def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera
     cached = get_cached(cache_key)
     if cached:
         return cached
+    # 磁盘持久化缓存：重启后无需重算（7天有效）
+    disk_cached = get_disk_cached(cache_key)
+    if disk_cached:
+        set_cached(cache_key, disk_cached)   # 同步到内存缓存
+        return disk_cached
     meta = get_metadata()
     abund = get_abundance()
 
@@ -2834,11 +2881,20 @@ def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera
     top_d = sorted(disease_counts.items(), key=lambda x: len(x[1]), reverse=True)[:top_diseases]
     disease_names = [d[0] for d in top_d]
 
-    # Build genus map / 构建属映射
+    # Build genus map（只保留 is_valid_genus 的属）/ 构建属映射
     genus_map: dict[str, list[str]] = {}
     for col in abund.columns:
         g = extract_genus(col)
-        genus_map.setdefault(g, []).append(col)
+        if is_valid_genus(g):
+            genus_map.setdefault(g, []).append(col)
+
+    # 预聚合：把列按属合并为 genus_abund（行=样本，列=属）
+    # 避免在每个疾病的内层循环里逐属切割，大幅提速
+    genus_cols_ordered = list(genus_map.keys())
+    genus_abund_full = pd.DataFrame(
+        {g: abund[cols].sum(axis=1) for g, cols in genus_map.items()},
+        index=abund.index,
+    )
 
     # For each disease, compute mean abundance of each genus
     # 对每个疾病，计算每个属的平均丰度
@@ -2848,29 +2904,23 @@ def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera
     for disease_name in disease_names:
         sample_indices = disease_counts[disease_name]
         sample_keys = meta.loc[list(sample_indices), "sample_key"].dropna().unique()
-        common = abund.index.intersection(sample_keys)
+        common = genus_abund_full.index.intersection(sample_keys)
         if len(common) == 0:
             continue
-        disease_abund_raw = abund.loc[common]
-        # Normalize to relative abundance (%) / 转换为相对丰度
-        d_totals = disease_abund_raw.sum(axis=1).replace(0, 1)
-        disease_abund = disease_abund_raw.div(d_totals, axis=0) * 100
+        disease_slice = genus_abund_full.loc[common]
+        # 行归一化为相对丰度 (%)
+        row_totals = disease_slice.sum(axis=1).replace(0, 1)
+        disease_rel = disease_slice.div(row_totals, axis=0) * 100
 
-        # Get top genera for this disease / 获取该疾病的 top 属
-        genus_means = []
-        for genus, cols in genus_map.items():
-            if not is_valid_genus(genus):
-                continue
-            m = float(disease_abund[cols].sum(axis=1).mean())
-            if m > 0:
-                genus_means.append((genus, m))
-        genus_means.sort(key=lambda x: x[1], reverse=True)
+        # 按属均值排名，取 top_genera
+        genus_means_s = disease_rel.mean()
+        genus_means_s = genus_means_s[genus_means_s > 0].nlargest(top_genera)
 
-        for genus, mean_val in genus_means[:top_genera]:
+        for genus, mean_val in genus_means_s.items():
             edges.append({
                 "source": disease_name,
                 "target": genus,
-                "weight": round(mean_val, 6),
+                "weight": round(float(mean_val), 6),
             })
             genus_set.add(genus)
 
@@ -2883,6 +2933,7 @@ def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera
 
     result = {"nodes": nodes, "edges": edges}
     set_cached(cache_key, result)
+    set_disk_cached(cache_key, result)   # 持久化到磁盘，重启后秒加载
     return result
 
 
@@ -2902,6 +2953,27 @@ def admin_check(request: Request, x_admin_token: str | None = Header(None)):
     """Verify admin token. / 验证管理员token"""
     _check_admin(x_admin_token)
     return {"status": "authorized"}
+
+
+@app.delete("/api/admin/clear-disk-cache",
+            summary="Clear disk cache",
+            description="Delete all disk-persisted cache files. Call after changing computation logic or uploading new data.",
+            tags=["Admin"])
+@limiter.limit("10/minute")
+def clear_disk_cache_endpoint(request: Request, x_admin_token: str | None = Header(None)):
+    """Clear all disk cache files and in-memory cache."""
+    _check_admin(x_admin_token)
+    deleted = []
+    try:
+        for fname in os.listdir(_DISK_CACHE_DIR):
+            if fname.endswith(".json"):
+                os.remove(os.path.join(_DISK_CACHE_DIR, fname))
+                deleted.append(fname)
+    except Exception as e:
+        raise HTTPException(500, f"Failed to clear disk cache: {e}")
+    _RESULT_CACHE.clear()
+    return {"deleted": len(deleted), "files": deleted,
+            "message": "Disk and memory cache cleared. Warmup will re-run on next request."}
 
 
 @app.post("/api/admin/upload-metadata",
@@ -3366,6 +3438,10 @@ def biomarker_discovery(request: Request, disease: str, lda_threshold: float = 2
     cached = get_cached(cache_key)
     if cached:
         return cached
+    disk_hit = get_disk_cached(cache_key)
+    if disk_hit:
+        set_cached(cache_key, disk_hit)
+        return disk_hit
 
     if not disease or not disease.strip():
         raise HTTPException(400, "disease parameter is required")
@@ -3458,6 +3534,7 @@ def biomarker_discovery(request: Request, disease: str, lda_threshold: float = 2
         "markers": markers[:100],
     }
     set_cached(cache_key, result)
+    set_disk_cached(cache_key, result)
     return result
 
 
@@ -3478,6 +3555,10 @@ def lollipop_data(request: Request, disease: str, top_n: int = 40):
     cached = get_cached(cache_key)
     if cached:
         return cached
+    disk_hit = get_disk_cached(cache_key)
+    if disk_hit:
+        set_cached(cache_key, disk_hit)
+        return disk_hit
 
     try:
         result = build_lollipop_result(get_metadata(), get_abundance(), disease, top_n=max(top_n, 120))
@@ -3489,6 +3570,7 @@ def lollipop_data(request: Request, disease: str, top_n: int = 40):
 
     result["data"] = result["data"][:top_n]
     set_cached(cache_key, result)
+    set_disk_cached(cache_key, result)
     return result
 
 
@@ -3703,7 +3785,7 @@ def cooccurrence_network(
     min_r: float = 0.3,
     top_genera: int = 50,
     max_samples: int = 3000,
-    method: str = "spearman",
+    method: str = "sparcc",
     fdr_threshold: float = 0.05,
 ):
     """
@@ -3741,7 +3823,7 @@ def network_compare(
     min_r: float = 0.3,
     top_genera: int = 50,
     max_samples: int = 3000,
-    method: str = "spearman",
+    method: str = "sparcc",
     fdr_threshold: float = 0.05,
 ):
     """Compare disease and healthy-control co-occurrence networks."""
@@ -3940,6 +4022,10 @@ def _lifecycle_internal(
         cached = get_cached(cache_key)
         if cached:
             return cached
+        disk_hit = get_disk_cached(cache_key)
+        if disk_hit:
+            set_cached(cache_key, disk_hit)
+            return disk_hit
 
     meta = get_metadata()
     abund = get_abundance()
@@ -4038,6 +4124,7 @@ def _lifecycle_internal(
 
     if use_cache:
         set_cached(cache_key, result)
+        set_disk_cached(cache_key, result)
     return result
 
 
@@ -4076,6 +4163,10 @@ def lifecycle_compare(
     cached = get_cached(cache_key)
     if cached:
         return cached
+    disk_hit = get_disk_cached(cache_key)
+    if disk_hit:
+        set_cached(cache_key, disk_hit)
+        return disk_hit
 
     disease_seed = _lifecycle_internal(disease=disease, country=country, top_genera=top_genera, use_cache=True)
     nc_seed = _lifecycle_internal(disease="NC", country=country, top_genera=top_genera, use_cache=True)
@@ -4107,6 +4198,7 @@ def lifecycle_compare(
         "nc_data": nc_result,
     }
     set_cached(cache_key, result)
+    set_disk_cached(cache_key, result)
     return result
 
 

@@ -3871,6 +3871,7 @@ def network_compare(
 
 
 AGE_GROUP_ORDER = ["Infant", "Child", "Adolescent", "Adult", "Older_Adult", "Oldest_Old", "Centenarian", "Unknown"]
+AGE_NAMED_ORDER = ["Infant", "Child", "Adolescent", "Adult", "Older_Adult", "Oldest_Old", "Centenarian"]
 
 
 def _lifecycle_filter_meta(meta: pd.DataFrame, disease: str = "", country: str = "") -> pd.DataFrame:
@@ -3990,12 +3991,17 @@ def _lifecycle_kruskal_results(
         except Exception:
             continue
 
+        k_groups = len(groups)
+        n_total = sum(len(g) for g in groups)
+        eta_sq = (float(h_stat) - k_groups + 1) / (n_total - k_groups) if n_total > k_groups else 0.0
+
         raw_rows.append({
             "genus": genus,
             "kruskal_h": round(float(h_stat), 4),
             "kruskal_p": round(float(p_value), 6),
             "adjusted_p": None,
             "significant": False,
+            "eta_squared": round(eta_sq, 4),
         })
         raw_pvals.append(float(p_value))
 
@@ -4017,7 +4023,7 @@ def _lifecycle_internal(
 ) -> dict:
     """Compute lifecycle atlas data with optional fixed genera for compare mode."""
     fixed_part = ",".join(fixed_genera or [])
-    cache_key = f"lifecycle:v3:{disease}:{country}:{top_genera}:{fixed_part}"
+    cache_key = f"lifecycle:v4:{disease}:{country}:{top_genera}:{fixed_part}"
     if use_cache:
         cached = get_cached(cache_key)
         if cached:
@@ -4071,8 +4077,12 @@ def _lifecycle_internal(
     )
     sample_ages = np.array([filtered_age_lookup.get(key, "Unknown") or "Unknown" for key in valid_keys], dtype=object)
     age_lookup_set = set(sample_ages.tolist())
-    age_groups_present = [age_group for age_group in AGE_GROUP_ORDER if age_group in age_lookup_set]
-    age_to_idx = {age_group: np.flatnonzero(sample_ages == age_group) for age_group in age_groups_present}
+    # Use only named age groups (exclude Unknown) for visualization and statistics
+    age_groups_present = [ag for ag in AGE_NAMED_ORDER if ag in age_lookup_set]
+    age_to_idx = {ag: np.flatnonzero(sample_ages == ag) for ag in age_groups_present}
+    # Count known-age samples for display
+    known_age_count = sum(len(age_to_idx[ag]) for ag in age_groups_present)
+    unknown_count = int(np.sum(sample_ages == "Unknown"))
 
     stacked_data: list[dict] = []
     phylum_lookup = {
@@ -4111,15 +4121,150 @@ def _lifecycle_internal(
     transitions = _lifecycle_top_transitions(genus_rel, age_to_idx, stacked_data, top_genus_names, genus_to_col)
     kruskal_results = _lifecycle_kruskal_results(genus_rel, age_groups_present, top_genus_names, genus_to_col, age_to_idx)
 
+    # ── Spearman rank correlation (genus RA vs ordinal age) ──
+    age_ordinal_map = {ag: i + 1 for i, ag in enumerate(AGE_NAMED_ORDER)}
+    known_mask = np.isin(sample_ages, AGE_NAMED_ORDER)
+    known_indices = np.flatnonzero(known_mask)
+    spearman_results: list[dict] = []
+    if len(known_indices) > 10 and len(age_groups_present) >= 3:
+        ordinal_ages = np.array([age_ordinal_map[sample_ages[i]] for i in known_indices])
+        sp_pvals: list[float] = []
+        sp_rows: list[dict] = []
+        for gname in top_genus_names:
+            col_idx = genus_to_col.get(gname)
+            if col_idx is None:
+                continue
+            vals = genus_rel[known_indices, col_idx]
+            try:
+                rho, pval = stats.spearmanr(ordinal_ages, vals)
+            except Exception:
+                continue
+            sp_rows.append({"genus": gname, "rho": round(float(rho), 4), "pval": float(pval), "adjusted_p": None, "significant": False})
+            sp_pvals.append(float(pval))
+        if sp_pvals:
+            adj = bh_correction(sp_pvals)
+            for i, row in enumerate(sp_rows):
+                row["adjusted_p"] = round(float(adj[i]), 6)
+                row["significant"] = bool(adj[i] < 0.05)
+        spearman_results = sp_rows
+
+    # ── PERMANOVA (Bray-Curtis, subsampled, 999 permutations) ──
+    permanova_result: dict = {}
+    if len(age_groups_present) >= 3 and known_age_count >= 30:
+        try:
+            max_per_group = 500
+            rng = np.random.RandomState(42)
+            sub_indices: list[int] = []
+            sub_labels: list[str] = []
+            for ag in age_groups_present:
+                ag_idx = age_to_idx[ag]
+                if len(ag_idx) > max_per_group:
+                    chosen = rng.choice(ag_idx, max_per_group, replace=False)
+                else:
+                    chosen = ag_idx
+                sub_indices.extend(chosen.tolist())
+                sub_labels.extend([ag] * len(chosen))
+            sub_matrix = genus_rel[sub_indices]
+            dist_mat = cdist(sub_matrix, sub_matrix, metric="braycurtis")
+            n_perm = len(sub_indices)
+            k_perm = len(age_groups_present)
+            labels_arr = np.array(sub_labels)
+            # SS_total
+            grand_mean_dist = dist_mat.mean()
+            ss_total = 0.5 * np.sum(dist_mat ** 2) / n_perm
+            # SS_within
+            ss_within = 0.0
+            for ag in age_groups_present:
+                mask_ag = labels_arr == ag
+                if mask_ag.sum() < 2:
+                    continue
+                sub_dist = dist_mat[np.ix_(mask_ag, mask_ag)]
+                ss_within += 0.5 * np.sum(sub_dist ** 2) / mask_ag.sum()
+            ss_between = ss_total - ss_within
+            f_obs = (ss_between / (k_perm - 1)) / (ss_within / (n_perm - k_perm)) if ss_within > 0 else 0.0
+            r_sq = ss_between / ss_total if ss_total > 0 else 0.0
+            # Permutation test
+            n_permutations = 999
+            f_count = 0
+            for _ in range(n_permutations):
+                perm_labels = rng.permutation(labels_arr)
+                ss_w_perm = 0.0
+                for ag in age_groups_present:
+                    m = perm_labels == ag
+                    if m.sum() < 2:
+                        continue
+                    ss_w_perm += 0.5 * np.sum(dist_mat[np.ix_(m, m)] ** 2) / m.sum()
+                ss_b_perm = ss_total - ss_w_perm
+                f_perm = (ss_b_perm / (k_perm - 1)) / (ss_w_perm / (n_perm - k_perm)) if ss_w_perm > 0 else 0.0
+                if f_perm >= f_obs:
+                    f_count += 1
+            p_perm = (f_count + 1) / (n_permutations + 1)
+            permanova_result = {
+                "r_squared": round(r_sq, 4),
+                "pseudo_f": round(f_obs, 4),
+                "p_value": round(p_perm, 4),
+                "n_permutations": n_permutations,
+                "n_samples_used": n_perm,
+                "n_groups": k_perm,
+                "df_between": k_perm - 1,
+                "df_within": n_perm - k_perm,
+            }
+        except Exception:
+            permanova_result = {}
+
+    # ── Alpha diversity summary statistics ──
+    alpha_stats: dict = {}
+    if len(age_groups_present) >= 3 and known_age_count >= 30:
+        try:
+            k_alpha = len(age_groups_present)
+            n_alpha = known_age_count
+            sh_groups = []
+            si_groups = []
+            for ag in age_groups_present:
+                ag_idx = age_to_idx[ag]
+                ag_rel = genus_rel[ag_idx] / 100.0
+                sh_vals = np.array([shannon_diversity(ag_rel[j]) for j in range(len(ag_idx))])
+                si_vals = np.array([simpson_diversity(ag_rel[j]) for j in range(len(ag_idx))])
+                sh_groups.append(sh_vals)
+                si_groups.append(si_vals)
+            h_sh, p_sh = stats.kruskal(*sh_groups)
+            h_si, p_si = stats.kruskal(*si_groups)
+            eta2_sh = (float(h_sh) - k_alpha + 1) / (n_alpha - k_alpha) if n_alpha > k_alpha else 0.0
+            eta2_si = (float(h_si) - k_alpha + 1) / (n_alpha - k_alpha) if n_alpha > k_alpha else 0.0
+            all_sh = np.concatenate(sh_groups)
+            all_si = np.concatenate(si_groups)
+            ordinal_all = np.array([age_ordinal_map[sample_ages[i]] for i in known_indices])
+            rho_sh, p_rho_sh = stats.spearmanr(ordinal_all, all_sh)
+            rho_si, p_rho_si = stats.spearmanr(ordinal_all, all_si)
+            alpha_stats = {
+                "shannon_kw_h": round(float(h_sh), 2),
+                "shannon_kw_p": float(p_sh),
+                "shannon_eta_squared": round(eta2_sh, 4),
+                "shannon_spearman_rho": round(float(rho_sh), 4),
+                "shannon_spearman_p": float(p_rho_sh),
+                "simpson_kw_h": round(float(h_si), 2),
+                "simpson_kw_p": float(p_si),
+                "simpson_eta_squared": round(eta2_si, 4),
+                "simpson_spearman_rho": round(float(rho_si), 4),
+                "simpson_spearman_p": float(p_rho_si),
+            }
+        except Exception:
+            alpha_stats = {}
+
     result = {
         "disease": disease or "All Samples (Global)",
         "country": country or "All",
-        "total_samples": len(valid_keys),
+        "total_samples": known_age_count,
+        "total_samples_all": len(valid_keys),
+        "unknown_count": unknown_count,
         "genera": top_genus_names + ["Other"],
         "phylum_map": {genus: phylum_lookup.get(genus, "Unknown") for genus in top_genus_names},
         "data": stacked_data,
         "transitions": transitions,
         "kruskal_results": kruskal_results,
+        "spearman_results": spearman_results,
+        "permanova": permanova_result,
+        "alpha_diversity_stats": alpha_stats,
     }
 
     if use_cache:

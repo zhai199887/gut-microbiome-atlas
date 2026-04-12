@@ -110,6 +110,11 @@
   font-size: 0.78rem;
   color: var(--gray);
 }
+.summarySubtext {
+  font-size: 0.72rem;
+  color: var(--gray);
+  font-weight: 400;
+}
 
 .chartCard,
 .transitionCard {

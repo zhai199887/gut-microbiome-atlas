@@ -4195,30 +4195,28 @@ def _lifecycle_internal(
             df_w = n_perm - k_perm
             f_obs = (ss_between / df_a) / (ss_within / df_w) if ss_within > 0 and df_w > 0 else 0.0
             r_sq = ss_between / ss_total
-            # Permutation test — batched matrix multiply (memory-safe)
+            # Permutation test — use float32 D2 + sequential loop with np.where
             n_permutations = 999
-            batch_size = 100
+            D2_f32 = D2.astype(np.float32)
             label_ints = np.zeros(n_perm, dtype=np.int32)
             for gi, ag in enumerate(age_groups_present):
                 label_ints[labels_arr == ag] = gi
             f_count = 0
-            perms_done = 0
-            while perms_done < n_permutations:
-                bs = min(batch_size, n_permutations - perms_done)
-                batch_perms = np.column_stack([rng.permutation(label_ints) for _ in range(bs)])
-                ss_w_batch = np.zeros(bs)
+            for _ in range(n_permutations):
+                perm = rng.permutation(label_ints)
+                ss_w_perm = 0.0
                 for gi in range(k_perm):
-                    V = (batch_perms == gi).astype(np.float64)
-                    n_g_b = V.sum(axis=0)
-                    DV = D2 @ V
-                    ws = (V * DV).sum(axis=0)
-                    valid = n_g_b >= 2
-                    ss_w_batch[valid] += ws[valid] / (2.0 * n_g_b[valid])
-                ss_b_batch = ss_total - ss_w_batch
-                f_batch = np.where(ss_w_batch > 0, (ss_b_batch / df_a) / (ss_w_batch / df_w), 0.0)
-                f_count += int(np.sum(f_batch >= f_obs))
-                perms_done += bs
+                    idx = np.where(perm == gi)[0]
+                    ni = len(idx)
+                    if ni < 2:
+                        continue
+                    ss_w_perm += float(D2_f32[np.ix_(idx, idx)].sum()) / (2.0 * ni)
+                ss_b_perm = ss_total - ss_w_perm
+                f_perm = (ss_b_perm / df_a) / (ss_w_perm / df_w) if ss_w_perm > 0 else 0.0
+                if f_perm >= f_obs:
+                    f_count += 1
             p_perm = (f_count + 1) / (n_permutations + 1)
+            del D2_f32
             permanova_result = {
                 "r_squared": round(r_sq, 4),
                 "pseudo_f": round(f_obs, 4),

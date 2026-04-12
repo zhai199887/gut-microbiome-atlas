@@ -20,7 +20,7 @@ const CooccurrencePanel = () => {
   const [diseases, setDiseases] = useState<DiseaseItem[]>([]);
   const [disease, setDisease] = useState("");
   const [minR, setMinR] = useState(0.3);
-  const [method, setMethod] = useState<NetworkMethod>("spearman");
+  const [method, setMethod] = useState<NetworkMethod>("sparcc");
   const [colorMode, setColorMode] = useState<ColorMode>("phylum");
   const [data, setData] = useState<CoData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,7 +39,7 @@ const CooccurrencePanel = () => {
     setError("");
     const params = new URLSearchParams({
       min_r: String(minR),
-      top_genera: "45",
+      top_genera: "50",
       method,
       fdr_threshold: "0.05",
     });
@@ -59,6 +59,14 @@ const CooccurrencePanel = () => {
   }, [colorMode, data, locale]);
 
   const availableMethods = data?.available_methods ?? { spearman: true, sparcc: true };
+
+  // Auto-fallback: if SparCC is confirmed unavailable but currently selected, switch to Spearman
+  useEffect(() => {
+    if (data && !availableMethods.sparcc && method === "sparcc") {
+      setMethod("spearman");
+    }
+  }, [availableMethods.sparcc, data, method]);
+
   const methodNote = useMemo(() => {
     if (data?.method_note) return data.method_note;
     if (!availableMethods.sparcc) {
@@ -223,11 +231,11 @@ const CooccurrencePanel = () => {
 
               <div className={styles.legend}>
                 <div className={styles.legendItem}>
-                  <span className={styles.legendDot} style={{ background: "#4ecdc4" }} />
+                  <span className={styles.legendDot} style={{ background: "#22c55e" }} />
                   <span>{locale === "zh" ? "正相关边" : "Positive edge"}</span>
                 </div>
                 <div className={styles.legendItem}>
-                  <span className={styles.legendDot} style={{ background: "#ff6b6b" }} />
+                  <span className={styles.legendDot} style={{ background: "#ef4444" }} />
                   <span>{locale === "zh" ? "负相关边" : "Negative edge"}</span>
                 </div>
                 <div className={styles.legendItem}>

@@ -5,8 +5,8 @@ import { phylumColor } from "@/util/phylumColors";
 
 import type { CoData, CoEdge, CoNode, ColorMode } from "./types";
 
-const POSITIVE_COLOR = "#4ecdc4";
-const NEGATIVE_COLOR = "#ff6b6b";
+const POSITIVE_COLOR = "#22c55e";
+const NEGATIVE_COLOR = "#ef4444";
 const HUB_STROKE = "#facc15";
 
 const edgeSourceId = (edge: Pick<CoEdge, "source" | "target">) => (
@@ -105,11 +105,7 @@ export function drawCooccurrenceGraph(
     .selectAll("line")
     .data(edges)
     .join("line")
-    .attr("stroke", (edge) => {
-      const highlighted = usableHighlight?.has(cooccurrenceEdgeKey(edge));
-      if (highlighted && highlightStroke) return highlightStroke;
-      return edge.type === "positive" ? POSITIVE_COLOR : NEGATIVE_COLOR;
-    })
+    .attr("stroke", (edge) => edge.type === "positive" ? POSITIVE_COLOR : NEGATIVE_COLOR)
     .attr("stroke-opacity", (edge) => {
       if (usableHighlight) return usableHighlight.has(cooccurrenceEdgeKey(edge)) ? 0.95 : 0.18;
       return Math.min(0.82, 0.18 + Math.abs(edge.r) * 0.8);

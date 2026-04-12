@@ -17,7 +17,7 @@ const NetworkComparePanel = () => {
   const [diseases, setDiseases] = useState<DiseaseItem[]>([]);
   const [disease, setDisease] = useState("");
   const [minR, setMinR] = useState(0.3);
-  const [method, setMethod] = useState<NetworkMethod>("spearman");
+  const [method, setMethod] = useState<NetworkMethod>("sparcc");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<NetworkCompareData | null>(null);
@@ -42,7 +42,7 @@ const NetworkComparePanel = () => {
       const params = new URLSearchParams({
         disease,
         min_r: String(minR),
-        top_genera: "45",
+        top_genera: "50",
         method,
         fdr_threshold: "0.05",
       });
@@ -72,7 +72,6 @@ const NetworkComparePanel = () => {
       locale,
       colorMode: "community",
       highlightEdgeKeys: gainedKeys,
-      highlightStroke: "#22c55e",
       height: 540,
     });
   }, [gainedKeys, locale, result]);
@@ -83,13 +82,20 @@ const NetworkComparePanel = () => {
       locale,
       colorMode: "community",
       highlightEdgeKeys: lostKeys,
-      highlightStroke: "#ef4444",
       highlightDasharray: "7 5",
       height: 540,
     });
   }, [locale, lostKeys, result]);
 
   const availableMethods = result?.disease_network.available_methods ?? { spearman: true, sparcc: true };
+
+  // Auto-fallback: if SparCC is confirmed unavailable but currently selected, switch to Spearman
+  useEffect(() => {
+    if (result && !availableMethods.sparcc && method === "sparcc") {
+      setMethod("spearman");
+    }
+  }, [availableMethods.sparcc, result, method]);
+
   const rewiredPreview = result?.rewired_edges.slice(0, 12) ?? [];
   const switchedPreview = result?.sign_switched_edges.slice(0, 8) ?? [];
 
@@ -213,7 +219,7 @@ const NetworkComparePanel = () => {
                 <div>
                   <h3 className={styles.cardTitle}>{locale === "zh" ? "重塑边 Top 12" : "Top rewired edges"}</h3>
                   <p className={styles.cardSubtle}>
-                    {locale === "zh" ? "绿色表示疾病特异，红色表示健康特异" : "Green indicates disease-only edges; red indicates control-only edges"}
+                    {locale === "zh" ? "绿色=正相关，红色=负相关；虚线=仅出现于健康组的重塑边" : "Green = positive, Red = negative; dashed = control-only rewired edge"}
                   </p>
                 </div>
               </div>

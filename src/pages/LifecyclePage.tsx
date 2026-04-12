@@ -50,17 +50,55 @@ export interface LifecycleKruskal {
   kruskal_p: number;
   adjusted_p: number;
   significant: boolean;
+  eta_squared?: number;
+}
+
+export interface LifecycleSpearman {
+  genus: string;
+  rho: number;
+  pval: number;
+  adjusted_p: number;
+  significant: boolean;
+}
+
+export interface LifecyclePERMANOVA {
+  r_squared: number;
+  pseudo_f: number;
+  p_value: number;
+  n_permutations: number;
+  n_samples_used: number;
+  n_groups: number;
+  df_between: number;
+  df_within: number;
+}
+
+export interface LifecycleAlphaStats {
+  shannon_kw_h: number;
+  shannon_kw_p: number;
+  shannon_eta_squared: number;
+  shannon_spearman_rho: number;
+  shannon_spearman_p: number;
+  simpson_kw_h: number;
+  simpson_kw_p: number;
+  simpson_eta_squared: number;
+  simpson_spearman_rho: number;
+  simpson_spearman_p: number;
 }
 
 export interface LifecycleData {
   disease: string;
   country: string;
   total_samples: number;
+  total_samples_all?: number;
+  unknown_count?: number;
   genera: string[];
   phylum_map: Record<string, string>;
   data: LifecycleRow[];
   transitions: LifecycleTransition[];
   kruskal_results: LifecycleKruskal[];
+  spearman_results?: LifecycleSpearman[];
+  permanova?: LifecyclePERMANOVA;
+  alpha_diversity_stats?: LifecycleAlphaStats;
 }
 
 export interface LifecycleDualData {
@@ -275,11 +313,11 @@ const LifecyclePage = () => {
                 type="button"
                 className={classes.sigChip}
                 onClick={() => setIsolatedGenus((prev) => (prev === row.genus ? null : row.genus))}
-                title={`H=${row.kruskal_h.toFixed(2)}, adj.p=${fmtP(row.adjusted_p)}`}
+                title={`H=${row.kruskal_h.toFixed(2)}, adj.p=${fmtP(row.adjusted_p)}${row.eta_squared != null ? `, η²=${row.eta_squared.toFixed(3)}` : ""}`}
               >
                 <span className={classes.sigChipName}>{row.genus}</span>
                 <span className={classes.sigChipMeta}>
-                  H={row.kruskal_h.toFixed(1)}, adj.p={fmtP(row.adjusted_p)}
+                  H={row.kruskal_h.toFixed(1)}, adj.p={fmtP(row.adjusted_p)}{row.eta_squared != null ? `, η²=${row.eta_squared.toFixed(3)}` : ""}
                 </span>
               </button>
             ))}
@@ -363,6 +401,9 @@ const LifecyclePage = () => {
             <div className={classes.summaryCard}>
               <span className={classes.summaryLabel}>{t("lifecycle.sampleCount")}</span>
               <strong>{legendData.total_samples.toLocaleString()}</strong>
+              {legendData.total_samples_all && legendData.total_samples_all !== legendData.total_samples ? (
+                <span className={classes.summarySubtext}>{locale === "zh" ? `（共 ${legendData.total_samples_all.toLocaleString()}）` : ` of ${legendData.total_samples_all.toLocaleString()}`}</span>
+              ) : null}
             </div>
             <div className={classes.summaryCard}>
               <span className={classes.summaryLabel}>{t("lifecycle.topN")}</span>
@@ -372,10 +413,18 @@ const LifecyclePage = () => {
               <span className={classes.summaryLabel}>{t("lifecycle.kruskalSig")}</span>
               <strong>{legendData.kruskal_results.filter((row) => row.significant).length}</strong>
             </div>
-            <div className={classes.summaryCard}>
-              <span className={classes.summaryLabel}>{t("lifecycle.viewMode")}</span>
-              <strong>{viewMode === "compare" ? t("lifecycle.modeCompare") : t("lifecycle.modeNormal")}</strong>
-            </div>
+            {legendData.permanova?.r_squared != null ? (
+              <div className={classes.summaryCard}>
+                <span className={classes.summaryLabel}>PERMANOVA R²</span>
+                <strong>{legendData.permanova.r_squared.toFixed(3)}</strong>
+                <span className={classes.summarySubtext}>P = {legendData.permanova.p_value <= 0.001 ? "< 0.001" : legendData.permanova.p_value.toFixed(3)}</span>
+              </div>
+            ) : (
+              <div className={classes.summaryCard}>
+                <span className={classes.summaryLabel}>{t("lifecycle.viewMode")}</span>
+                <strong>{viewMode === "compare" ? t("lifecycle.modeCompare") : t("lifecycle.modeNormal")}</strong>
+              </div>
+            )}
           </div>
 
           {viewMode === "area" && data ? (
@@ -385,7 +434,7 @@ const LifecyclePage = () => {
                   <div>
                     <h3>{t("lifecycle.stackedArea")}</h3>
                     <p>
-                      {`${diseaseLabel(data.disease)} · ${country ? countryName(country, locale) : t("lifecycle.allCountries")} · ${data.total_samples.toLocaleString()} ${locale === "zh" ? "个样本" : "samples"}`}
+                      {`${diseaseLabel(data.disease)} · ${country ? countryName(country, locale) : t("lifecycle.allCountries")} · ${data.total_samples.toLocaleString()} ${locale === "zh" ? "个样本（已知年龄）" : "age-annotated samples"}${data.total_samples_all && data.total_samples_all !== data.total_samples ? (locale === "zh" ? `（共 ${data.total_samples_all.toLocaleString()}）` : ` of ${data.total_samples_all.toLocaleString()} total`) : ""}`}
                     </p>
                   </div>
                   <div className={classes.actionRow}>
@@ -438,7 +487,7 @@ const LifecyclePage = () => {
                   <div className={classes.cardHeader}>
                     <div>
                       <h3>{diseaseLabel(dualData.disease_data.disease)}</h3>
-                      <p>{`${dualData.disease_data.total_samples.toLocaleString()} ${locale === "zh" ? "个样本" : "samples"}`}</p>
+                      <p>{`${dualData.disease_data.total_samples.toLocaleString()} ${locale === "zh" ? "个样本（已知年龄）" : "age-annotated"}${dualData.disease_data.total_samples_all && dualData.disease_data.total_samples_all !== dualData.disease_data.total_samples ? (locale === "zh" ? `（共 ${dualData.disease_data.total_samples_all.toLocaleString()}）` : ` of ${dualData.disease_data.total_samples_all.toLocaleString()}`) : ""}`}</p>
                     </div>
                     <div className={classes.actionRow}>
                       <button type="button" onClick={() => exportLifecycleTable(dualData.disease_data, `lifecycle_disease_${Date.now()}`)}>{t("export.csv")}</button>
@@ -453,7 +502,7 @@ const LifecyclePage = () => {
                   <div className={classes.cardHeader}>
                     <div>
                       <h3>{locale === "zh" ? "健康对照 (NC)" : "Healthy (NC)"}</h3>
-                      <p>{`${dualData.nc_data.total_samples.toLocaleString()} ${locale === "zh" ? "个样本" : "samples"}`}</p>
+                      <p>{`${dualData.nc_data.total_samples.toLocaleString()} ${locale === "zh" ? "个样本（已知年龄）" : "age-annotated"}${dualData.nc_data.total_samples_all && dualData.nc_data.total_samples_all !== dualData.nc_data.total_samples ? (locale === "zh" ? `（共 ${dualData.nc_data.total_samples_all.toLocaleString()}）` : ` of ${dualData.nc_data.total_samples_all.toLocaleString()}`) : ""}`}</p>
                     </div>
                     <div className={classes.actionRow}>
                       <button type="button" onClick={() => exportLifecycleTable(dualData.nc_data, `lifecycle_nc_${Date.now()}`)}>{t("export.csv")}</button>

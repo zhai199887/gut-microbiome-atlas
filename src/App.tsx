@@ -51,7 +51,7 @@ const ROUTE_TITLES = {
     "/cooccurrence": "Network Visualization",
     "/chord": "Network Visualization",
     "/metabolism": "Metabolism Pathway",
-    "/similarity": "Sample Similarity",
+    "/similarity": "Health Index",
     "/lifecycle": "Lifecycle Atlas",
     "/search": "Genus Search",
     "/studies": "Studies",

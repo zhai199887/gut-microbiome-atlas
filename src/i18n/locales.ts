@@ -105,8 +105,8 @@ const en = {
   "feature.network.desc": "Visualize genus co-occurrence patterns and disease-associated network structure",
   "feature.lifecycle.title": "Lifecycle Atlas",
   "feature.lifecycle.desc": "Track gut microbiome dynamics from infancy to centenarian stages",
-  "feature.similarity.title": "Sample Similarity",
-  "feature.similarity.desc": "Search for the most similar microbiome samples based on taxonomic composition",
+  "feature.similarity.title": "Health Index",
+  "feature.similarity.desc": "Compute a Gut Microbiome Health Index from taxonomic composition, benchmarked against 82K healthy controls",
   "feature.studies.title": "Study Datasets",
   "feature.studies.desc": "Browse all included public studies, projects, and cohort-level metadata",
   "feature.search.title": "Genus Search",
@@ -580,8 +580,8 @@ const en = {
   "download.openSwagger": "Open Swagger UI",
 
   // Similarity page
-  "similarity.title": "Sample Similarity Search",
-  "similarity.subtitle": "Upload abundance data to find similar samples",
+  "similarity.title": "Health Index",
+  "similarity.subtitle": "Upload abundance data to compute your Gut Microbiome Health Index",
   "similarity.back": "← Back to Home",
   "similarity.upload": "Upload File",
   "similarity.paste": "Or Paste Data",
@@ -840,8 +840,8 @@ const zh: Record<keyof typeof en, string> = {
   "feature.network.desc": "可视化菌属共现模式与疾病相关网络结构",
   "feature.lifecycle.title": "全生命周期",
   "feature.lifecycle.desc": "追踪从婴儿到百岁老人阶段的肠道菌群变化",
-  "feature.similarity.title": "样本相似度",
-  "feature.similarity.desc": "基于菌群组成搜索最相近的微生物组样本",
+  "feature.similarity.title": "健康指数",
+  "feature.similarity.desc": "基于菌群组成计算肠道菌群健康指数，与 8.2 万健康对照基准比对",
   "feature.studies.title": "研究数据集",
   "feature.studies.desc": "浏览所有纳入的公开研究、项目与队列元数据",
   "feature.metabolism.desc": "按代谢角色浏览微生物：短链脂肪酸、胆汁酸、色氨酸、TMAO等",
@@ -1314,8 +1314,8 @@ const zh: Record<keyof typeof en, string> = {
   "download.openSwagger": "打开 Swagger UI",
 
   // Similarity page
-  "similarity.title": "样本相似性搜索",
-  "similarity.subtitle": "上传丰度数据查找相似样本",
+  "similarity.title": "健康指数",
+  "similarity.subtitle": "上传丰度数据，计算肠道菌群健康指数",
   "similarity.back": "← 返回首页",
   "similarity.upload": "上传文件",
   "similarity.paste": "或粘贴数据",

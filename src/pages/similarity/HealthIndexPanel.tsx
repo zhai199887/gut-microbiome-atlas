@@ -820,62 +820,6 @@ const HealthIndexPanel = () => {
             </div>
           )}
 
-          <div
-            style={{
-              marginTop: 12,
-              padding: "10px 14px",
-              background: "rgba(255,255,255,0.03)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 8,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setFormulaOpen((prev) => !prev)}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#9be8bf",
-                fontSize: 13,
-                cursor: "pointer",
-                padding: 0,
-                fontWeight: 600,
-              }}
-            >
-              {formulaOpen ? "▼" : "▶"} 健康指数是怎么算出来的?
-            </button>
-            {formulaOpen && (
-              <div
-                style={{
-                  marginTop: 10,
-                  fontSize: 12,
-                  lineHeight: 1.7,
-                  color: "#cfcfcf",
-                }}
-              >
-                <p style={{ margin: "0 0 6px" }}>
-                  <strong style={{ color: "#9be8bf" }}>公式:</strong>{" "}
-                  健康指数 = P(NC | s) × 100,来自一个 10 类多项式 softmax 分类器。
-                </p>
-                <p style={{ margin: "0 0 6px" }}>
-                  和 Nature Microbiology 论文 Figure 1g 完全一致(同一个{" "}
-                  <code style={{ color: "#eee" }}>gbhi_universal.pkl</code>,同一个 184 维特征:
-                  119 个 marker 残差 + 64 个协变量 dummy + 1 个 Gupta ψ)。
-                </p>
-                <p style={{ margin: "0 0 6px" }}>
-                  <strong style={{ color: "#9be8bf" }}>训练集:</strong>{" "}
-                  98,847 样本(82,106 健康对照 + 16,741 疾病病例横跨 9 种疾病:
-                  CDI / CD / UC / RA / HIV / adenoma / obesity / IBS / CRC)。
-                </p>
-                <p style={{ margin: 0 }}>
-                  <strong style={{ color: "#9be8bf" }}>验证:</strong>{" "}
-                  LOCO 留一 cohort 外推 + LODO 留一疾病外推 双重验证(详见论文 Fig 1g 和
-                  Supplementary Fig 1)。
-                </p>
-              </div>
-            )}
-          </div>
-
           <div ref={contributionExportRef}>
             <ContributionChart
               title={t("healthIndex.contribution")}

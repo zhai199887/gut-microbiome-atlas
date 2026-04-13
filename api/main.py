@@ -4812,8 +4812,10 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
 @lru_cache(maxsize=1)
 def _compute_health_disease_genera() -> dict:
     """
-    预计算健康关联属和疾病关联属。
-    Precompute health-associated and disease-associated genera from NC vs all-disease.
+    Per-study random-effects meta-analysis for health/disease genus selection.
+    每个 BioProject 内部独立计算 NC vs disease 的 log2FC 与方差,
+    然后用 DerSimonian-Laird random-effects 模型合并跨研究效应量。
+    这避免了 batch effect / Simpson's paradox,与 Gupta 2020 的多研究一致性思想一致。
     """
     meta = get_metadata()
     abund = get_abundance()
@@ -4822,112 +4824,211 @@ def _compute_health_disease_genera() -> dict:
 
     INFORM_COLS = [f"inform{i}" for i in range(12)]
 
-    # Strict NC: inform0=NC and inform1-11 empty
-    nc_mask = _strict_nc_mask(meta, INFORM_COLS)
-    nc_keys = [k for k in meta.loc[nc_mask, "sample_key"].values if k in abund_idx]
-
-    # Disease samples: strict non-NC with at least one disease label in inform0-11
-    disease_mask = _non_nc_disease_mask(meta, INFORM_COLS)
-    disease_keys = [k for k in meta.loc[disease_mask, "sample_key"].values if k in abund_idx]
-
-    # Subsample for performance
-    np.random.seed(42)
-    if len(nc_keys) > 5000:
-        nc_keys = list(np.random.choice(nc_keys, 5000, replace=False))
-    if len(disease_keys) > 5000:
-        disease_keys = list(np.random.choice(disease_keys, 5000, replace=False))
-
-    if len(nc_keys) < 10 or len(disease_keys) < 10:
+    project_col = get_project_column(meta)
+    if project_col is None:
         return {"health_genera": [], "disease_genera": [], "nc_stats": {}}
 
-    raw_nc = abund.loc[nc_keys].values.astype(float)
-    raw_dis = abund.loc[disease_keys].values.astype(float)
-    tot_nc = raw_nc.sum(axis=1, keepdims=True); tot_nc[tot_nc == 0] = 1
-    tot_dis = raw_dis.sum(axis=1, keepdims=True); tot_dis[tot_dis == 0] = 1
-    mat_nc = raw_nc / tot_nc * 100
-    mat_dis = raw_dis / tot_dis * 100
+    nc_mask = _strict_nc_mask(meta, INFORM_COLS)
+    disease_mask = _non_nc_disease_mask(meta, INFORM_COLS)
 
-    # Aggregate to genus level
+    meta_local = meta.copy()
+    meta_local["_is_nc"] = nc_mask
+    meta_local["_is_dis"] = disease_mask
+    meta_local["_proj"] = meta_local[project_col].astype(str).str.strip()
+    meta_local = meta_local[(meta_local["_is_nc"] | meta_local["_is_dis"])]
+    meta_local = meta_local[meta_local["sample_key"].isin(abund_idx)]
+
+    if len(meta_local) < 20:
+        return {"health_genera": [], "disease_genera": [], "nc_stats": {}}
+
+    # Genus-level aggregation 一次性完成
     genus_labels = [extract_genus(c) for c in col_names]
-    unique_genera = list(dict.fromkeys(genus_labels))
-    agg_nc = np.zeros((len(nc_keys), len(unique_genera)))
-    agg_dis = np.zeros((len(disease_keys), len(unique_genera)))
-    for i, g in enumerate(unique_genera):
-        idxs = [j for j, l in enumerate(genus_labels) if l == g]
-        agg_nc[:, i] = mat_nc[:, idxs].sum(axis=1)
-        agg_dis[:, i] = mat_dis[:, idxs].sum(axis=1)
+    unique_genera_all = list(dict.fromkeys(genus_labels))
+    valid_idx = [i for i, g in enumerate(unique_genera_all) if is_valid_genus(g)]
+    unique_genera = [unique_genera_all[i] for i in valid_idx]
+    genus_to_cols: dict[str, list[int]] = {g: [] for g in unique_genera}
+    for j, lbl in enumerate(genus_labels):
+        if lbl in genus_to_cols:
+            genus_to_cols[lbl].append(j)
 
-    # Test each genus: enriched in NC (health) vs enriched in disease
-    all_results = []
-    nc_stats = {}
+    # ── Per-study effect size (Hedges' g on log-transformed abundance) ──
+    # log(abundance + 1e-6) → mean / sd by group → standardised mean difference
+    per_study_effects: dict[str, list[tuple[float, float, int]]] = {g: [] for g in unique_genera}
+    # values: list of (g_hedges, var_g, n_total) one per study
 
-    for i, genus in enumerate(unique_genera):
-        if not is_valid_genus(genus):
+    nc_pool_keys: list[str] = []  # for nc_stats reference (raw, all NC)
+
+    pseudo = 1e-6
+    studies_used = 0
+    for proj_id, sub in meta_local.groupby("_proj"):
+        nc_keys = sub.loc[sub["_is_nc"], "sample_key"].tolist()
+        dis_keys = sub.loc[sub["_is_dis"], "sample_key"].tolist()
+        # Need both arms with ≥5 samples to compute a stable effect
+        if len(nc_keys) < 5 or len(dis_keys) < 5:
             continue
-        vals_nc = agg_nc[:, i]
-        vals_dis = agg_dis[:, i]
-        mean_nc = float(np.mean(vals_nc))
-        mean_dis = float(np.mean(vals_dis))
+        studies_used += 1
 
-        if np.std(vals_nc) == 0 and np.std(vals_dis) == 0:
-            continue
-        try:
-            _, p = stats.mannwhitneyu(vals_nc, vals_dis, alternative="two-sided")
-        except Exception:
-            continue
+        raw_nc = abund.loc[nc_keys].values.astype(float)
+        raw_dis = abund.loc[dis_keys].values.astype(float)
+        tot_nc = raw_nc.sum(axis=1, keepdims=True); tot_nc[tot_nc == 0] = 1
+        tot_dis = raw_dis.sum(axis=1, keepdims=True); tot_dis[tot_dis == 0] = 1
+        mat_nc = raw_nc / tot_nc * 100
+        mat_dis = raw_dis / tot_dis * 100
+        log_nc = np.log(mat_nc + pseudo)
+        log_dis = np.log(mat_dis + pseudo)
+        n1, n2 = len(nc_keys), len(dis_keys)
+        nc_pool_keys.extend(nc_keys)
 
-        nc_stats[genus] = {
-            "mean": round(mean_nc, 6),
-            "median": round(float(np.median(vals_nc)), 6),
-            "std": round(float(np.std(vals_nc)), 6),
-            "p10": round(float(np.percentile(vals_nc, 10)), 6),
-            "p25": round(float(np.percentile(vals_nc, 25)), 6),
-            "p75": round(float(np.percentile(vals_nc, 75)), 6),
-            "p90": round(float(np.percentile(vals_nc, 90)), 6),
+        for gi, genus in enumerate(unique_genera):
+            cidx = genus_to_cols[genus]
+            if not cidx:
+                continue
+            v_nc = log_nc[:, cidx].sum(axis=1) if len(cidx) > 1 else log_nc[:, cidx[0]]
+            v_dis = log_dis[:, cidx].sum(axis=1) if len(cidx) > 1 else log_dis[:, cidx[0]]
+            m1, m2 = float(v_nc.mean()), float(v_dis.mean())
+            s1, s2 = float(v_nc.std(ddof=1)), float(v_dis.std(ddof=1))
+            if s1 + s2 < 1e-9:
+                continue
+            sp2 = ((n1 - 1) * s1 * s1 + (n2 - 1) * s2 * s2) / (n1 + n2 - 2)
+            if sp2 <= 0:
+                continue
+            sp = math.sqrt(sp2)
+            d = (m1 - m2) / sp                           # Cohen's d (NC − Disease)
+            # Hedges' small-sample correction
+            J = 1.0 - 3.0 / (4 * (n1 + n2) - 9)
+            g_h = J * d
+            var_g = (n1 + n2) / (n1 * n2) + (g_h * g_h) / (2 * (n1 + n2))
+            if not (math.isfinite(g_h) and math.isfinite(var_g)) or var_g <= 0:
+                continue
+            per_study_effects[genus].append((g_h, var_g, n1 + n2))
+
+    if studies_used < 2:
+        # Fallback: insufficient stratification — return empty so caller knows
+        return {
+            "health_genera": [], "disease_genera": [], "nc_stats": {},
+            "n_studies": studies_used,
         }
 
-        pseudo = 1e-6
-        log2fc = math.log2((mean_nc + pseudo) / (mean_dis + pseudo))
+    # ── DerSimonian-Laird random-effects pooling ──
+    def pool_re(effects: list[tuple[float, float, int]]) -> tuple[float, float, float, int] | None:
+        if len(effects) < 2:
+            return None
+        gs = np.array([e[0] for e in effects], dtype=float)
+        vs = np.array([e[1] for e in effects], dtype=float)
+        w_fe = 1.0 / vs
+        g_fe = float((w_fe * gs).sum() / w_fe.sum())
+        Q = float((w_fe * (gs - g_fe) ** 2).sum())
+        k = len(effects)
+        c = float(w_fe.sum() - (w_fe * w_fe).sum() / w_fe.sum())
+        tau2 = max(0.0, (Q - (k - 1)) / c) if c > 0 else 0.0
+        w_re = 1.0 / (vs + tau2)
+        g_re = float((w_re * gs).sum() / w_re.sum())
+        se_re = math.sqrt(1.0 / w_re.sum())
+        # two-sided z test
+        z = g_re / se_re if se_re > 0 else 0.0
+        p = 2.0 * (1.0 - 0.5 * (1.0 + math.erf(abs(z) / math.sqrt(2.0))))
+        return g_re, se_re, p, k
+
+    all_results = []
+    for genus in unique_genera:
+        eff = per_study_effects[genus]
+        pooled = pool_re(eff)
+        if pooled is None:
+            continue
+        g_re, se_re, p, k = pooled
         all_results.append({
             "genus": genus,
-            "log2fc": round(log2fc, 4),
-            "p_value": round(float(p), 8),
-            "mean_nc": round(mean_nc, 6),
-            "mean_disease": round(mean_dis, 6),
+            "hedges_g": round(g_re, 4),
+            "se": round(se_re, 4),
+            "p_value": round(float(p), 10),
+            "k_studies": k,
         })
 
-    adjusted_pvals = bh_correction([float(row["p_value"]) for row in all_results])
+    if not all_results:
+        return {
+            "health_genera": [], "disease_genera": [], "nc_stats": {},
+            "n_studies": studies_used,
+        }
+
+    adjusted = bh_correction([row["p_value"] for row in all_results])
+    for row, q in zip(all_results, adjusted):
+        row["adjusted_p"] = round(float(q), 10)
+
+    # ── nc_stats and per-genus mean abundances on the global NC pool ──
+    nc_pool_keys_unique = list(dict.fromkeys(nc_pool_keys))
+    nc_stats: dict[str, dict] = {}
+    mean_nc_map: dict[str, float] = {}
+    mean_dis_map: dict[str, float] = {}
+    if nc_pool_keys_unique:
+        raw_nc_all = abund.loc[nc_pool_keys_unique].values.astype(float)
+        tot = raw_nc_all.sum(axis=1, keepdims=True); tot[tot == 0] = 1
+        mat_nc_all = raw_nc_all / tot * 100
+        # global disease pool for mean_disease reference
+        dis_keys_all = meta_local.loc[meta_local["_is_dis"], "sample_key"].tolist()
+        raw_dis_all = abund.loc[dis_keys_all].values.astype(float)
+        tot_d = raw_dis_all.sum(axis=1, keepdims=True); tot_d[tot_d == 0] = 1
+        mat_dis_all = raw_dis_all / tot_d * 100
+
+        for genus in unique_genera:
+            cidx = genus_to_cols[genus]
+            if not cidx:
+                continue
+            v_nc = mat_nc_all[:, cidx].sum(axis=1) if len(cidx) > 1 else mat_nc_all[:, cidx[0]]
+            v_dis = mat_dis_all[:, cidx].sum(axis=1) if len(cidx) > 1 else mat_dis_all[:, cidx[0]]
+            mean_nc_map[genus] = float(v_nc.mean())
+            mean_dis_map[genus] = float(v_dis.mean())
+            nc_stats[genus] = {
+                "mean": round(float(v_nc.mean()), 6),
+                "median": round(float(np.median(v_nc)), 6),
+                "std": round(float(v_nc.std()), 6),
+                "p10": round(float(np.percentile(v_nc, 10)), 6),
+                "p25": round(float(np.percentile(v_nc, 25)), 6),
+                "p75": round(float(np.percentile(v_nc, 75)), 6),
+                "p90": round(float(np.percentile(v_nc, 90)), 6),
+            }
+        n_dis_total = len(dis_keys_all)
+    else:
+        n_dis_total = 0
+
     health_genera = []
     disease_genera = []
-    for row, adjusted_p in zip(all_results, adjusted_pvals):
-        row["adjusted_p"] = round(float(adjusted_p), 8)
-        row["weight"] = round(abs(float(row["log2fc"])), 4)
-        if adjusted_p >= 0.05 or abs(float(row["log2fc"])) < 0.5:
+    for row in all_results:
+        if row["adjusted_p"] >= 0.05 or abs(row["hedges_g"]) < 0.2:
             continue
+        genus = row["genus"]
+        m_nc = mean_nc_map.get(genus, 0.0)
+        m_dis = mean_dis_map.get(genus, 0.0)
+        log2fc = math.log2((m_nc + pseudo) / (m_dis + pseudo))
+        # weight = pooled |Hedges' g| (random-effects effect size, study-stratified)
+        weight = round(abs(float(row["hedges_g"])), 4)
         entry = {
-            "genus": row["genus"],
-            "log2fc": row["log2fc"],
+            "genus": genus,
+            "hedges_g": row["hedges_g"],
+            "se": row["se"],
+            "k_studies": row["k_studies"],
             "p_value": row["p_value"],
             "adjusted_p": row["adjusted_p"],
-            "mean_nc": row["mean_nc"],
-            "mean_disease": row["mean_disease"],
-            "weight": row["weight"],
+            "log2fc": round(log2fc, 4),
+            "mean_nc": round(m_nc, 6),
+            "mean_disease": round(m_dis, 6),
+            "weight": weight,
         }
-        if row["mean_nc"] > row["mean_disease"]:
+        if row["hedges_g"] > 0:           # NC > Disease → health-associated
             health_genera.append(entry)
         else:
             disease_genera.append(entry)
 
-    # Sort by absolute log2fc, take top 50
-    health_genera.sort(key=lambda x: abs(float(x["log2fc"])), reverse=True)
-    disease_genera.sort(key=lambda x: abs(float(x["log2fc"])), reverse=True)
+    health_genera.sort(key=lambda x: abs(float(x["hedges_g"])), reverse=True)
+    disease_genera.sort(key=lambda x: abs(float(x["hedges_g"])), reverse=True)
 
     return {
         "health_genera": health_genera[:50],
         "disease_genera": disease_genera[:50],
         "nc_stats": nc_stats,
-        "n_nc_samples": len(nc_keys),
-        "n_disease_samples": len(disease_keys),
+        "n_nc_samples": len(nc_pool_keys_unique),
+        "n_disease_samples": n_dis_total,
+        "n_studies": studies_used,
+        "method": "DerSimonian-Laird random-effects meta-analysis on Hedges' g of log-abundance",
     }
 
 

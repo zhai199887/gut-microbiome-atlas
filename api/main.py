@@ -5102,7 +5102,7 @@ def _compute_health_disease_genera() -> dict:
     disease_genera = []
 
     for r in pooled_results:
-        if r["adjusted_p"] >= 0.05 or abs(r["log2fc"]) < 0.5:
+        if r["adjusted_p"] >= 0.05 or abs(r["log2fc"]) < 0.3:
             continue
         # Require biologically meaningful abundance + prevalence (drops rare/environmental taxa)
         if max(r["mean_nc"], r["mean_disease"]) < 5e-2:

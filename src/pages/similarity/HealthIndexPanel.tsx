@@ -680,23 +680,6 @@ const HealthIndexPanel = () => {
           </div>
 
           <div ref={summaryExportRef} className={classes.exportCard}>
-            {/* Badge: synced to paper Figure 1g (universal multinomial softmax GBHI) */}
-            <div
-              style={{
-                display: "inline-block",
-                padding: "4px 10px",
-                marginBottom: 10,
-                borderRadius: 12,
-                background: "rgba(68, 204, 136, 0.15)",
-                border: "1px solid rgba(68, 204, 136, 0.45)",
-                color: "#9be8bf",
-                fontSize: 11,
-                letterSpacing: 0.3,
-              }}
-            >
-              同步于论文 Figure 1g · Universal Multinomial Softmax GBHI
-            </div>
-
             {/* Tier pill */}
             {gbhi && (
               <div style={{ marginBottom: 8 }}>

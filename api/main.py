@@ -5069,47 +5069,96 @@ def _compute_health_disease_genera() -> dict:
     for r, q in zip(pooled_results, q_pooled):
         r["adjusted_p"] = float(q)
 
+    # ── Gupta 2020 prevalence-based marker selection ──
+    # Replication of Gupta 2020 Fig2_TableS1_Table2.R (lines 28-64):
+    #   1. Zero out rel. abundance < 1e-3 % (Gupta: baseline[baseline<0.001]<-0)
+    #   2. PH  = prevalence among Healthy  (% samples with abund > 0)
+    #      PNH = prevalence among Nonhealthy
+    #   3. PH_diff = PH - PNH, PH_fold = PH/PNH, PNH_fold = PNH/PH
+    #   4. MH markers: PH_fold ≥ 1.4 AND PH_diff ≥ 5 %
+    #      MN markers: PNH_fold ≥ 1.4 AND PH_diff ≤ -5 %
+    # Gupta used species (PH_diff ≥ 10 %, ≥1.4 fold) and got 7 MH + 43 MN.
+    # We work at genus (coarser taxonomic level), so ubiquitous commensals
+    # have prevalence near 100 % in both groups → we relax to diff ≥ 5 %
+    # but keep the 1.4× fold cutoff. All thresholds cited in Methods.
+    detection_pct = 1e-3  # 0.001 % (same as Gupta's 1e-5 fraction)
+    mask_nc_bin = mat_nc_p > detection_pct   # (n_nc × n_cols)
+    mask_dis_bin = mat_dis_p > detection_pct
+    n_nc_samples = mat_nc_p.shape[0]
+    n_dis_samples = mat_dis_p.shape[0]
+    re_lookup_weights = {row["genus"]: row for row in all_results}
+
+    prevalence_rows = []
+    for genus in unique_genera:
+        cidx = genus_to_cols[genus]
+        if not cidx:
+            continue
+        # Collapse multi-column genus: present if ANY child col is above threshold
+        if len(cidx) > 1:
+            pres_nc = mask_nc_bin[:, cidx].any(axis=1)
+            pres_dis = mask_dis_bin[:, cidx].any(axis=1)
+        else:
+            pres_nc = mask_nc_bin[:, cidx[0]]
+            pres_dis = mask_dis_bin[:, cidx[0]]
+        ph = float(pres_nc.sum()) / n_nc_samples * 100.0
+        pnh = float(pres_dis.sum()) / n_dis_samples * 100.0
+        prevalence_rows.append({
+            "genus": genus,
+            "PH": ph,
+            "PNH": pnh,
+            "PH_diff": ph - pnh,
+            "PH_fold": ph / max(pnh, 1e-6),
+            "PNH_fold": pnh / max(ph, 1e-6),
+        })
+
+    pool_lookup = {r["genus"]: r for r in pooled_results}
     health_genera = []
     disease_genera = []
-    for r in pooled_results:
-        if r["adjusted_p"] >= 0.05 or abs(r["log2fc"]) < 0.5:
+    CUT_FOLD = 1.4
+    CUT_DIFF = 5.0
+    MIN_PREVALENCE = 10.0  # at least 10% prevalence in dominant group
+
+    for pr in prevalence_rows:
+        genus = pr["genus"]
+        pool_row = pool_lookup.get(genus)
+        if pool_row is None:
             continue
-        # Gupta 2020 prevalence/abundance floor: drop genera that are too rare
-        # to be biologically meaningful (environmental/extremophile taxa).
-        # Gupta used mean rel. abund. ≥ 0.01 % in either group; we tighten to
-        # ≥ 0.1 % (1e-3 fraction) so the marker set is dominated by real gut
-        # commensals (Faecalibacterium, Bacteroides, Roseburia, …).
-        if max(r["mean_nc"], r["mean_disease"]) < 1e-3:
+        re_row = re_lookup_weights.get(genus)
+        hg = float(re_row["hedges_g"]) if re_row is not None else None
+        se = float(re_row["se"]) if re_row is not None else None
+        k_studies = int(re_row["k_studies"]) if re_row is not None else 0
+        re_q = float(re_row["adjusted_p"]) if re_row is not None else None
+
+        is_mh = (
+            pr["PH_fold"] >= CUT_FOLD
+            and pr["PH_diff"] >= CUT_DIFF
+            and pr["PH"] >= MIN_PREVALENCE
+        )
+        is_mn = (
+            pr["PNH_fold"] >= CUT_FOLD
+            and pr["PH_diff"] <= -CUT_DIFF
+            and pr["PNH"] >= MIN_PREVALENCE
+        )
+        if not (is_mh or is_mn):
             continue
-        re_row = re_lookup.get(r["genus"])
-        # Replication of Gupta 2020: STRICTLY require random-effects meta-analysis
-        # evidence with pooled |Hedges' g| ≥ 0.2 (Cohen "small" threshold).
-        # Genera not seen in ≥2 studies (re_row is None) are dropped — they
-        # cannot survive the RE-model and would otherwise contaminate the
-        # marker set with rare, study-specific taxa.
-        if re_row is None:
-            continue
-        if abs(float(re_row["hedges_g"])) < 0.2:
-            continue
-        weight = round(abs(float(re_row["hedges_g"])), 4)
-        hg = re_row["hedges_g"]
-        se = re_row["se"]
-        k_studies = re_row["k_studies"]
-        re_q = re_row["adjusted_p"]
+
         entry = {
-            "genus": r["genus"],
-            "log2fc": round(r["log2fc"], 4),
-            "p_value": round(r["p_value"], 10),
-            "adjusted_p": round(r["adjusted_p"], 10),
-            "mean_nc": round(r["mean_nc"], 6),
-            "mean_disease": round(r["mean_disease"], 6),
+            "genus": genus,
+            "log2fc": round(pool_row["log2fc"], 4),
+            "p_value": round(pool_row["p_value"], 10),
+            "adjusted_p": round(pool_row["adjusted_p"], 10),
+            "mean_nc": round(pool_row["mean_nc"], 6),
+            "mean_disease": round(pool_row["mean_disease"], 6),
+            "PH": round(pr["PH"], 2),
+            "PNH": round(pr["PNH"], 2),
+            "PH_diff": round(pr["PH_diff"], 2),
             "hedges_g": round(hg, 4) if hg is not None else None,
             "se": round(se, 4) if se is not None else None,
             "k_studies": k_studies,
             "re_adjusted_p": round(re_q, 10) if re_q is not None else None,
-            "weight": weight,
+            "weight": round(abs(pr["PH_diff"]), 4),
         }
-        if r["mean_nc"] > r["mean_disease"]:
+        if is_mh:
             health_genera.append(entry)
         else:
             disease_genera.append(entry)
@@ -5165,7 +5214,7 @@ def _compute_health_disease_genera() -> dict:
         "R_MH_prime": R_MH_prime,
         "R_MN_prime": R_MN_prime,
         "detection_threshold": detection_thresh,
-        "method": "Gupta 2020 ψ-formula on meta-analytic markers (DerSimonian-Laird Hedges' g, |g|≥0.2)",
+        "method": "Gupta 2020 prevalence-based marker selection (PH_fold≥1.4, |PH_diff|≥5%, min prev 10%) + Gupta ψ-formula",
     }
 
 

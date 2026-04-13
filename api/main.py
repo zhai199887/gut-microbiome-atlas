@@ -5317,29 +5317,34 @@ async def health_index(request: Request, req: HealthIndexRequest):
     raw_score_weighted = math.log10((psi_MH + pseudo) / (psi_MN + pseudo))
     raw_score = raw_score_weighted  # legacy field kept for back-compat
 
-    # Use empirical percentile calibration from population data
-    # 使用群体数据的经验百分位数校准
-    pop = _compute_population_gmhi()
-    cal = pop.get("calibration", {})
-    p5 = cal.get("p5", -2.0)
-    p95 = cal.get("p95", 2.0)
-    score_range = p95 - p5 if p95 != p5 else 1.0
-    normalized = max(0, min(100, (raw_score_weighted - p5) / score_range * 100))
+    # ── Universal softmax health score (paper Figure 1g / Supp Table 6) ──
+    # 单样本用 frozen universal softmax 计算 P(NC)×100,percentile 从 Supp Table
+    # 6 的 NC 分布里搜。legacy Gupta psi 字段保留用于向后兼容展示。
+    try:
+        p_nc, _n_matched_univ, _n_total_univ = _score_universal_pnc(
+            req.abundances, age_group=req.age_group or "Unknown",
+        )
+        normalized = float(round(p_nc * 100.0, 1))
+    except Exception as e:
+        logging.warning(f"[health-index] universal softmax fallback: {e}")
+        # Extreme fallback: keep legacy Gupta normalisation (should not happen)
+        normalized = max(0.0, min(100.0, (raw_score_weighted + 2.0) / 4.0 * 100.0))
 
-    # Determine category
+    pop = _compute_population_gmhi()
     nc_pop = pop.get("nc_stats", {})
-    good_threshold = float(nc_pop.get("p25", 70))
-    moderate_threshold = float(nc_pop.get("p10", 40))
-    if normalized >= good_threshold:
+    # Tier thresholds aligned with paper Results: high≥70, moderate 40-70, low<40
+    if normalized >= 70.0:
         category = "good"
-    elif normalized >= moderate_threshold:
+    elif normalized >= 40.0:
         category = "moderate"
     else:
         category = "attention"
 
     nc_scores_sorted = np.array(pop.get("nc_scores_sorted", []), dtype=float)
     if len(nc_scores_sorted) > 0:
-        population_percentile = float(np.searchsorted(nc_scores_sorted, normalized, side="right") / len(nc_scores_sorted) * 100)
+        population_percentile = float(
+            np.searchsorted(nc_scores_sorted, normalized, side="right") / len(nc_scores_sorted) * 100
+        )
     else:
         population_percentile = 50.0
 
@@ -5372,125 +5377,50 @@ async def health_index(request: Request, req: HealthIndexRequest):
 
 @lru_cache(maxsize=1)
 def _compute_population_gmhi() -> dict:
-    """预计算 NC 和疾病样本的群体 GMHI 分布，用于前端展示"""
-    ref = _compute_health_disease_genera()
-    if not ref["health_genera"] and not ref["disease_genera"]:
-        return {"nc_scores": [], "disease_scores": [], "histogram": []}
+    """Population distribution over the 168k compendium using the frozen
+    universal softmax health score (Supp Table 6). NC / Disease strata use
+    the inform-all label from the table."""
+    pop = _load_universal_population_scores()
+    if not pop:
+        return {"histogram": [], "nc_stats": {}, "disease_stats": {}, "nc_scores_sorted": []}
 
-    meta = get_metadata()
-    abund = get_abundance()
-    abund_idx = set(abund.index)
-    col_names = abund.columns.tolist()
+    nc_arr = pop["nc_scores_sorted"]
+    dis_arr = pop["disease_scores_sorted"]
 
-    INFORM_COLS = [f"inform{i}" for i in range(12)]
-    nc_mask = _strict_nc_mask(meta, INFORM_COLS)
-    nc_keys = [k for k in meta.loc[nc_mask, "sample_key"].values if k in abund_idx]
-    disease_mask = _non_nc_disease_mask(meta, INFORM_COLS)
-    disease_keys = [k for k in meta.loc[disease_mask, "sample_key"].values if k in abund_idx]
-
-    np.random.seed(42)
-    nc_sample = list(np.random.choice(nc_keys, min(2000, len(nc_keys)), replace=False)) if len(nc_keys) > 0 else []
-    dis_sample = list(np.random.choice(disease_keys, min(2000, len(disease_keys)), replace=False)) if len(disease_keys) > 0 else []
-
-    health_set = {g["genus"].lower() for g in ref["health_genera"]}
-    disease_set = {g["genus"].lower() for g in ref["disease_genera"]}
-    R_MH_prime = float(ref.get("R_MH_prime", 1.0))
-    R_MN_prime = float(ref.get("R_MN_prime", 1.0))
-    detection_pct = float(ref.get("detection_threshold", 1e-5)) * 100.0
-
-    genus_labels = [extract_genus(c).lower() for c in col_names]
-    h_cols = [i for i, g in enumerate(genus_labels) if g in health_set]
-    d_cols = [i for i, g in enumerate(genus_labels) if g in disease_set]
-
-    def compute_raw_scores(keys):
-        """Vectorised Gupta 2020 ψ-formula across many samples."""
-        if not keys:
-            return np.array([])
-        raw = abund.loc[keys].values.astype(float)
-        totals = raw.sum(axis=1, keepdims=True)
-        totals[totals == 0] = 1
-        rel = raw / totals * 100  # %
-        H_block = rel[:, h_cols] if h_cols else np.zeros((len(keys), 0))
-        D_block = rel[:, d_cols] if d_cols else np.zeros((len(keys), 0))
-
-        def psi_block(block, R_prime):
-            mask = block > detection_pct
-            R = mask.sum(axis=1).astype(float)
-            masked = np.where(mask, block, 0.0)
-            row_sum = masked.sum(axis=1, keepdims=True)
-            row_sum[row_sum == 0] = 1.0
-            p = masked / row_sum
-            with np.errstate(divide="ignore", invalid="ignore"):
-                logp = np.where(mask, np.log(p + 1e-12), 0.0)
-            H = -(p * logp).sum(axis=1)
-            return (R / max(R_prime, 1.0)) * H
-
-        psi_h = psi_block(H_block, R_MH_prime)
-        psi_d = psi_block(D_block, R_MN_prime)
-        eps = 1e-5
-        return np.log10((psi_h + eps) / (psi_d + eps))
-
-    nc_raw = compute_raw_scores(nc_sample)
-    dis_raw = compute_raw_scores(dis_sample)
-
-    # Use empirical percentile-based normalization from ALL raw scores
-    # 基于所有样本的原始分数经验分布做百分位数标准化
-    all_raw = np.concatenate([nc_raw, dis_raw]) if len(nc_raw) > 0 and len(dis_raw) > 0 else nc_raw
-    if len(all_raw) == 0:
-        all_raw = np.array([0])
-    p5 = float(np.percentile(all_raw, 5))
-    p95 = float(np.percentile(all_raw, 95))
-    score_range = p95 - p5 if p95 != p5 else 1.0
-
-    def normalize_scores(raw_arr):
-        if len(raw_arr) == 0:
-            return []
-        return np.clip((raw_arr - p5) / score_range * 100, 0, 100).tolist()
-
-    nc_scores = normalize_scores(nc_raw)
-    dis_scores = normalize_scores(dis_raw)
-
-    # Build histogram bins (0-100, step 5)
     bins = list(range(0, 105, 5))
-    nc_hist, _ = np.histogram(nc_scores, bins=bins) if nc_scores else (np.zeros(len(bins) - 1), None)
-    dis_hist, _ = np.histogram(dis_scores, bins=bins) if dis_scores else (np.zeros(len(bins) - 1), None)
-    histogram = []
-    for i in range(len(bins) - 1):
-        histogram.append({
-            "bin_start": bins[i], "bin_end": bins[i + 1],
-            "nc_count": int(nc_hist[i]), "disease_count": int(dis_hist[i]),
-        })
+    nc_hist, _ = np.histogram(nc_arr, bins=bins) if len(nc_arr) else (np.zeros(len(bins) - 1), None)
+    dis_hist, _ = np.histogram(dis_arr, bins=bins) if len(dis_arr) else (np.zeros(len(bins) - 1), None)
+    histogram = [
+        {
+            "bin_start": bins[i],
+            "bin_end": bins[i + 1],
+            "nc_count": int(nc_hist[i]),
+            "disease_count": int(dis_hist[i]),
+        }
+        for i in range(len(bins) - 1)
+    ]
 
-    nc_arr = np.array(nc_scores) if nc_scores else np.array([0])
-    dis_arr = np.array(dis_scores) if dis_scores else np.array([0])
+    def _stats(arr: np.ndarray, n_total: int) -> dict:
+        if len(arr) == 0:
+            return {"n": n_total, "mean": 0.0, "median": 0.0, "std": 0.0,
+                    "p10": 0.0, "p25": 0.0, "p75": 0.0, "p90": 0.0}
+        return {
+            "n": n_total,
+            "mean": round(float(np.mean(arr)), 1),
+            "median": round(float(np.median(arr)), 1),
+            "std": round(float(np.std(arr)), 1),
+            "p10": round(float(np.percentile(arr, 10)), 1),
+            "p25": round(float(np.percentile(arr, 25)), 1),
+            "p75": round(float(np.percentile(arr, 75)), 1),
+            "p90": round(float(np.percentile(arr, 90)), 1),
+        }
 
     return {
         "histogram": histogram,
-        "nc_stats": {
-            "n": len(nc_keys),  # actual total, not subsample
-            "mean": round(float(np.mean(nc_arr)), 1),
-            "median": round(float(np.median(nc_arr)), 1),
-            "std": round(float(np.std(nc_arr)), 1),
-            "p10": round(float(np.percentile(nc_arr, 10)), 1),
-            "p25": round(float(np.percentile(nc_arr, 25)), 1),
-            "p75": round(float(np.percentile(nc_arr, 75)), 1),
-            "p90": round(float(np.percentile(nc_arr, 90)), 1),
-        },
-        "disease_stats": {
-            "n": len(disease_keys),  # actual total, not subsample
-            "mean": round(float(np.mean(dis_arr)), 1),
-            "median": round(float(np.median(dis_arr)), 1),
-            "std": round(float(np.std(dis_arr)), 1),
-            "p10": round(float(np.percentile(dis_arr, 10)), 1),
-            "p25": round(float(np.percentile(dis_arr, 25)), 1),
-            "p75": round(float(np.percentile(dis_arr, 75)), 1),
-            "p90": round(float(np.percentile(dis_arr, 90)), 1),
-        },
-        "calibration": {
-            "p5": round(p5, 4),
-            "p95": round(p95, 4),
-        },
-        "nc_scores_sorted": sorted(float(score) for score in nc_scores),
+        "nc_stats": _stats(nc_arr, pop["n_nc"]),
+        "disease_stats": _stats(dis_arr, pop["n_dis"]),
+        "calibration": {"p5": 0.0, "p95": 100.0},
+        "nc_scores_sorted": nc_arr.tolist(),
     }
 
 
@@ -5632,6 +5562,111 @@ def _gbhi_gupta_psi(G_pct: np.ndarray, mh: list[int], mn: list[int]) -> float:
     if not math.isfinite(val):
         return 0.0
     return val
+
+
+SUPP_TABLE6_XLSX = r"E:\microbiomap_clone\compendium_website\docs\NatureMicrobiology_LaTeX\supplementary_table6_gbhi_scores.xlsx"
+
+
+@lru_cache(maxsize=1)
+def _load_universal_population_scores() -> dict:
+    """Load Supp Table 6 (per-sample universal-softmax health scores for all
+    168k compendium samples) and return stratified distributions for NC /
+    Disease / Unknown based on inform-all."""
+    try:
+        df = pd.read_excel(SUPP_TABLE6_XLSX, engine="openpyxl")
+    except Exception as e:
+        logging.warning(f"[universal pop] Supp Table 6 load failed: {e}")
+        return {}
+    ia = df["inform-all"].fillna("").astype(str).str.strip()
+    nc_mask = ia.str.upper().eq("NC").values
+    unk_mask = (ia.eq("") | ia.str.lower().isin(["nan", "unknown", "none", "na"])).values
+    dis_mask = (~nc_mask) & (~unk_mask)
+    h = df["health_score"].astype(float).values
+    return {
+        "nc_scores_sorted": np.sort(h[nc_mask]),
+        "disease_scores_sorted": np.sort(h[dis_mask]),
+        "unknown_scores_sorted": np.sort(h[unk_mask]),
+        "all_scores": h,
+        "n_nc": int(nc_mask.sum()),
+        "n_dis": int(dis_mask.sum()),
+        "n_unk": int(unk_mask.sum()),
+    }
+
+
+def _score_universal_pnc(
+    abundances: dict[str, float],
+    *,
+    amplicon: str = "",
+    iso: str = "",
+    age_group: str = "Unknown",
+    sex: str = "unknown",
+    length: float | None = None,
+) -> tuple[float, int, int]:
+    """Frozen universal softmax pipeline on a user abundance dict.
+    Returns (p_nc, n_matched, n_total_genera). Mirrors /api/health_score."""
+    blob, genera, genus_index = _load_gbhi_universal()
+    n_genus = len(genera)
+
+    total = sum(float(v) for v in abundances.values()) or 1.0
+    G_pct = np.zeros(n_genus, dtype=np.float32)
+    matched = 0
+    for name, v in abundances.items():
+        j = genus_index.get(str(name).strip().lower())
+        if j is not None:
+            G_pct[j] = float(v) / total * 100.0
+            matched += 1
+
+    freeze = blob["freeze"]
+    dummy_pairs = freeze["dummy_pairs"]
+    amp_keep = set(freeze["amp_keep"]); iso_keep = set(freeze["iso_keep"])
+    age_keep = set(freeze["age_keep"]); sex_keep = set(freeze["sex_keep"])
+
+    amp = (amplicon or "na").strip().lower() or "na"
+    if amp not in amp_keep:
+        amp = "OTHER"
+    iso_v = (iso or "NA").strip().upper() or "NA"
+    if iso_v not in iso_keep:
+        iso_v = "OTHER"
+    age = (age_group or "Unknown").strip() or "Unknown"
+    if age not in age_keep:
+        age = "Unknown"
+    sx = (sex or "unknown").strip().lower() or "unknown"
+    if sx not in sex_keep:
+        sx = "unknown"
+    cat_map = {"_amp": amp, "_iso": iso_v, "_age": age, "_sex": sx}
+
+    dummies = np.zeros(len(dummy_pairs), dtype=np.float32)
+    for i, (pre, val) in enumerate(dummy_pairs):
+        if cat_map.get(pre) == val:
+            dummies[i] = 1.0
+    length_v = float(length) if length and length > 0 else 300.0
+    log_len = np.float32(math.log10(length_v + 1.0))
+    cov_feat = np.concatenate([dummies, np.array([log_len], dtype=np.float32)])
+    x_row = np.concatenate([np.array([1.0], dtype=np.float32), cov_feat])
+
+    beta = np.asarray(blob["beta"], dtype=np.float32)
+    AB_EPS = 1e-3
+    log_g = np.log10(G_pct + AB_EPS).astype(np.float32)
+    pred = x_row @ beta
+    R_all = log_g - pred
+    union_idx = np.asarray(blob["union_idx"], dtype=int)
+    R_union = R_all[union_idx]
+
+    psi = np.float32(_gbhi_gupta_psi(G_pct, list(blob["mh_union"]), list(blob["mn_union"])))
+    z = np.concatenate([R_union, cov_feat, np.array([psi], dtype=np.float32)])
+
+    sc_mean = np.asarray(blob["sc_mean"], dtype=np.float32)
+    sc_scale = np.asarray(blob["sc_scale"], dtype=np.float32)
+    z_std = (z - sc_mean) / np.where(sc_scale == 0, 1.0, sc_scale)
+
+    W = np.asarray(blob["W"], dtype=np.float32)
+    b = np.asarray(blob["b"], dtype=np.float32)
+    logits = W @ z_std + b
+    logits = logits - float(logits.max())
+    exp_l = np.exp(logits)
+    probs = exp_l / exp_l.sum()
+    nc_ci = list(blob["class_names"]).index("NC")
+    return float(probs[nc_ci]), matched, n_genus
 
 
 class HealthScoreRequest(BaseModel):

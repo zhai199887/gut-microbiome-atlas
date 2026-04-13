@@ -255,7 +255,6 @@ const HealthIndexPanel = () => {
   const [error, setError] = useState("");
   const [result, setResult] = useState<HealthResult | null>(null);
   const [gbhi, setGbhi] = useState<GbhiResult | null>(null);
-  const [formulaOpen, setFormulaOpen] = useState(false);
   const [sortMode, setSortMode] = useState<"diff" | "user" | "nc">("diff");
 
   const fileInputRef = useRef<HTMLInputElement>(null);

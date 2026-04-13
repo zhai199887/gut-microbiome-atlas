@@ -5075,25 +5075,20 @@ def _compute_health_disease_genera() -> dict:
         if r["adjusted_p"] >= 0.05 or abs(r["log2fc"]) < 0.5:
             continue
         re_row = re_lookup.get(r["genus"])
-        # Replication of Gupta 2020: require effect-size cutoff for marker
-        # selection. We use pooled Hedges' g ≥ 0.2 (Cohen "small" threshold)
-        # when a per-study effect could be estimated.
-        if re_row is not None and abs(float(re_row["hedges_g"])) < 0.2:
+        # Replication of Gupta 2020: STRICTLY require random-effects meta-analysis
+        # evidence with pooled |Hedges' g| ≥ 0.2 (Cohen "small" threshold).
+        # Genera not seen in ≥2 studies (re_row is None) are dropped — they
+        # cannot survive the RE-model and would otherwise contaminate the
+        # marker set with rare, study-specific taxa.
+        if re_row is None:
             continue
-        # weight = pooled |Hedges' g| if available (study-stratified),
-        # otherwise fall back to |log2fc|
-        if re_row is not None:
-            weight = round(abs(float(re_row["hedges_g"])), 4)
-            hg = re_row["hedges_g"]
-            se = re_row["se"]
-            k_studies = re_row["k_studies"]
-            re_q = re_row["adjusted_p"]
-        else:
-            weight = round(abs(float(r["log2fc"])), 4)
-            hg = None
-            se = None
-            k_studies = 0
-            re_q = None
+        if abs(float(re_row["hedges_g"])) < 0.2:
+            continue
+        weight = round(abs(float(re_row["hedges_g"])), 4)
+        hg = re_row["hedges_g"]
+        se = re_row["se"]
+        k_studies = re_row["k_studies"]
+        re_q = re_row["adjusted_p"]
         entry = {
             "genus": r["genus"],
             "log2fc": round(r["log2fc"], 4),

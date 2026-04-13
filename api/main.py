@@ -4988,36 +4988,98 @@ def _compute_health_disease_genera() -> dict:
     else:
         n_dis_total = 0
 
+    # ── Hybrid selection: pooled Wilcoxon for breadth, RE Hedges' g for weight ──
+    # 选属 = 全样本 NC vs all-disease Wilcoxon + BH-FDR  (与文献广筛口径一致)
+    # 权重 = 跨研究随机效应 Hedges' g                    (跨 BioProject 防混杂)
+    re_lookup = {row["genus"]: row for row in all_results}
+
+    nc_pool_keys_unique2 = list(dict.fromkeys(nc_pool_keys))
+    dis_keys_pool = meta_local.loc[meta_local["_is_dis"], "sample_key"].tolist()
+    if not nc_pool_keys_unique2 or not dis_keys_pool:
+        return {
+            "health_genera": [], "disease_genera": [], "nc_stats": {},
+            "n_studies": studies_used,
+        }
+
+    raw_nc_p = abund.loc[nc_pool_keys_unique2].values.astype(float)
+    raw_dis_p = abund.loc[dis_keys_pool].values.astype(float)
+    tot_n = raw_nc_p.sum(axis=1, keepdims=True); tot_n[tot_n == 0] = 1
+    tot_d = raw_dis_p.sum(axis=1, keepdims=True); tot_d[tot_d == 0] = 1
+    mat_nc_p = raw_nc_p / tot_n * 100
+    mat_dis_p = raw_dis_p / tot_d * 100
+
+    pooled_results = []
+    for genus in unique_genera:
+        cidx = genus_to_cols[genus]
+        if not cidx:
+            continue
+        v_nc = mat_nc_p[:, cidx].sum(axis=1) if len(cidx) > 1 else mat_nc_p[:, cidx[0]]
+        v_dis = mat_dis_p[:, cidx].sum(axis=1) if len(cidx) > 1 else mat_dis_p[:, cidx[0]]
+        if v_nc.std() + v_dis.std() < 1e-12:
+            continue
+        try:
+            _, p = stats.mannwhitneyu(v_nc, v_dis, alternative="two-sided")
+        except Exception:
+            continue
+        m_nc = float(v_nc.mean())
+        m_dis = float(v_dis.mean())
+        pooled_results.append({
+            "genus": genus,
+            "p_value": float(p),
+            "mean_nc": m_nc,
+            "mean_disease": m_dis,
+            "log2fc": math.log2((m_nc + pseudo) / (m_dis + pseudo)),
+        })
+
+    if not pooled_results:
+        return {
+            "health_genera": [], "disease_genera": [], "nc_stats": {},
+            "n_studies": studies_used,
+        }
+    q_pooled = bh_correction([r["p_value"] for r in pooled_results])
+    for r, q in zip(pooled_results, q_pooled):
+        r["adjusted_p"] = float(q)
+
     health_genera = []
     disease_genera = []
-    for row in all_results:
-        if row["adjusted_p"] >= 0.05 or row["k_studies"] < 5 or abs(row["hedges_g"]) < 0.05:
+    for r in pooled_results:
+        if r["adjusted_p"] >= 0.05 or abs(r["log2fc"]) < 0.5:
             continue
-        genus = row["genus"]
-        m_nc = mean_nc_map.get(genus, 0.0)
-        m_dis = mean_dis_map.get(genus, 0.0)
-        log2fc = math.log2((m_nc + pseudo) / (m_dis + pseudo))
-        # weight = pooled |Hedges' g| (random-effects effect size, study-stratified)
-        weight = round(abs(float(row["hedges_g"])), 4)
+        re_row = re_lookup.get(r["genus"])
+        # weight = pooled |Hedges' g| if available (study-stratified),
+        # otherwise fall back to |log2fc|
+        if re_row is not None:
+            weight = round(abs(float(re_row["hedges_g"])), 4)
+            hg = re_row["hedges_g"]
+            se = re_row["se"]
+            k_studies = re_row["k_studies"]
+            re_q = re_row["adjusted_p"]
+        else:
+            weight = round(abs(float(r["log2fc"])), 4)
+            hg = None
+            se = None
+            k_studies = 0
+            re_q = None
         entry = {
-            "genus": genus,
-            "hedges_g": row["hedges_g"],
-            "se": row["se"],
-            "k_studies": row["k_studies"],
-            "p_value": row["p_value"],
-            "adjusted_p": row["adjusted_p"],
-            "log2fc": round(log2fc, 4),
-            "mean_nc": round(m_nc, 6),
-            "mean_disease": round(m_dis, 6),
+            "genus": r["genus"],
+            "log2fc": round(r["log2fc"], 4),
+            "p_value": round(r["p_value"], 10),
+            "adjusted_p": round(r["adjusted_p"], 10),
+            "mean_nc": round(r["mean_nc"], 6),
+            "mean_disease": round(r["mean_disease"], 6),
+            "hedges_g": round(hg, 4) if hg is not None else None,
+            "se": round(se, 4) if se is not None else None,
+            "k_studies": k_studies,
+            "re_adjusted_p": round(re_q, 10) if re_q is not None else None,
             "weight": weight,
         }
-        if row["hedges_g"] > 0:           # NC > Disease → health-associated
+        if r["mean_nc"] > r["mean_disease"]:
             health_genera.append(entry)
         else:
             disease_genera.append(entry)
 
-    health_genera.sort(key=lambda x: abs(float(x["hedges_g"])), reverse=True)
-    disease_genera.sort(key=lambda x: abs(float(x["hedges_g"])), reverse=True)
+    health_genera.sort(key=lambda x: x["weight"], reverse=True)
+    disease_genera.sort(key=lambda x: x["weight"], reverse=True)
 
     return {
         "health_genera": health_genera[:50],

@@ -4809,6 +4809,35 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
 
 # ── Health Index / 微生物组健康指数 ──────────────────────────────────────────
 
+def _psi_score(values_pct: np.ndarray, R_prime: float, detection_pct: float = 1e-3) -> float:
+    """
+    Gupta 2020 (Nat Commun) marker-set ψ score:
+        ψ_M = (R_M / R_M_prime) × H_M
+    where R_M is the count of markers with relative abundance > detection,
+    R_M_prime is the median observed marker count in healthy training,
+    H_M is Shannon entropy over the marker abundances (renormalised to sum 1).
+
+    Args:
+        values_pct: 1-D array of relative abundances (%) for the marker genera
+                    found in this sample. Length = number of markers in set M.
+        R_prime: median NC marker richness for set M.
+        detection_pct: relative-abundance detection threshold in % units
+                       (Gupta uses 1e-5 fraction = 1e-3 %).
+    Returns:
+        ψ scalar (≥ 0).
+    """
+    if values_pct.size == 0 or R_prime <= 0:
+        return 0.0
+    present = values_pct[values_pct > detection_pct]
+    R = float(present.size)
+    if R == 0:
+        return 0.0
+    p = present / present.sum()
+    # Shannon entropy in nats — Gupta uses natural log
+    H = float(-(p * np.log(p + 1e-12)).sum())
+    return (R / R_prime) * H
+
+
 @lru_cache(maxsize=1)
 def _compute_health_disease_genera() -> dict:
     """
@@ -5046,6 +5075,11 @@ def _compute_health_disease_genera() -> dict:
         if r["adjusted_p"] >= 0.05 or abs(r["log2fc"]) < 0.5:
             continue
         re_row = re_lookup.get(r["genus"])
+        # Replication of Gupta 2020: require effect-size cutoff for marker
+        # selection. We use pooled Hedges' g ≥ 0.2 (Cohen "small" threshold)
+        # when a per-study effect could be estimated.
+        if re_row is not None and abs(float(re_row["hedges_g"])) < 0.2:
+            continue
         # weight = pooled |Hedges' g| if available (study-stratified),
         # otherwise fall back to |log2fc|
         if re_row is not None:
@@ -5081,28 +5115,75 @@ def _compute_health_disease_genera() -> dict:
     health_genera.sort(key=lambda x: x["weight"], reverse=True)
     disease_genera.sort(key=lambda x: x["weight"], reverse=True)
 
+    # Cap marker counts (Gupta 2020 used 7 MH + 43 MN; we keep up to 50 each)
+    health_genera = health_genera[:50]
+    disease_genera = disease_genera[:50]
+
+    # ── Compute R_MH_prime / R_MN_prime (median marker richness in NC pool) ──
+    # following Gupta 2020 eq. 1: ψ_M = (R_M / R_M_prime) × H_M
+    # where R_M_prime is the median observed marker count in healthy training.
+    detection_thresh = 1e-5  # Gupta 2020: relative abundance > 0.00001 (units = fraction)
+    # mat_nc_p is in % (0-100), so threshold in % = 1e-5 * 100 = 1e-3
+    detection_thresh_pct = detection_thresh * 100.0
+
+    def _marker_matrix_pct(genera_list):
+        """Build (n_samples × n_markers) matrix of NC %-abundance for given marker genera."""
+        cols = []
+        for g in genera_list:
+            cidx = genus_to_cols.get(g["genus"], [])
+            if not cidx:
+                cols.append(np.zeros(mat_nc_p.shape[0]))
+                continue
+            v = mat_nc_p[:, cidx].sum(axis=1) if len(cidx) > 1 else mat_nc_p[:, cidx[0]]
+            cols.append(v)
+        return np.column_stack(cols) if cols else np.zeros((mat_nc_p.shape[0], 0))
+
+    h_mat = _marker_matrix_pct(health_genera)
+    d_mat = _marker_matrix_pct(disease_genera)
+    if h_mat.shape[1] > 0:
+        h_richness = (h_mat > detection_thresh_pct).sum(axis=1)
+        R_MH_prime = float(np.median(h_richness)) if len(h_richness) > 0 else 1.0
+    else:
+        R_MH_prime = 1.0
+    if d_mat.shape[1] > 0:
+        d_richness = (d_mat > detection_thresh_pct).sum(axis=1)
+        R_MN_prime = float(np.median(d_richness)) if len(d_richness) > 0 else 1.0
+    else:
+        R_MN_prime = 1.0
+    R_MH_prime = max(R_MH_prime, 1.0)
+    R_MN_prime = max(R_MN_prime, 1.0)
+
     return {
-        "health_genera": health_genera[:50],
-        "disease_genera": disease_genera[:50],
+        "health_genera": health_genera,
+        "disease_genera": disease_genera,
         "nc_stats": nc_stats,
         "n_nc_samples": len(nc_pool_keys_unique),
         "n_disease_samples": n_dis_total,
         "n_studies": studies_used,
-        "method": "DerSimonian-Laird random-effects meta-analysis on Hedges' g of log-abundance",
+        "R_MH_prime": R_MH_prime,
+        "R_MN_prime": R_MN_prime,
+        "detection_threshold": detection_thresh,
+        "method": "Gupta 2020 ψ-formula on meta-analytic markers (DerSimonian-Laird Hedges' g, |g|≥0.2)",
     }
 
 
 @app.post("/api/health-index",
           summary="Gut Microbiome Health Index (GMHI)",
           description="""
-Calculate a gut microbiome health score (0-100) based on user-provided genus abundances.
-基于用户提供的属级丰度计算肠道微生物组健康评分。
+Gut Microbiome Health Index (GMHI) — Gupta et al. 2020 Nat Commun replication.
+基于 Gupta 2020 ψ 公式计算肠道菌群健康指数。
 
-Algorithm:
-1. Compare user genera against precomputed health-associated and disease-associated genera
-2. H_score = log10(sum_health_abundances / sum_disease_abundances)
-3. Normalize to 0-100 scale based on NC population distribution
-4. Provide per-genus deviation from healthy reference
+Formula (Gupta 2020, Eq. 1):
+    GMHI = log10((ψ_MH + ε) / (ψ_MN + ε))
+    ψ_M  = (R_M / R_M_prime) × H_M
+where R_M  = observed marker richness (rel. abund. > 1e-5),
+      R_M_prime = median NC marker richness (training cohort),
+      H_M  = Shannon entropy over marker abundances,
+      ε    = 1e-5.
+
+Markers (MH/MN genera) are selected via random-effects meta-analysis
+(DerSimonian-Laird) of per-study Hedges' g across 156 BioProjects, retaining
+genera with FDR-adjusted Wilcoxon p<0.05, |log2FC|≥0.5, and |g|≥0.2.
 """,
           tags=["Similarity"])
 @limiter.limit("20/minute")
@@ -5118,12 +5199,16 @@ async def health_index(request: Request, req: HealthIndexRequest):
     health_set = {g["genus"].lower(): g for g in ref["health_genera"]}
     disease_set = {g["genus"].lower(): g for g in ref["disease_genera"]}
     nc_stats = ref["nc_stats"]
+    R_MH_prime = float(ref.get("R_MH_prime", 1.0))
+    R_MN_prime = float(ref.get("R_MN_prime", 1.0))
+    detection_pct = float(ref.get("detection_threshold", 1e-5)) * 100.0  # → % units
 
-    # Match user genera
-    h_sum = 0.0
-    d_sum = 0.0
-    h_weighted = 0.0
-    d_weighted = 0.0
+    # Renormalise user abundances to % (in case they sum ≠ 100)
+    user_total = sum(float(v) for v in req.abundances.values()) or 1.0
+    user_norm = {k.strip(): float(v) / user_total * 100.0 for k, v in req.abundances.items()}
+
+    h_marker_vals = []  # %-abundance for matched MH markers
+    d_marker_vals = []  # %-abundance for matched MN markers
     health_matched = []
     disease_matched = []
     per_genus = []
@@ -5131,13 +5216,11 @@ async def health_index(request: Request, req: HealthIndexRequest):
     for genus, value in req.abundances.items():
         g_lower = genus.strip().lower()
         g_title = genus.strip().title()
-        numeric_value = float(value)
+        numeric_value = float(user_norm.get(genus.strip(), 0.0))
 
-        # Check if this is a health or disease genus
         if g_lower in health_set:
             weight = float(health_set[g_lower].get("weight", 1.0))
-            h_sum += numeric_value
-            h_weighted += numeric_value * weight
+            h_marker_vals.append(numeric_value)
             health_matched.append({
                 "genus": g_title,
                 "abundance": round(numeric_value, 6),
@@ -5146,8 +5229,7 @@ async def health_index(request: Request, req: HealthIndexRequest):
             })
         if g_lower in disease_set:
             weight = float(disease_set[g_lower].get("weight", 1.0))
-            d_sum += numeric_value
-            d_weighted += numeric_value * weight
+            d_marker_vals.append(numeric_value)
             disease_matched.append({
                 "genus": g_title,
                 "abundance": round(numeric_value, 6),
@@ -5175,17 +5257,20 @@ async def health_index(request: Request, req: HealthIndexRequest):
                 "status": status,
             })
 
-    total_h_weighted = sum(float(item["abundance"]) * float(item["weight"]) for item in health_matched) or 1e-6
-    total_d_weighted = sum(float(item["abundance"]) * float(item["weight"]) for item in disease_matched) or 1e-6
+    # Per-marker contribution = abundance / total marker abundance in that set
+    total_h = sum(float(item["abundance"]) for item in health_matched) or 1e-9
+    total_d = sum(float(item["abundance"]) for item in disease_matched) or 1e-9
     for item in health_matched:
-        item["contribution"] = round(float(item["abundance"]) * float(item["weight"]) / total_h_weighted, 4)
+        item["contribution"] = round(float(item["abundance"]) / total_h, 4)
     for item in disease_matched:
-        item["contribution"] = round(float(item["abundance"]) * float(item["weight"]) / total_d_weighted, 4)
+        item["contribution"] = round(float(item["abundance"]) / total_d, 4)
 
-    # Calculate raw score
-    pseudo = 1e-6
-    raw_score = math.log10((h_sum + pseudo) / (d_sum + pseudo))
-    raw_score_weighted = math.log10((h_weighted + pseudo) / (d_weighted + pseudo))
+    # ── Gupta 2020 ψ formula ──
+    psi_MH = _psi_score(np.asarray(h_marker_vals, dtype=float), R_MH_prime, detection_pct)
+    psi_MN = _psi_score(np.asarray(d_marker_vals, dtype=float), R_MN_prime, detection_pct)
+    pseudo = 1e-5  # Gupta's ε
+    raw_score_weighted = math.log10((psi_MH + pseudo) / (psi_MN + pseudo))
+    raw_score = raw_score_weighted  # legacy field kept for back-compat
 
     # Use empirical percentile calibration from population data
     # 使用群体数据的经验百分位数校准
@@ -5224,8 +5309,10 @@ async def health_index(request: Request, req: HealthIndexRequest):
         "population_percentile": round(population_percentile, 1),
         "health_genera_matched": len(health_matched),
         "disease_genera_matched": len(disease_matched),
-        "health_genera_sum": round(h_sum, 4),
-        "disease_genera_sum": round(d_sum, 4),
+        "psi_MH": round(psi_MH, 6),
+        "psi_MN": round(psi_MN, 6),
+        "R_MH_prime": round(R_MH_prime, 2),
+        "R_MN_prime": round(R_MN_prime, 2),
         "health_genera_detail": health_matched,
         "disease_genera_detail": disease_matched,
         "per_genus_deviation": per_genus[:50],
@@ -5260,28 +5347,43 @@ def _compute_population_gmhi() -> dict:
     nc_sample = list(np.random.choice(nc_keys, min(2000, len(nc_keys)), replace=False)) if len(nc_keys) > 0 else []
     dis_sample = list(np.random.choice(disease_keys, min(2000, len(disease_keys)), replace=False)) if len(disease_keys) > 0 else []
 
-    health_weights = {g["genus"].lower(): float(g.get("weight", 1.0)) for g in ref["health_genera"]}
-    disease_weights = {g["genus"].lower(): float(g.get("weight", 1.0)) for g in ref["disease_genera"]}
+    health_set = {g["genus"].lower() for g in ref["health_genera"]}
+    disease_set = {g["genus"].lower() for g in ref["disease_genera"]}
+    R_MH_prime = float(ref.get("R_MH_prime", 1.0))
+    R_MN_prime = float(ref.get("R_MN_prime", 1.0))
+    detection_pct = float(ref.get("detection_threshold", 1e-5)) * 100.0
 
     genus_labels = [extract_genus(c).lower() for c in col_names]
-    h_col_weights = [(i, health_weights[g]) for i, g in enumerate(genus_labels) if g in health_weights]
-    d_col_weights = [(i, disease_weights[g]) for i, g in enumerate(genus_labels) if g in disease_weights]
+    h_cols = [i for i, g in enumerate(genus_labels) if g in health_set]
+    d_cols = [i for i, g in enumerate(genus_labels) if g in disease_set]
 
     def compute_raw_scores(keys):
+        """Vectorised Gupta 2020 ψ-formula across many samples."""
         if not keys:
             return np.array([])
         raw = abund.loc[keys].values.astype(float)
         totals = raw.sum(axis=1, keepdims=True)
         totals[totals == 0] = 1
-        rel = raw / totals * 100
-        h_sums = np.zeros(len(keys))
-        d_sums = np.zeros(len(keys))
-        for idx, weight in h_col_weights:
-            h_sums += rel[:, idx] * weight
-        for idx, weight in d_col_weights:
-            d_sums += rel[:, idx] * weight
-        pseudo = 1e-6
-        return np.log10((h_sums + pseudo) / (d_sums + pseudo))
+        rel = raw / totals * 100  # %
+        H_block = rel[:, h_cols] if h_cols else np.zeros((len(keys), 0))
+        D_block = rel[:, d_cols] if d_cols else np.zeros((len(keys), 0))
+
+        def psi_block(block, R_prime):
+            mask = block > detection_pct
+            R = mask.sum(axis=1).astype(float)
+            masked = np.where(mask, block, 0.0)
+            row_sum = masked.sum(axis=1, keepdims=True)
+            row_sum[row_sum == 0] = 1.0
+            p = masked / row_sum
+            with np.errstate(divide="ignore", invalid="ignore"):
+                logp = np.where(mask, np.log(p + 1e-12), 0.0)
+            H = -(p * logp).sum(axis=1)
+            return (R / max(R_prime, 1.0)) * H
+
+        psi_h = psi_block(H_block, R_MH_prime)
+        psi_d = psi_block(D_block, R_MN_prime)
+        eps = 1e-5
+        return np.log10((psi_h + eps) / (psi_d + eps))
 
     nc_raw = compute_raw_scores(nc_sample)
     dis_raw = compute_raw_scores(dis_sample)

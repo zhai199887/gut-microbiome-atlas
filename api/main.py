@@ -5577,6 +5577,255 @@ async def analytics_summary(request: Request, token: str = ""):
     }
 
 
+# ── Universal GBHI (/api/health_score) ──────────────────────────────────────
+# Frozen multinomial softmax classifier from gbhi_universal.pkl (Nature
+# Microbiology, Universal multinomial softmax layer). Single LogisticRegression
+# (lbfgs, C=1.0, class_weight=balanced) over 10 classes, fit on 98,847 labeled
+# samples. Feature vector z(s) ∈ R^184 =
+#   [ R_union (119 marker residuals) | 63 cov dummies + log10(length) | psi_universal ]
+# Covariate residualization β̂ fitted once on full 168k compendium (Wirbel 2019
+# batch-norm style; label-agnostic). Health(s) = P(NC|s) * 100.
+
+GBHI_UNIVERSAL_PKL = r"E:\tasks\screenshots\fig1g\gbhi_models\gbhi_universal.pkl"
+GBHI_CACHE_NPZ     = r"E:\tasks\screenshots\fig1g\v6_cache.npz"
+
+_GBHI_UNIVERSAL_BLOB: dict | None = None
+_GBHI_GENERA: list[str] | None = None
+_GBHI_GENUS_INDEX: dict[str, int] | None = None
+
+
+def _load_gbhi_universal() -> tuple[dict, list[str], dict[str, int]]:
+    """Lazy-load frozen softmax + genus ordering. Cached process-wide."""
+    global _GBHI_UNIVERSAL_BLOB, _GBHI_GENERA, _GBHI_GENUS_INDEX
+    if _GBHI_UNIVERSAL_BLOB is None:
+        import pickle
+        with open(GBHI_UNIVERSAL_PKL, "rb") as f:
+            _GBHI_UNIVERSAL_BLOB = pickle.load(f)
+        c = np.load(GBHI_CACHE_NPZ, allow_pickle=True)
+        _GBHI_GENERA = [str(x) for x in c["genera"]]
+        _GBHI_GENUS_INDEX = {g.lower(): i for i, g in enumerate(_GBHI_GENERA)}
+        blob = _GBHI_UNIVERSAL_BLOB
+        if blob.get("n_genus") != len(_GBHI_GENERA):
+            logging.warning(
+                "GBHI universal: pkl.n_genus=%s but cache has %d genera",
+                blob.get("n_genus"), len(_GBHI_GENERA),
+            )
+    return _GBHI_UNIVERSAL_BLOB, _GBHI_GENERA, _GBHI_GENUS_INDEX
+
+
+def _gbhi_gupta_psi(G_pct: np.ndarray, mh: list[int], mn: list[int]) -> float:
+    """Shared universal psi (log10 ratio) — matches fit_gbhi_universal.gupta_psi."""
+    EPS = 1e-5
+    gp = np.clip(G_pct / 100.0, 1e-12, 1.0)
+    H = float(-(gp * np.log(gp)).sum())
+
+    def rp(idx: list[int]) -> float:
+        if not idx:
+            return 1.0
+        pres = int((G_pct[idx] > 0).sum())
+        return float(pres) if pres > 0 else 1.0
+
+    Rh, Rn = rp(mh), rp(mn)
+    psi_h = (float((G_pct[mh] > 0).sum()) / Rh) * H if mh else EPS
+    psi_n = (float((G_pct[mn] > 0).sum()) / Rn) * H if mn else EPS
+    val = math.log10((psi_h + EPS) / (psi_n + EPS))
+    if not math.isfinite(val):
+        return 0.0
+    return val
+
+
+class HealthScoreRequest(BaseModel):
+    """Input payload for /api/health_score.
+
+    abundances   : dict genus_name -> relative abundance (% or fraction;
+                   will be renormalized to sum to 100 %).
+    amplicon     : e.g. "v3-v4", "v4", "v1-v2" (falls back to OTHER).
+    iso          : ISO-2 country code (e.g. "CN", "US"; falls back to OTHER).
+    age_group    : one of Adolescent/Adult/Centenarian/Child/Infant/NC/
+                   Older_Adult/Oldest_Old/Unknown/Necrotizing enterocolitis.
+    sex          : female / male / unknown.
+    length       : sequencing length (bp); if missing, uses training median.
+    """
+    abundances: dict[str, float]
+    amplicon: str = ""
+    iso: str = ""
+    age_group: str = "Unknown"
+    sex: str = "unknown"
+    length: float | None = None
+
+
+def _gbhi_tier(p_nc: float) -> str:
+    """Tier from P(NC). Cutoffs documented in code — align w/ paper Results.
+
+    high      : P(NC) * 100 >= 70  (NC training median ≈ 0.75)
+    moderate  : 40 <= P(NC)*100 < 70
+    low       : P(NC) * 100 < 40
+    """
+    s = p_nc * 100.0
+    if s >= 70.0:
+        return "high"
+    if s >= 40.0:
+        return "moderate"
+    return "low"
+
+
+_CLASS_KEY_MAP = {
+    "NC": "p_nc",
+    "c_difficile_infection": "p_cdi",
+    "CD": "p_cd",
+    "UC": "p_uc",
+    "rheumatoid arthritis": "p_ra",
+    "HIV": "p_hiv",
+    "adenoma": "p_adenoma",
+    "obesity": "p_obesity",
+    "IBS": "p_ibs",
+    "colorectal_cancer": "p_crc",
+}
+
+
+@app.post("/api/health_score",
+          summary="Universal GBHI health score (multinomial softmax)",
+          description="""
+Universal GBHI — frozen multinomial softmax layer (Nature Microbiology).
+
+Single scikit-learn LogisticRegression (solver=lbfgs, C=1.0, max_iter=2000,
+class_weight='balanced') over 10 classes:
+NC, c_difficile_infection, CD, UC, rheumatoid arthritis, HIV, adenoma,
+obesity, IBS, colorectal_cancer. Fitted on 98,847 labeled samples
+(82,106 NC + 16,741 disease).
+
+Feature pipeline (identical to fit_gbhi_universal.py):
+  1. 276-dim genus %-abundance vector aligned to frozen compendium order.
+  2. log10(G+1e-3) residualized against frozen β̂ (intercept + 63 covariate
+     dummies + log10_length) fitted once on the full 168k compendium.
+  3. Take residuals at 119 union marker indices  →  R_union.
+  4. Concatenate [R_union | cov_dummies(63) | log10_length | psi_universal]
+     = R^184 feature vector z.
+  5. Standardize with frozen scaler (sc_mean / sc_scale).
+  6. logits = W @ z_std + b ; probs = softmax(logits).
+Health(s) = P(NC|s) * 100.
+""",
+          tags=["Similarity"])
+@limiter.limit("20/minute")
+async def health_score(request: Request, req: HealthScoreRequest):
+    if not req.abundances:
+        raise HTTPException(400, "abundances dict must not be empty")
+
+    try:
+        blob, genera, genus_index = _load_gbhi_universal()
+    except FileNotFoundError as e:
+        raise HTTPException(500, f"GBHI universal model not found: {e}")
+
+    n_genus = len(genera)
+
+    # ── 1. align user abundances to frozen 276-genus order (percent) ──
+    total = sum(float(v) for v in req.abundances.values()) or 1.0
+    G_pct = np.zeros(n_genus, dtype=np.float32)
+    matched = 0
+    for name, v in req.abundances.items():
+        k = str(name).strip().lower()
+        j = genus_index.get(k)
+        if j is not None:
+            G_pct[j] = float(v) / total * 100.0
+            matched += 1
+
+    # ── 2. covariate design row in frozen schema ──
+    freeze = blob["freeze"]
+    dummy_pairs = freeze["dummy_pairs"]       # list of (prefix, value)
+    amp_keep = set(freeze["amp_keep"])
+    iso_keep = set(freeze["iso_keep"])
+    age_keep = set(freeze["age_keep"])
+    sex_keep = set(freeze["sex_keep"])
+
+    amp = (req.amplicon or "na").strip().lower() or "na"
+    if amp not in amp_keep:
+        amp = "OTHER"
+    iso = (req.iso or "NA").strip().upper() or "NA"
+    if iso not in iso_keep:
+        iso = "OTHER"
+    age = (req.age_group or "Unknown").strip() or "Unknown"
+    if age not in age_keep:
+        age = "Unknown"
+    sex = (req.sex or "unknown").strip().lower() or "unknown"
+    if sex not in sex_keep:
+        sex = "unknown"
+    cat_map = {"_amp": amp, "_iso": iso, "_age": age, "_sex": sex}
+
+    dummies = np.zeros(len(dummy_pairs), dtype=np.float32)
+    for i, (pre, val) in enumerate(dummy_pairs):
+        if cat_map.get(pre) == val:
+            dummies[i] = 1.0
+
+    # Training used log10(length+1) with median fill. Paper median ≈ 300 bp.
+    length = float(req.length) if req.length and req.length > 0 else 300.0
+    log_len = np.float32(math.log10(length + 1.0))
+
+    # cov_feat row = [dummies..., log10_length]  (shape 64,)
+    cov_feat = np.concatenate([dummies, np.array([log_len], dtype=np.float32)])
+
+    # X row = [1, cov_feat] for residualization — (1 + 63 + 1) = 65, matches β̂
+    x_row = np.concatenate([np.array([1.0], dtype=np.float32), cov_feat])
+    beta = np.asarray(blob["beta"], dtype=np.float32)   # (65, 276)
+    if x_row.shape[0] != beta.shape[0]:
+        raise HTTPException(
+            500,
+            f"GBHI beta shape mismatch: x_row={x_row.shape} beta={beta.shape}",
+        )
+
+    # ── 3. residualize log10(G+eps) against β̂ ──
+    AB_EPS = 1e-3
+    log_g = np.log10(G_pct + AB_EPS).astype(np.float32)    # (276,)
+    pred = x_row @ beta                                    # (276,)
+    R_all = log_g - pred                                   # (276,)
+    union_idx = np.asarray(blob["union_idx"], dtype=int)
+    R_union = R_all[union_idx]                             # (119,)
+
+    # ── 4. psi_universal using union markers ──
+    psi = np.float32(_gbhi_gupta_psi(G_pct, list(blob["mh_union"]), list(blob["mn_union"])))
+
+    z = np.concatenate([R_union, cov_feat, np.array([psi], dtype=np.float32)])
+    expected = len(union_idx) + len(dummy_pairs) + 1 + 1
+    if z.shape[0] != expected:
+        raise HTTPException(
+            500,
+            f"GBHI feature dim mismatch: got {z.shape[0]} expected {expected}",
+        )
+
+    # ── 5. standardize + softmax ──
+    sc_mean = np.asarray(blob["sc_mean"], dtype=np.float32)
+    sc_scale = np.asarray(blob["sc_scale"], dtype=np.float32)
+    z_std = (z - sc_mean) / np.where(sc_scale == 0, 1.0, sc_scale)
+
+    W = np.asarray(blob["W"], dtype=np.float32)            # (10, 184)
+    b = np.asarray(blob["b"], dtype=np.float32)            # (10,)
+    logits = W @ z_std + b
+    logits = logits - float(logits.max())                  # numerical stability
+    exp_l = np.exp(logits)
+    probs = exp_l / exp_l.sum()
+
+    class_names = blob["class_names"]
+    probs_out: dict[str, float] = {}
+    for cname, p in zip(class_names, probs):
+        key = _CLASS_KEY_MAP.get(cname)
+        if key is not None:
+            probs_out[key] = round(float(p), 6)
+
+    p_nc = float(probs_out.get("p_nc", 0.0))
+    health = round(p_nc * 100.0, 2)
+
+    return {
+        **probs_out,
+        "health_score": health,
+        "tier": _gbhi_tier(p_nc),
+        "n_matched_genera": matched,
+        "n_total_genera": n_genus,
+        "model_version": blob.get("version", "gbhi_universal_v1"),
+        "train_date": blob.get("train_date", ""),
+        "n_train": blob.get("n_train", 0),
+        "class_names": class_names,
+    }
+
+
 # ── API v1 version aliases / API v1 版本别名 ─────────────────────────────────
 @app.get("/api/v1/{path:path}")
 @limiter.limit("120/minute")

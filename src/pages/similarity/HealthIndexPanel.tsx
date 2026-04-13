@@ -76,6 +76,37 @@ interface DeviationEntry {
   status: string;
 }
 
+// New: multinomial softmax GBHI response (matches paper Fig 1g, gbhi_universal.pkl)
+// Backend endpoint: POST /api/health_score
+// 10 classes: NC + {CDI, CD, UC, RA, HIV, adenoma, obesity, IBS, CRC}
+interface GbhiResult {
+  p_nc: number;
+  p_cdi: number;
+  p_cd: number;
+  p_uc: number;
+  p_ra: number;
+  p_hiv: number;
+  p_adenoma: number;
+  p_obesity: number;
+  p_ibs: number;
+  p_crc: number;
+  health_score: number; // p_nc * 100, 0-100
+  tier: "high" | "moderate" | "low";
+}
+
+// Ordered disease class labels matching the paper's 10-class softmax output
+const GBHI_DISEASE_CLASSES: Array<{ key: keyof GbhiResult; label: string }> = [
+  { key: "p_cdi", label: "CDI" },
+  { key: "p_cd", label: "CD" },
+  { key: "p_uc", label: "UC" },
+  { key: "p_ra", label: "RA" },
+  { key: "p_hiv", label: "HIV" },
+  { key: "p_adenoma", label: "Adenoma" },
+  { key: "p_obesity", label: "Obesity" },
+  { key: "p_ibs", label: "IBS" },
+  { key: "p_crc", label: "CRC" },
+];
+
 interface HealthResult {
   score: number;
   raw_score: number;
@@ -223,6 +254,8 @@ const HealthIndexPanel = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<HealthResult | null>(null);
+  const [gbhi, setGbhi] = useState<GbhiResult | null>(null);
+  const [formulaOpen, setFormulaOpen] = useState(false);
   const [sortMode, setSortMode] = useState<"diff" | "user" | "nc">("diff");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -264,6 +297,7 @@ const HealthIndexPanel = () => {
   const calculate = async () => {
     setError("");
     setResult(null);
+    setGbhi(null);
 
     let abundances: Record<string, number> = {};
     try {
@@ -296,6 +330,21 @@ const HealthIndexPanel = () => {
       }
       const payload: HealthResult = await resp.json();
       setResult(payload);
+
+      // Also call the new universal multinomial softmax GBHI endpoint (paper Fig 1g)
+      try {
+        const gResp = await fetch(`${API_BASE}/api/health_score`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ abundances }),
+        });
+        if (gResp.ok) {
+          const gPayload: GbhiResult = await gResp.json();
+          setGbhi(gPayload);
+        }
+      } catch {
+        // non-fatal: new endpoint optional while backend is rolling out
+      }
     } catch (err: unknown) {
       const detail = err instanceof Error ? err.message : "";
       setError(detail ? `${t("healthIndex.requestFailed")}: ${detail}` : t("healthIndex.calculateFailed"));
@@ -306,6 +355,8 @@ const HealthIndexPanel = () => {
 
   useEffect(() => {
     if (!result || !gaugeRef.current) return;
+    // Prefer the new multinomial softmax GBHI score when available (paper Fig 1g)
+    const displayScore = gbhi ? gbhi.health_score : result.score;
     const svg = d3.select(gaugeRef.current);
     svg.selectAll("*").remove();
 
@@ -417,16 +468,16 @@ const HealthIndexPanel = () => {
     updateNeedle(0);
     const transition = d3.transition().duration(900).ease(d3.easeCubicOut);
     svg.transition(transition).tween("gmhi", () => {
-      const interpolate = d3.interpolateNumber(0, result.score);
+      const interpolate = d3.interpolateNumber(0, displayScore);
       return (time) => {
         const current = interpolate(time);
-        valueText.text(current.toFixed(0));
+        valueText.text(current.toFixed(1));
         updateNeedle(current);
       };
     });
 
     categoryText.raise();
-  }, [result, t]);
+  }, [result, gbhi, t]);
 
   const handleDrop = (event: DragEvent) => {
     event.preventDefault();
@@ -629,6 +680,59 @@ const HealthIndexPanel = () => {
           </div>
 
           <div ref={summaryExportRef} className={classes.exportCard}>
+            {/* Badge: synced to paper Figure 1g (universal multinomial softmax GBHI) */}
+            <div
+              style={{
+                display: "inline-block",
+                padding: "4px 10px",
+                marginBottom: 10,
+                borderRadius: 12,
+                background: "rgba(68, 204, 136, 0.15)",
+                border: "1px solid rgba(68, 204, 136, 0.45)",
+                color: "#9be8bf",
+                fontSize: 11,
+                letterSpacing: 0.3,
+              }}
+            >
+              同步于论文 Figure 1g · Universal Multinomial Softmax GBHI
+            </div>
+
+            {/* Tier pill */}
+            {gbhi && (
+              <div style={{ marginBottom: 8 }}>
+                <span
+                  style={{
+                    display: "inline-block",
+                    padding: "3px 10px",
+                    borderRadius: 10,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color:
+                      gbhi.tier === "high"
+                        ? "#44cc88"
+                        : gbhi.tier === "moderate"
+                          ? "#ffb02e"
+                          : "#ff6666",
+                    background:
+                      gbhi.tier === "high"
+                        ? "rgba(68, 204, 136, 0.15)"
+                        : gbhi.tier === "moderate"
+                          ? "rgba(255, 176, 46, 0.15)"
+                          : "rgba(255, 102, 102, 0.15)",
+                    border: `1px solid ${
+                      gbhi.tier === "high"
+                        ? "rgba(68, 204, 136, 0.5)"
+                        : gbhi.tier === "moderate"
+                          ? "rgba(255, 176, 46, 0.5)"
+                          : "rgba(255, 102, 102, 0.5)"
+                    }`,
+                  }}
+                >
+                  Tier: {gbhi.tier.toUpperCase()}
+                </span>
+              </div>
+            )}
+
             <div className={classes.percentileBanner}>
               <span className={classes.percentileValue}>{result.population_percentile.toFixed(1)}%</span>
               <span className={classes.percentileLabel}>{t("healthIndex.populationPct")}</span>
@@ -664,6 +768,129 @@ const HealthIndexPanel = () => {
                 </div>
               </div>
             </div>
+          </div>
+
+          {gbhi && (
+            <div
+              style={{
+                marginTop: 16,
+                padding: 16,
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 8,
+              }}
+            >
+              <h3 style={{ margin: "0 0 4px", fontSize: 14, color: "#eee" }}>
+                10-Class Softmax Probabilities
+              </h3>
+              <p style={{ margin: "0 0 12px", fontSize: 11, color: "#888" }}>
+                Order matches paper Figure 1g: NC + 9 diseases
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {[{ key: "p_nc" as const, label: "NC (健康对照)" }, ...GBHI_DISEASE_CLASSES].map(
+                  (cls) => {
+                    const value = gbhi[cls.key] as number;
+                    const pct = Math.max(0, Math.min(1, value)) * 100;
+                    const isNc = cls.key === "p_nc";
+                    return (
+                      <div
+                        key={cls.key}
+                        style={{ display: "flex", alignItems: "center", gap: 10 }}
+                      >
+                        <span style={{ width: 110, fontSize: 11, color: "#bbb" }}>
+                          {cls.label}
+                        </span>
+                        <div
+                          style={{
+                            flex: 1,
+                            height: 12,
+                            background: "rgba(255,255,255,0.06)",
+                            borderRadius: 6,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${pct}%`,
+                              height: "100%",
+                              background: isNc ? "#44cc88" : "#ff7a7a",
+                              transition: "width 0.6s ease-out",
+                            }}
+                          />
+                        </div>
+                        <span
+                          style={{
+                            width: 60,
+                            fontSize: 11,
+                            color: "#ddd",
+                            textAlign: "right",
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
+                          {(value * 100).toFixed(2)}%
+                        </span>
+                      </div>
+                    );
+                  },
+                )}
+              </div>
+            </div>
+          )}
+
+          <div
+            style={{
+              marginTop: 12,
+              padding: "10px 14px",
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 8,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setFormulaOpen((prev) => !prev)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#9be8bf",
+                fontSize: 13,
+                cursor: "pointer",
+                padding: 0,
+                fontWeight: 600,
+              }}
+            >
+              {formulaOpen ? "▼" : "▶"} 健康指数是怎么算出来的?
+            </button>
+            {formulaOpen && (
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 12,
+                  lineHeight: 1.7,
+                  color: "#cfcfcf",
+                }}
+              >
+                <p style={{ margin: "0 0 6px" }}>
+                  <strong style={{ color: "#9be8bf" }}>公式:</strong>{" "}
+                  健康指数 = P(NC | s) × 100,来自一个 10 类多项式 softmax 分类器。
+                </p>
+                <p style={{ margin: "0 0 6px" }}>
+                  和 Nature Microbiology 论文 Figure 1g 完全一致(同一个{" "}
+                  <code style={{ color: "#eee" }}>gbhi_universal.pkl</code>,同一个 184 维特征:
+                  119 个 marker 残差 + 64 个协变量 dummy + 1 个 Gupta ψ)。
+                </p>
+                <p style={{ margin: "0 0 6px" }}>
+                  <strong style={{ color: "#9be8bf" }}>训练集:</strong>{" "}
+                  98,847 样本(82,106 健康对照 + 16,741 疾病病例横跨 9 种疾病:
+                  CDI / CD / UC / RA / HIV / adenoma / obesity / IBS / CRC)。
+                </p>
+                <p style={{ margin: 0 }}>
+                  <strong style={{ color: "#9be8bf" }}>验证:</strong>{" "}
+                  LOCO 留一 cohort 外推 + LODO 留一疾病外推 双重验证(详见论文 Fig 1g 和
+                  Supplementary Fig 1)。
+                </p>
+              </div>
+            )}
           </div>
 
           <div ref={contributionExportRef}>

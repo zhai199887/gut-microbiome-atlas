@@ -333,16 +333,27 @@ const ComparePage = () => {
               <strong>{result.summary.group_a_n} / {result.summary.group_b_n}</strong>
               <small>A / B</small>
             </div>
-            <div className={classes.summaryCard}>
-              <span>{locale === "zh" ? "总分类单元" : "Total taxa"}</span>
-              <strong>{result.summary.total_taxa}</strong>
-              <small>{result.summary.taxonomy_level}</small>
-            </div>
-            <div className={classes.summaryCard}>
-              <span>{locale === "zh" ? "显著分类单元" : "Significant taxa"}</span>
-              <strong>{result.summary.significant_taxa}</strong>
-              <small>adj. p &lt; 0.05</small>
-            </div>
+            {(() => {
+              const lvl = (result.summary.taxonomy_level || "").toLowerCase();
+              const totalEn = lvl === "phylum" ? "Total phyla" : lvl === "family" ? "Total families" : "Total genera";
+              const totalZh = lvl === "phylum" ? "总门数" : lvl === "family" ? "总科数" : "总属数";
+              const sigEn = lvl === "phylum" ? "Significant phyla" : lvl === "family" ? "Significant families" : "Significant genera";
+              const sigZh = lvl === "phylum" ? "显著门" : lvl === "family" ? "显著科" : "显著属";
+              return (
+                <>
+                  <div className={classes.summaryCard}>
+                    <span>{locale === "zh" ? totalZh : totalEn}</span>
+                    <strong>{result.summary.total_taxa}</strong>
+                    <small>{result.summary.taxonomy_level}</small>
+                  </div>
+                  <div className={classes.summaryCard}>
+                    <span>{locale === "zh" ? sigZh : sigEn}</span>
+                    <strong>{result.summary.significant_taxa}</strong>
+                    <small>adj. p &lt; 0.05</small>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         ) : null}
 

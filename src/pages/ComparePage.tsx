@@ -396,7 +396,7 @@ const LefseResults = ({ result }: { result: DiffResult }) => {
       <table className={classes.simpleTable}>
         <thead>
           <tr>
-            <th>{locale === "zh" ? "分类群" : "Taxon"}</th>
+            <th>{locale === "zh" ? "属" : "Genus"}</th>
             <th>LDA</th>
             <th>p</th>
             <th>{locale === "zh" ? "富集组" : "Enriched in"}</th>

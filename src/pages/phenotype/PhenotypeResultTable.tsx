@@ -65,7 +65,7 @@ export default function PhenotypeResultTable({ results, labelA, labelB, onTaxonC
       {/* Controls */}
       <div style={{ display: "flex", gap: "0.8rem", alignItems: "center", marginBottom: "0.8rem", flexWrap: "wrap" }}>
         <input
-          placeholder={locale === "zh" ? "搜索分类群…" : "Search taxon…"}
+          placeholder={locale === "zh" ? "搜索属…" : "Search genus…"}
           value={search}
           onChange={e => { setSearch(e.target.value); setPage(0); }}
           style={{ background: "var(--dark-gray)", border: "1px solid var(--gray)", color: "var(--light-gray)", borderRadius: "4px", padding: "0.3rem 0.6rem", width: "200px" }}
@@ -84,7 +84,7 @@ export default function PhenotypeResultTable({ results, labelA, labelB, onTaxonC
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
           <thead>
             <tr>
-              {th(locale === "zh" ? "分类群" : "Taxon", "taxon")}
+              {th(locale === "zh" ? "属" : "Genus", "taxon")}
               {th(locale === "zh" ? "门" : "Phylum", "phylum")}
               {th(`Mean ${labelA} (%)`, "mean_a")}
               {th(`Mean ${labelB} (%)`, "mean_b")}

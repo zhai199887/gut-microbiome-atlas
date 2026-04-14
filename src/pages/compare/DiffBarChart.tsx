@@ -73,7 +73,7 @@ const DiffBarChart = ({ result }: { result: DiffResult }) => {
       .attr("role", "graphics-symbol")
       .attr("data-tooltip", (d) => renderToString(
         <div className="tooltip-table">
-          <span>{locale === "zh" ? "分类群" : "Taxon"}</span><span>{d.taxon}</span>
+          <span>{locale === "zh" ? "属" : "Genus"}</span><span>{d.taxon}</span>
           <span>{locale === "zh" ? "门" : "Phylum"}</span><span>{d.phylum}</span>
           <span>log2FC</span><span>{d.log2fc.toFixed(3)}</span>
           <span>{locale === "zh" ? "均值 A" : "Mean A"}</span><span>{d.mean_a.toFixed(3)}%</span>

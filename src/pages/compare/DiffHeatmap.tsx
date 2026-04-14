@@ -79,7 +79,7 @@ const DiffHeatmap = ({ result }: { result: DiffResult }) => {
       </text>
 
       <text x={leftLabelX} y={88} textAnchor="end" fill="var(--light-gray)" fontSize="11">
-        {locale === "zh" ? "分类群" : "Taxon"}
+        {locale === "zh" ? "属" : "Genus"}
       </text>
       {columns.map((column, index) => (
         <text key={column} x={cellStartX + index * cellWidth + cellWidth / 2} y={88} textAnchor="middle" fill="var(--light-gray)" fontSize="11">

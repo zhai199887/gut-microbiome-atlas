@@ -111,7 +111,7 @@ const VolcanoChart = ({ result }: { result: DiffResult }) => {
       .attr("data-tooltip", (taxon, index) =>
         renderToString(
           <div className="tooltip-table">
-            <span>{locale === "zh" ? "分类群" : "Taxon"}</span><span>{taxon.taxon}</span>
+            <span>{locale === "zh" ? "属" : "Genus"}</span><span>{taxon.taxon}</span>
             <span>log2FC</span><span>{taxon.log2fc.toFixed(3)}</span>
             <span>-log10(adj.p)</span><span>{negLogP[index]!.toFixed(2)}</span>
             <span>{locale === "zh" ? "校正 p 值" : "adj.p"}</span>

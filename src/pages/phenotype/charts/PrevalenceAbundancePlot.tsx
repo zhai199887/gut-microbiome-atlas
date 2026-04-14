@@ -87,7 +87,7 @@ function draw(
     .attr("role", "graphics-symbol").attr("style", "cursor:pointer")
     .attr("data-tooltip", d => renderToString(
       <div className="tooltip-table">
-        <span>{locale === "zh" ? "分类群" : "Taxon"}</span><span style={{ fontStyle: "italic" }}>{d.taxon}</span>
+        <span>{locale === "zh" ? "属" : "Genus"}</span><span style={{ fontStyle: "italic" }}>{d.taxon}</span>
         <span>{labelA} {locale === "zh" ? "流行率" : "Prevalence"}</span><span>{(d.prevalence_a * 100).toFixed(1)}%</span>
         <span>{labelA} {locale === "zh" ? "平均丰度" : "Mean Abund."}</span><span>{d.mean_a.toFixed(4)}%</span>
         <span>adj.p</span><span>{d.adjusted_p < 0.001 ? "<0.001" : d.adjusted_p.toFixed(3)}</span>
@@ -110,7 +110,7 @@ function draw(
     .attr("role", "graphics-symbol").attr("style", "cursor:pointer")
     .attr("data-tooltip", d => renderToString(
       <div className="tooltip-table">
-        <span>{locale === "zh" ? "分类群" : "Taxon"}</span><span style={{ fontStyle: "italic" }}>{d.taxon}</span>
+        <span>{locale === "zh" ? "属" : "Genus"}</span><span style={{ fontStyle: "italic" }}>{d.taxon}</span>
         <span>{labelB} {locale === "zh" ? "流行率" : "Prevalence"}</span><span>{(d.prevalence_b * 100).toFixed(1)}%</span>
         <span>{labelB} {locale === "zh" ? "平均丰度" : "Mean Abund."}</span><span>{d.mean_b.toFixed(4)}%</span>
         <span>adj.p</span><span>{d.adjusted_p < 0.001 ? "<0.001" : d.adjusted_p.toFixed(3)}</span>

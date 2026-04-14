@@ -32,6 +32,9 @@ type StatsPayload = {
   total_non_nc_condition_labels?: number;
   total_condition_categories?: number;
   total_projects?: number;
+  total_taxa?: number;
+  total_unique_genera?: number;
+  /** @deprecated use total_taxa */
   total_genera?: number;
   version?: string;
   last_updated?: string;
@@ -164,7 +167,8 @@ const COPY: Record<"en" | "zh", Copy> = {
       { key: "total_projects", label: "Projects", fallback: "482" },
       { key: "total_condition_categories", label: "Condition categories", fallback: "224" },
       { key: "total_countries", label: "Countries", fallback: "72" },
-      { key: "total_genera", label: "Genera", fallback: "4,680" },
+      { key: "total_taxa", label: "Taxa", fallback: "4,680" },
+      { key: "total_unique_genera", label: "Genera", fallback: "3,142" },
       { key: "contact", label: "Contact", fallback: "cdai@cmu.edu.cn" },
     ],
   },
@@ -250,7 +254,8 @@ const COPY: Record<"en" | "zh", Copy> = {
       { key: "total_projects", label: "项目数", fallback: "482" },
       { key: "total_condition_categories", label: "条件类别", fallback: "224" },
       { key: "total_countries", label: "国家数", fallback: "72" },
-      { key: "total_genera", label: "菌属数", fallback: "4,680" },
+      { key: "total_taxa", label: "分类单元数", fallback: "4,680" },
+      { key: "total_unique_genera", label: "菌属数", fallback: "3,142" },
       { key: "contact", label: "联系邮箱", fallback: "cdai@cmu.edu.cn" },
     ],
   },

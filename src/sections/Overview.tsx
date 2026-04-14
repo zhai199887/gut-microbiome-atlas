@@ -62,7 +62,21 @@ const Overview = () => {
     },
     {
       icon: DatabaseIcon,
-      value: apiStats?.total_genera ?? summary?.total_genera ?? abundance?.total_genera,
+      value:
+        apiStats?.total_taxa
+        ?? summary?.total_taxa
+        ?? abundance?.total_taxa
+        ?? apiStats?.total_genera
+        ?? summary?.total_genera
+        ?? abundance?.total_genera,
+      label: t("overview.taxa"),
+    },
+    {
+      icon: MicroscopeIcon,
+      value:
+        apiStats?.total_unique_genera
+        ?? summary?.total_unique_genera
+        ?? abundance?.total_unique_genera,
       label: t("overview.genera"),
     },
   ];

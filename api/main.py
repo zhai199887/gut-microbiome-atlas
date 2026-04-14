@@ -80,7 +80,7 @@ app = FastAPI(
     description="""
 # GutBiomeDB — RESTful API
 
-A comprehensive analysis platform for the human gut microbiome, integrating **168,464 samples** across **4,680 genera**, **72 countries**, and **224 condition categories** (223 non-NC condition labels plus one NC category).
+A comprehensive analysis platform for the human gut microbiome, integrating **168,464 samples** across **4,680 taxonomic features** (resolving to ~3,142 unique genera after taxonomy-level aggregation), **72 countries**, and **224 condition categories** (223 non-NC condition labels plus one NC category). Differential analysis is performed at the genus level by default.
 
 ## Features
 - **Differential Analysis**: Wilcoxon rank-sum test, t-test, LEfSe (LDA effect size), PERMANOVA
@@ -609,17 +609,38 @@ def count_unique_projects(meta: pd.DataFrame) -> int:
     return int(series.nunique())
 
 
-def count_unique_genera_from_abundance() -> int:
-    """Count unique genera from abundance matrix headers without loading the full matrix."""
+def _abundance_data_columns() -> list[str]:
     if not ABUNDANCE_PATH or not os.path.exists(ABUNDANCE_PATH):
-        return 0
-
+        return []
     columns = pd.read_csv(ABUNDANCE_PATH, nrows=0).columns.tolist()
     if not columns:
-        return 0
+        return []
+    return columns[1:] if columns[0].strip().lower() in {"sample_id", "sampleid", "sample", "rownames"} else columns
 
-    data_columns = columns[1:] if columns[0].strip().lower() in {"sample_id", "sampleid", "sample", "rownames"} else columns
-    return len(data_columns)
+
+def count_total_taxa_from_abundance() -> int:
+    """Total number of taxonomic features (columns) in the abundance matrix.
+
+    Each column is a full taxonomic lineage string, not a genus — many columns may
+    collapse to the same genus once `extract_genus` is applied. Use
+    `count_unique_genera_resolved()` for the true unique-genus count.
+    """
+    return len(_abundance_data_columns())
+
+
+def count_unique_genera_resolved() -> int:
+    """Unique genus count after resolving each column to its genus name."""
+    cols = _abundance_data_columns()
+    if not cols:
+        return 0
+    return len({extract_genus(c).strip() for c in cols})
+
+
+# Deprecated: historically this returned the column count (= taxa), not genera.
+# Kept as an alias for `count_total_taxa_from_abundance` so legacy callers keep
+# working while the UI migrates to `total_taxa` / `total_unique_genera`.
+def count_unique_genera_from_abundance() -> int:  # noqa: D401 - kept for back-compat
+    return count_total_taxa_from_abundance()
 
 
 def build_genus_phylum_map(columns: list[str]) -> dict[str, str]:
@@ -1491,7 +1512,11 @@ def data_stats(request: Request):
         "total_non_nc_condition_labels": len(non_nc_condition_labels),
         "total_condition_categories": len(non_nc_condition_labels) + int(has_nc_category),
         "total_projects": count_unique_projects(meta),
-        "total_genera": count_unique_genera_from_abundance(),
+        "total_taxa": count_total_taxa_from_abundance(),
+        "total_unique_genera": count_unique_genera_resolved(),
+        # Deprecated: alias for total_taxa (historically misnamed). Kept so older
+        # cached clients keep working. Remove after one release cycle.
+        "total_genera": count_total_taxa_from_abundance(),
         "country_project_counts": country_project_counts,
         "last_updated": version_info.get("last_updated", datetime.now().strftime("%Y-%m-%d")),
         "version": version_info.get("version", f"v1.0_{datetime.now().strftime('%Y%m%d')}"),

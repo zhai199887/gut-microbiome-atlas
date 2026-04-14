@@ -23,11 +23,16 @@ export default function PhenotypeStats({ result }: Props) {
       value: result.n_b.toLocaleString(),
       sub: result.group_b,
     },
-    {
-      label: locale === "zh" ? "检验分类群数" : "Taxa Tested",
-      value: result.total_taxa.toLocaleString(),
-      sub: result.tax_level,
-    },
+    (() => {
+      const lvl = (result.tax_level || "").toLowerCase();
+      const labelEn = lvl === "phylum" ? "Phyla Tested" : lvl === "family" ? "Families Tested" : "Genera Tested";
+      const labelZh = lvl === "phylum" ? "检验门数" : lvl === "family" ? "检验科数" : "检验菌属数";
+      return {
+        label: locale === "zh" ? labelZh : labelEn,
+        value: result.total_taxa.toLocaleString(),
+        sub: result.tax_level,
+      };
+    })(),
     {
       label: locale === "zh" ? "显著差异 (adj.p<0.05)" : "Significant (adj.p<0.05)",
       value: result.significant_count.toLocaleString(),

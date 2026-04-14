@@ -24,6 +24,9 @@ export type MetadataSummary = {
   total_condition_categories?: number;
   total_unique_countries?: number;
   total_projects?: number;
+  total_taxa?: number;
+  total_unique_genera?: number;
+  /** @deprecated use total_taxa */
   total_genera?: number;
   age_counts: Record<string, number>;
   sex_counts: Record<string, number>;
@@ -53,6 +56,9 @@ export type SampleRecord = {
 
 export type AbundanceSummary = {
   genera: string[];
+  total_taxa?: number;
+  total_unique_genera?: number;
+  /** @deprecated use total_taxa */
   total_genera?: number;
   phylum_map?: Record<string, string>;
   by_age_group: Record<string, Record<string, number>>;
@@ -69,6 +75,9 @@ export type ApiStats = {
   total_non_nc_condition_labels?: number;
   total_condition_categories?: number;
   total_projects?: number;
+  total_taxa?: number;
+  total_unique_genera?: number;
+  /** @deprecated use total_taxa */
   total_genera?: number;
   country_project_counts?: Record<string, number>;
 };

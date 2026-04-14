@@ -87,7 +87,7 @@ function draw(
     .attr("style", "cursor:pointer")
     .attr("data-tooltip", d => renderToString(
       <div className="tooltip-table">
-        <span>{locale === "zh" ? "分类群" : "Taxon"}</span><span>{d.taxon}</span>
+        <span>{locale === "zh" ? "属" : "Genus"}</span><span>{d.taxon}</span>
         <span>{locale === "zh" ? "门" : "Phylum"}</span><span>{d.phylum || "—"}</span>
         <span>{labelA}</span><span>{d.mean_a.toFixed(4)}%</span>
         <span>{locale === "zh" ? "流行率" : "Prevalence"}</span><span>{(d.prevalence_a * 100).toFixed(1)}%</span>
@@ -111,7 +111,7 @@ function draw(
     .attr("style", "cursor:pointer")
     .attr("data-tooltip", d => renderToString(
       <div className="tooltip-table">
-        <span>{locale === "zh" ? "分类群" : "Taxon"}</span><span>{d.taxon}</span>
+        <span>{locale === "zh" ? "属" : "Genus"}</span><span>{d.taxon}</span>
         <span>{locale === "zh" ? "门" : "Phylum"}</span><span>{d.phylum || "—"}</span>
         <span>{labelB}</span><span>{d.mean_b.toFixed(4)}%</span>
         <span>{locale === "zh" ? "流行率" : "Prevalence"}</span><span>{(d.prevalence_b * 100).toFixed(1)}%</span>

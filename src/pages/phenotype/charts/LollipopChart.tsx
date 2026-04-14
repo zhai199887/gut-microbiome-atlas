@@ -127,7 +127,7 @@ function draw(
     .attr("style", "cursor:pointer")
     .attr("data-tooltip", d => renderToString(
       <div className="tooltip-table">
-        <span>{locale === "zh" ? "分类群" : "Taxon"}</span><span style={{ fontStyle: "italic" }}>{d.taxon}</span>
+        <span>{locale === "zh" ? "属" : "Genus"}</span><span style={{ fontStyle: "italic" }}>{d.taxon}</span>
         <span>{locale === "zh" ? "门" : "Phylum"}</span><span>{d.phylum || "—"}</span>
         <span>log2FC</span><span>{d.log2fc.toFixed(3)}</span>
         <span>adj.p</span><span>{d.adjusted_p < 0.001 ? "<0.001" : d.adjusted_p.toFixed(4)}</span>

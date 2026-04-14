@@ -1122,6 +1122,10 @@ class HealthIndexRequest(BaseModel):
     """微生物组健康指数请求模型"""
     abundances: dict[str, float]  # genus_name -> abundance_value
     age_group: str = ""           # 可选年龄段, 用于参考范围
+    amplicon: str = ""            # e.g. "v3-v4", "v4" (falls back to OTHER)
+    iso: str = ""                 # ISO-2 country code (falls back to OTHER)
+    sex: str = "unknown"          # female / male / unknown
+    length: float | None = None   # sequencing read length (bp); falls back to training median
 
 
 # ── Helper functions / 辅助函数 ────────────────────────────────────────────────
@@ -5347,7 +5351,12 @@ async def health_index(request: Request, req: HealthIndexRequest):
     # 6 的 NC 分布里搜。legacy Gupta psi 字段保留用于向后兼容展示。
     try:
         p_nc, _n_matched_univ, _n_total_univ = _score_universal_pnc(
-            req.abundances, age_group=req.age_group or "Unknown",
+            req.abundances,
+            amplicon=req.amplicon or "",
+            iso=req.iso or "",
+            age_group=req.age_group or "Unknown",
+            sex=req.sex or "unknown",
+            length=req.length,
         )
         normalized = float(round(p_nc * 100.0, 1))
     except Exception as e:

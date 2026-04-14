@@ -229,7 +229,7 @@ def _windows_to_wsl_path(path: str | Path) -> str:
 
 
 def _run_fastspar_command(command: list[str], stage: str) -> None:
-    result = subprocess.run(command, capture_output=True, text=True)
+    result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode == 0:
         return
 

@@ -1445,7 +1445,8 @@ def filter_options(request: Request):
 
     age_groups: list[str] = []
     if "age_group" in meta.columns:
-        age_groups = sorted(meta["age_group"].dropna().unique().tolist())
+        cleaned = meta["age_group"].dropna().astype(str).str.strip()
+        age_groups = sorted(v for v in cleaned.unique().tolist() if v in VALID_AGE_GROUPS)
 
     sexes: list[str] = []
     if "sex" in meta.columns:
@@ -1955,7 +1956,7 @@ def phenotype_groups(request: Request, dim_type: str = "disease"):
     elif dim_type == "age":
         if "age_group" not in meta.columns:
             return {"dim_type": dim_type, "groups": []}
-        vc = meta["age_group"].dropna().astype(str).value_counts()
+        vc = _clean_age_group_series(meta["age_group"]).value_counts()
         groups = [{"group": k, "sample_count": int(v)} for k, v in vc.items() if k.strip()]
         return {"dim_type": dim_type, "groups": groups}
     elif dim_type == "sex":
@@ -2162,7 +2163,7 @@ def phenotype_taxa_profile(
                 all_groups.update(v for v in vals if v and v != "nan" and v != "NC")
         groups = sorted(all_groups)[:50]  # limit to top 50 disease groups
     elif dim_type == "age":
-        groups = meta["age_group"].dropna().unique().tolist() if "age_group" in meta.columns else []
+        groups = _clean_age_group_series(meta["age_group"]).unique().tolist() if "age_group" in meta.columns else []
     elif dim_type == "sex":
         groups = meta["sex"].dropna().unique().tolist() if "sex" in meta.columns else []
     else:
@@ -2321,6 +2322,10 @@ def species_profile(request: Request, genus: str):
         results = []
         for name, group_idx in grouped.groups.items():
             if not name or name == "nan" or name == "unknown":
+                continue
+            # Whitelist: age_group column is dirty (disease labels leaked in) —
+            # drop anything outside canonical lifecycle buckets.
+            if col_name == "age_group" and name not in VALID_AGE_GROUPS:
                 continue
             vals = ga.loc[group_idx]
             display_name = iso_to_name(name) if col_name == "country" else name
@@ -3165,7 +3170,7 @@ def download_summary_stats(request: Request, format: str = "csv"):
     # Disease stats / 疾病统计
     disease_counts = _inform_label_counts(meta, include_nc=False)
     # Age group stats / 年龄组统计
-    age_counts = meta["age_group"].value_counts().to_dict() if "age_group" in meta.columns else {}
+    age_counts = _clean_age_group_series(meta["age_group"]).value_counts().to_dict() if "age_group" in meta.columns else {}
     # Sex stats / 性别统计
     sex_counts = meta["sex"].value_counts().to_dict() if "sex" in meta.columns else {}
 
@@ -3901,6 +3906,18 @@ def network_compare(
 
 AGE_GROUP_ORDER = ["Infant", "Child", "Adolescent", "Adult", "Older_Adult", "Oldest_Old", "Centenarian", "Unknown"]
 AGE_NAMED_ORDER = ["Infant", "Child", "Adolescent", "Adult", "Older_Adult", "Oldest_Old", "Centenarian"]
+VALID_AGE_GROUPS = set(AGE_GROUP_ORDER)
+
+
+def _clean_age_group_series(series: pd.Series) -> pd.Series:
+    """Drop dirty values from age_group column (metadata leak from disease labels).
+
+    Only canonical lifecycle buckets are allowed; anything else (e.g. "NC",
+    "Necrotizing enterocolitis") is silently dropped so downstream charts /
+    filters never surface them.
+    """
+    cleaned = series.dropna().astype(str).str.strip()
+    return cleaned[cleaned.isin(VALID_AGE_GROUPS)]
 
 
 def _lifecycle_filter_meta(meta: pd.DataFrame, disease: str = "", country: str = "") -> pd.DataFrame:

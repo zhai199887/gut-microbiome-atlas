@@ -152,11 +152,19 @@ def _dominant_country(meta: pd.DataFrame) -> str:
     return str(values.mode().iat[0])
 
 
+_VALID_AGE_GROUPS = {
+    "Infant", "Child", "Adolescent", "Adult",
+    "Older_Adult", "Oldest_Old", "Centenarian", "Unknown",
+}
+
+
 def _top_counts(meta: pd.DataFrame, column: str, top_n: int | None = None) -> list[dict]:
     if column not in meta.columns:
         return []
     values = meta[column].fillna("").astype(str).str.strip()
     values = values[(values != "") & (values.str.lower() != "nan")]
+    if column == "age_group":
+        values = values[values.isin(_VALID_AGE_GROUPS)]
     counts = values.value_counts()
     if top_n is not None:
         counts = counts.head(top_n)

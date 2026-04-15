@@ -4874,7 +4874,26 @@ def _compute_health_disease_genera() -> dict:
     每个 BioProject 内部独立计算 NC vs disease 的 log2FC 与方差,
     然后用 DerSimonian-Laird random-effects 模型合并跨研究效应量。
     这避免了 batch effect / Simpson's paradox,与 Gupta 2020 的多研究一致性思想一致。
+
+    Disk cache: result pickled next to main.py. Auto-invalidated when either
+    METADATA_PATH or ABUNDANCE_PATH source file mtime is newer than the pickle.
+    Avoids the 40+ GB peak from recomputing on cold start / lru_cache miss.
     """
+    import pickle
+    _cache_path = Path(__file__).parent / "health_disease_genera.pkl"
+    try:
+        _src_mtime = max(
+            os.path.getmtime(METADATA_PATH) if METADATA_PATH and os.path.exists(METADATA_PATH) else 0,
+            os.path.getmtime(ABUNDANCE_PATH) if ABUNDANCE_PATH and os.path.exists(ABUNDANCE_PATH) else 0,
+        )
+        if _cache_path.exists() and _cache_path.stat().st_mtime >= _src_mtime > 0:
+            with open(_cache_path, "rb") as _f:
+                _cached = pickle.load(_f)
+            logging.info(f"health_disease_genera: loaded from disk cache ({_cache_path.name})")
+            return _cached
+    except Exception as _e:
+        logging.warning(f"health_disease_genera: disk cache read failed ({_e}), recomputing")
+
     meta = get_metadata()
     abund = get_abundance()
     abund_idx = set(abund.index)
@@ -5227,7 +5246,7 @@ def _compute_health_disease_genera() -> dict:
         "d_mat_dis": _marker_matrix_pct_dis(disease_genera) if disease_genera else np.zeros((mat_dis_p.shape[0], 0)),
     }
 
-    return {
+    _result = {
         "health_genera": health_genera,
         "disease_genera": disease_genera,
         "nc_stats": nc_stats,
@@ -5239,6 +5258,15 @@ def _compute_health_disease_genera() -> dict:
         "detection_threshold": detection_thresh,
         "method": "Wilcoxon(FDR<0.05) + |log2FC|≥0.5 + mean≥0.01% + Gupta 2020 ψ-formula",
     }
+    try:
+        _tmp = _cache_path.with_suffix(".pkl.tmp")
+        with open(_tmp, "wb") as _f:
+            pickle.dump(_result, _f, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(_tmp, _cache_path)
+        logging.info(f"health_disease_genera: saved disk cache -> {_cache_path.name}")
+    except Exception as _e:
+        logging.warning(f"health_disease_genera: disk cache save failed ({_e})")
+    return _result
 
 
 @app.post("/api/health-index",

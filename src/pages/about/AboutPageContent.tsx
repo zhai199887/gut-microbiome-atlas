@@ -118,7 +118,7 @@ const COPY: Record<"en" | "zh", Copy> = {
     fundingText:
       "This work was supported by the National Natural Science Foundation of China (grant No. 82270571 and No. 82570632 to Cong Dai).",
     licenseProcessed:
-      "Processed database-level statistics and derived aggregate visual outputs are described under a CC BY 4.0 sharing model.",
+      "Data released under CC BY 4.0 — processed database-level statistics and derived aggregate visual outputs may be reused with attribution.",
     licenseSource:
       "Platform source code is released under the MIT License, following the repository license in the active workspace.",
     licenseRaw:
@@ -205,7 +205,7 @@ const COPY: Record<"en" | "zh", Copy> = {
     fundingText:
       "本研究获得国家自然科学基金资助（Cong Dai：82270571、82570632）。",
     licenseProcessed:
-      "平台处理后的数据库级统计结果和聚合可视化输出按 CC BY 4.0 口径说明共享边界。",
+      "数据按 CC BY 4.0 发布——平台处理后的数据库级统计结果和聚合可视化输出可在标注来源后自由复用。",
     licenseSource:
       "平台源代码遵循主仓库中的 MIT License。",
     licenseRaw:

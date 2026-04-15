@@ -5783,7 +5783,7 @@ _CLASS_KEY_MAP = {
 @app.post("/api/health_score",
           summary="Universal GBHI health score (multinomial softmax)",
           description="""
-Universal GBHI — frozen multinomial softmax layer (Nature Microbiology).
+Universal GBHI — frozen multinomial softmax layer.
 
 Single scikit-learn LogisticRegression (solver=lbfgs, C=1.0, max_iter=2000,
 class_weight='balanced') over 10 classes:

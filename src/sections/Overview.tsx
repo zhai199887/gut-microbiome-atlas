@@ -216,10 +216,7 @@ const Overview = () => {
         ) : null}
       </div>
 
-      <p className={classes.sourceNote}>
-        {t("overview.sources")}
-        <Link to="/about">{t("overview.cite")}</Link>
-      </p>
+      <p className={classes.sourceNote}>{t("overview.sources")}</p>
 
       <div className={classes.featureSections}>
         {featureGroups.map((group) => (

@@ -297,6 +297,28 @@ def set_disk_cached(key: str, val: dict):
     except Exception as e:
         logging.warning(f"Disk cache write failed for {key}: {e}")
 
+def _data_mtime() -> float:
+    """Return max mtime of metadata + abundance source files."""
+    mt = 0.0
+    for p in (METADATA_PATH, ABUNDANCE_PATH):
+        if p and os.path.exists(p):
+            mt = max(mt, os.path.getmtime(p))
+    return mt
+
+def get_disk_cached_by_data(key: str):
+    """Load from disk cache if source data hasn't changed (no TTL expiry)."""
+    path = _disk_cache_path(key)
+    try:
+        if not os.path.exists(path):
+            return None
+        # 缓存文件必须比源数据新，否则失效
+        if os.path.getmtime(path) < _data_mtime():
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
 def get_cached(key: str):
     """Return cached result if exists and not expired."""
     if key in _RESULT_CACHE:
@@ -1998,7 +2020,7 @@ def phenotype_association(
     cached = get_cached(cache_key)
     if cached is not None:
         return cached
-    disk_cached = get_disk_cached(cache_key)
+    disk_cached = get_disk_cached_by_data(cache_key)
     if disk_cached is not None:
         set_cached(cache_key, disk_cached)
         return disk_cached
@@ -2166,6 +2188,10 @@ def phenotype_taxa_profile(
     cached = get_cached(cache_key)
     if cached is not None:
         return cached
+    disk_cached = get_disk_cached_by_data(cache_key)
+    if disk_cached is not None:
+        set_cached(cache_key, disk_cached)
+        return disk_cached
 
     meta = get_metadata()
     abund = get_abundance()
@@ -2225,6 +2251,7 @@ def phenotype_taxa_profile(
     profile_data.sort(key=lambda x: -x["median"])
     result = {"taxon": taxon, "dim_type": dim_type, "groups": profile_data}
     set_cached(cache_key, result)
+    set_disk_cached(cache_key, result)
     return result
 
 

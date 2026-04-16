@@ -201,6 +201,9 @@ def warmup_data():
             ("metabolism category scfa_producers", lambda: getattr(metabolism_category_profile, "__wrapped__", metabolism_category_profile)(None, "scfa_producers")),
             ("biomarker discovery IBD", lambda: getattr(biomarker_discovery, "__wrapped__", biomarker_discovery)(None, "IBD", 2.0, 0.05)),
             ("lollipop IBD", lambda: getattr(lollipop_data, "__wrapped__", lollipop_data)(None, "IBD", 40)),
+            ("phenotype sex F vs M genus", lambda: getattr(phenotype_association, "__wrapped__", phenotype_association)(None, "sex", "female", "male", "genus", 0.10, 100)),
+            ("phenotype sex F vs M phylum", lambda: getattr(phenotype_association, "__wrapped__", phenotype_association)(None, "sex", "female", "male", "phylum", 0.10, 100)),
+            ("phenotype age Adult vs Older_Adult", lambda: getattr(phenotype_association, "__wrapped__", phenotype_association)(None, "age", "Adult", "Older_Adult", "genus", 0.10, 100)),
             (
                 "cross-study CD",
                 lambda: asyncio.run(
@@ -1984,6 +1987,15 @@ def phenotype_association(
     Core phenotype association analysis.
     核心表型关联分析：Mann-Whitney U + BH-FDR + 效应量 + 流行率 + 门注释
     """
+    cache_key = f"phenotype_assoc:{dim_type}:{group_a}:{group_b}:{tax_level}:{min_prevalence}:{top_n}"
+    cached = get_cached(cache_key)
+    if cached is not None:
+        return cached
+    disk_cached = get_disk_cached(cache_key)
+    if disk_cached is not None:
+        set_cached(cache_key, disk_cached)
+        return disk_cached
+
     meta = get_metadata()
     abund = get_abundance()
     abund_idx = set(abund.index)
@@ -2113,7 +2125,7 @@ def phenotype_association(
     sig_count = sum(1 for r in results if r["adjusted_p"] < 0.05)
     top_results = results[:top_n]
 
-    return {
+    result = {
         "group_a": group_a,
         "group_b": group_b,
         "dim_type": dim_type,
@@ -2125,6 +2137,9 @@ def phenotype_association(
         "significant_count": sig_count,
         "results": top_results,
     }
+    set_cached(cache_key, result)
+    set_disk_cached(cache_key, result)
+    return result
 
 
 @app.get("/api/phenotype-taxa-profile",
@@ -2140,6 +2155,11 @@ def phenotype_taxa_profile(
     Return abundance distribution (Q1/Q3/median/whiskers) per phenotype group.
     返回某分类在各表型分组的丰度分布（用于箱线图）
     """
+    cache_key = f"phenotype_taxa_profile:{taxon}:{dim_type}"
+    cached = get_cached(cache_key)
+    if cached is not None:
+        return cached
+
     meta = get_metadata()
     abund = get_abundance()
     abund_idx = set(abund.index)
@@ -2196,7 +2216,9 @@ def phenotype_taxa_profile(
         })
 
     profile_data.sort(key=lambda x: -x["median"])
-    return {"taxon": taxon, "dim_type": dim_type, "groups": profile_data}
+    result = {"taxon": taxon, "dim_type": dim_type, "groups": profile_data}
+    set_cached(cache_key, result)
+    return result
 
 
 # ── Species search & profile endpoints / 物种搜索与画像端点 ──────────────────

@@ -5654,8 +5654,8 @@ async def analytics_summary(request: Request, token: str = ""):
 # Frozen multinomial softmax classifier from gbhi_universal.pkl (Nature
 # Microbiology, Universal multinomial softmax layer). Single LogisticRegression
 # (lbfgs, C=1.0, class_weight=balanced) over 10 classes, fit on 98,847 labeled
-# samples. Feature vector z(s) ∈ R^184 =
-#   [ R_union (119 marker residuals) | 63 cov dummies + log10(length) | psi_universal ]
+# samples. Feature vector z(s) ∈ R^352 =
+#   [ R_union (289 marker residuals) | 61 cov dummies + log10(length) | psi_universal ]
 # Covariate residualization β̂ fitted once on full 168k compendium (Wirbel 2019
 # batch-norm style; label-agnostic). Health(s) = P(NC|s) * 100.
 
@@ -5675,7 +5675,8 @@ def _load_gbhi_universal() -> tuple[dict, list[str], dict[str, int]]:
         with open(GBHI_UNIVERSAL_PKL, "rb") as f:
             _GBHI_UNIVERSAL_BLOB = pickle.load(f)
         c = np.load(GBHI_CACHE_NPZ, allow_pickle=True)
-        _GBHI_GENERA = [str(x) for x in c["genera"]]
+        _key = "genus_columns" if "genus_columns" in c else "genera"
+        _GBHI_GENERA = [str(x) for x in c[_key]]
         _GBHI_GENUS_INDEX = {g.lower(): i for i, g in enumerate(_GBHI_GENERA)}
         blob = _GBHI_UNIVERSAL_BLOB
         if blob.get("n_genus") != len(_GBHI_GENERA):
@@ -5873,12 +5874,12 @@ obesity, IBS, colorectal_cancer. Fitted on 98,847 labeled samples
 (82,106 NC + 16,741 disease).
 
 Feature pipeline (identical to fit_gbhi_universal.py):
-  1. 276-dim genus %-abundance vector aligned to frozen compendium order.
-  2. log10(G+1e-3) residualized against frozen β̂ (intercept + 63 covariate
+  1. 4680-dim genus %-abundance vector aligned to frozen compendium order.
+  2. log10(G+1e-3) residualized against frozen β̂ (intercept + 61 covariate
      dummies + log10_length) fitted once on the full 168k compendium.
-  3. Take residuals at 119 union marker indices  →  R_union.
-  4. Concatenate [R_union | cov_dummies(63) | log10_length | psi_universal]
-     = R^184 feature vector z.
+  3. Take residuals at 289 union marker indices  →  R_union.
+  4. Concatenate [R_union | cov_dummies(61) | log10_length | psi_universal]
+     = R^352 feature vector z.
   5. Standardize with frozen scaler (sc_mean / sc_scale).
   6. logits = W @ z_std + b ; probs = softmax(logits).
 Health(s) = P(NC|s) * 100.
@@ -5896,7 +5897,7 @@ async def health_score(request: Request, req: HealthScoreRequest):
 
     n_genus = len(genera)
 
-    # ── 1. align user abundances to frozen 276-genus order (percent) ──
+    # ── 1. align user abundances to frozen 4680-genus order (percent) ──
     total = sum(float(v) for v in req.abundances.values()) or 1.0
     G_pct = np.zeros(n_genus, dtype=np.float32)
     matched = 0
@@ -5938,12 +5939,12 @@ async def health_score(request: Request, req: HealthScoreRequest):
     length = float(req.length) if req.length and req.length > 0 else 300.0
     log_len = np.float32(math.log10(length + 1.0))
 
-    # cov_feat row = [dummies..., log10_length]  (shape 64,)
+    # cov_feat row = [dummies..., log10_length]  (shape 62,)
     cov_feat = np.concatenate([dummies, np.array([log_len], dtype=np.float32)])
 
-    # X row = [1, cov_feat] for residualization — (1 + 63 + 1) = 65, matches β̂
+    # X row = [1, cov_feat] for residualization — (1 + 61 + 1) = 63, matches β̂
     x_row = np.concatenate([np.array([1.0], dtype=np.float32), cov_feat])
-    beta = np.asarray(blob["beta"], dtype=np.float32)   # (65, 276)
+    beta = np.asarray(blob["beta"], dtype=np.float32)   # (63, 4680)
     if x_row.shape[0] != beta.shape[0]:
         raise HTTPException(
             500,
@@ -5952,11 +5953,11 @@ async def health_score(request: Request, req: HealthScoreRequest):
 
     # ── 3. residualize log10(G+eps) against β̂ ──
     AB_EPS = 1e-3
-    log_g = np.log10(G_pct + AB_EPS).astype(np.float32)    # (276,)
-    pred = x_row @ beta                                    # (276,)
-    R_all = log_g - pred                                   # (276,)
+    log_g = np.log10(G_pct + AB_EPS).astype(np.float32)    # (4680,)
+    pred = x_row @ beta                                    # (4680,)
+    R_all = log_g - pred                                   # (4680,)
     union_idx = np.asarray(blob["union_idx"], dtype=int)
-    R_union = R_all[union_idx]                             # (119,)
+    R_union = R_all[union_idx]                             # (289,)
 
     # ── 4. psi_universal using union markers ──
     psi = np.float32(_gbhi_gupta_psi(G_pct, list(blob["mh_union"]), list(blob["mn_union"])))
@@ -5974,7 +5975,7 @@ async def health_score(request: Request, req: HealthScoreRequest):
     sc_scale = np.asarray(blob["sc_scale"], dtype=np.float32)
     z_std = (z - sc_mean) / np.where(sc_scale == 0, 1.0, sc_scale)
 
-    W = np.asarray(blob["W"], dtype=np.float32)            # (10, 184)
+    W = np.asarray(blob["W"], dtype=np.float32)            # (10, 352)
     b = np.asarray(blob["b"], dtype=np.float32)            # (10,)
     logits = W @ z_std + b
     logits = logits - float(logits.max())                  # numerical stability

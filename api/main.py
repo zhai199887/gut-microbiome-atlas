@@ -201,9 +201,6 @@ def warmup_data():
             ("metabolism category scfa_producers", lambda: getattr(metabolism_category_profile, "__wrapped__", metabolism_category_profile)(None, "scfa_producers")),
             ("biomarker discovery IBD", lambda: getattr(biomarker_discovery, "__wrapped__", biomarker_discovery)(None, "IBD", 2.0, 0.05)),
             ("lollipop IBD", lambda: getattr(lollipop_data, "__wrapped__", lollipop_data)(None, "IBD", 40)),
-            ("phenotype sex F vs M genus", lambda: getattr(phenotype_association, "__wrapped__", phenotype_association)(None, "sex", "female", "male", "genus", 0.10, 100)),
-            ("phenotype sex F vs M phylum", lambda: getattr(phenotype_association, "__wrapped__", phenotype_association)(None, "sex", "female", "male", "phylum", 0.10, 100)),
-            ("phenotype age Adult vs Older_Adult", lambda: getattr(phenotype_association, "__wrapped__", phenotype_association)(None, "age", "Adult", "Older_Adult", "genus", 0.10, 100)),
             (
                 "cross-study CD",
                 lambda: asyncio.run(
@@ -221,7 +218,7 @@ def warmup_data():
                 ),
             ),
         ]
-        # 并行预热：所有重计算 endpoint 同时开始，总预热时间 ≈ 最慢单项（而非串行累加）
+        # 并行预热：非 phenotype 的重端点同时跑，max_workers=4
         import concurrent.futures as _cf
         def _run_warmup(item):
             label, func = item
@@ -233,6 +230,16 @@ def warmup_data():
         with _cf.ThreadPoolExecutor(max_workers=4) as _pool:
             list(_pool.map(_run_warmup, direct_warmups))
         logging.info("All direct warmups completed")
+
+        # phenotype 预热：串行执行，避免与上面的并行池叠加内存峰值（每个 ~5GB 临时矩阵）
+        phenotype_warmups = [
+            ("phenotype sex F vs M genus", lambda: getattr(phenotype_association, "__wrapped__", phenotype_association)(None, "sex", "female", "male", "genus", 0.10, 100)),
+            ("phenotype sex F vs M phylum", lambda: getattr(phenotype_association, "__wrapped__", phenotype_association)(None, "sex", "female", "male", "phylum", 0.10, 100)),
+            ("phenotype age Adult vs Older_Adult", lambda: getattr(phenotype_association, "__wrapped__", phenotype_association)(None, "age", "Adult", "Older_Adult", "genus", 0.10, 100)),
+        ]
+        for item in phenotype_warmups:
+            _run_warmup(item)
+        logging.info("Phenotype warmups completed (sequential)")
 
     def _preload_data():
         # Avoid blocking startup on the full abundance matrix so health checks

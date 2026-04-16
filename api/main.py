@@ -5510,8 +5510,8 @@ async def health_index(request: Request, req: HealthIndexRequest):
         "disease_genera_detail": disease_matched,
         "per_genus_deviation": per_genus[:50],
         "reference": {
-            "n_nc_samples": ref.get("n_nc_samples", 0),
-            "n_disease_samples": ref.get("n_disease_samples", 0),
+            "n_nc_samples": pop.get("nc_stats", {}).get("n", ref.get("n_nc_samples", 0)),
+            "n_disease_samples": pop.get("disease_stats", {}).get("n", ref.get("n_disease_samples", 0)),
             "health_genera_total": len(ref["health_genera"]),
             "disease_genera_total": len(ref["disease_genera"]),
         },

@@ -1,6 +1,5 @@
 /**
  * PrevalenceAbundancePlot — prevalence vs mean abundance scatter
- * 流行率-丰度散点图：每个分类群画两点（A/B组），细线连接，展示变化方向
  * Inspired by MicrobiomeDB prevalence-abundance visualization
  */
 import { useEffect, useRef } from "react";

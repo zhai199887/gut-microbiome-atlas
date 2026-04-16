@@ -1,6 +1,5 @@
 /**
  * PhenotypeResultTable — sortable, filterable results table
- * 可排序可过滤的表型分析结果表格
  * Columns: Taxon | Phylum | Mean A | Mean B | log2FC | Effect Size | p value | adj.p | Sig | Enriched in
  */
 import { useState, useMemo } from "react";

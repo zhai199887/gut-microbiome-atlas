@@ -1,6 +1,5 @@
 /**
  * Shared types for Phenotype Association Analysis page
- * 表型关联分析页面共享类型定义
  */
 
 export { API_BASE } from "@/util/apiBase";

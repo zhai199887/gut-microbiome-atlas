@@ -1,6 +1,5 @@
 """
 analysis.py — Statistical analysis utilities for GutBiomeDB
-统计分析工具：标志物检验、相关性计算、相似性搜索
 """
 import os
 import math
@@ -50,7 +49,6 @@ def wilcoxon_marker_test(
 ) -> list[dict]:
     """
     Wilcoxon rank-sum test + BH FDR correction for biomarker discovery.
-    Wilcoxon 秩和检验 + BH FDR 校正用于标志物发现
     """
     n_taxa = len(taxa_names)
     results = []
@@ -137,7 +135,6 @@ def spearman_cooccurrence(
 ) -> dict:
     """
     Spearman correlation-based co-occurrence network.
-    基于 Spearman 相关性的共现网络
     """
     n_samples, n_taxa = abundance_matrix.shape
 
@@ -292,7 +289,6 @@ def fastspar_cooccurrence(
 ) -> dict:
     """
     SparCC/ FastSpar-based co-occurrence network for compositional count data.
-    鍩轰簬 FastSpar 鐨?SparCC 鍏辩幇缃戠粶锛岀敤浜庣粍鎴愭暟鎹殑鐪熷疄鐩稿叧鎬ц绠?
     """
     if not _fastspar_available():
         raise RuntimeError(
@@ -477,7 +473,6 @@ def available_network_methods() -> dict[str, bool]:
 def compute_network_topology(taxa: list[dict], edges: list[dict]) -> dict:
     """
     Compute graph-level and node-level topology statistics.
-    计算网络拓扑指标（度、介数中心性、群落、枢纽节点等）
     """
     degree = {taxon["taxon"]: 0 for taxon in taxa}
     betweenness = {taxon["taxon"]: 0.0 for taxon in taxa}
@@ -559,7 +554,6 @@ def compute_network_topology(taxa: list[dict], edges: list[dict]) -> dict:
 def compare_network_edges(disease_edges: list[dict], control_edges: list[dict]) -> dict:
     """
     Compare disease and control networks by edge membership and direction.
-    对比疾病网络与健康对照网络的边集变化
     """
     disease_map = {_edge_key(edge): edge for edge in disease_edges}
     control_map = {_edge_key(edge): edge for edge in control_edges}
@@ -604,7 +598,6 @@ def sample_similarity_search(
 ) -> list[dict]:
     """
     Find top-K most similar samples to a query abundance vector.
-    查找与查询丰度向量最相似的 Top-K 样本
     """
     q_total = query_vector.sum()
     if q_total > 0:

@@ -1,5 +1,5 @@
 /**
- * NetworkPage.tsx — 网络可视化页面（含四个 Tab）
+ * NetworkPage.tsx — Network visualization page (four tabs)
  * Association / Chord / Co-occurrence / Disease vs HC
  */
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";

@@ -1,6 +1,6 @@
 /**
- * SimilarityPage.tsx — 样本相似性搜索
- * 基于用户提交的属级丰度向量检索数据库中最相近的样本
+ * SimilarityPage.tsx — Sample similarity search
+ * Retrieves the most similar samples from the database based on a user-submitted genus-level abundance vector
  */
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { Link } from "react-router-dom";

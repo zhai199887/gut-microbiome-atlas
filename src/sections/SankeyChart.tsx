@@ -1,7 +1,6 @@
 /**
  * SankeyChart.tsx
  * Taxonomy composition flow: Phylum → Genus (Top 20) with interactive highlighting
- * 分类组成流向图：门 → 属（前20）交互式高亮
  */
 import { useEffect, useRef, useState } from "react";
 import { renderToString } from "react-dom/server";
@@ -12,7 +11,7 @@ import { useData } from "@/data";
 import { getCssVariable } from "@/util/dom";
 import "@/components/tooltip";
 
-// ── Types / 类型 ────────────────────────────────────────────────────────────
+// ── Types ───────────────────────────────────────────────────────────────────
 
 interface SankeyNode {
   id: string;
@@ -33,7 +32,6 @@ interface SankeyLink {
 }
 
 // Phylum → Genus mapping (from full taxonomy in abundance data)
-// 门 → 属 的映射（来自丰度数据的完整分类名称）
 const PHYLUM_MAP: Record<string, string> = {
   Bacteroides: "Bacteroidota",
   Parabacteroides: "Bacteroidota",
@@ -67,7 +65,7 @@ const PHYLUM_MAP: Record<string, string> = {
   Akkermansia: "Verrucomicrobiota",
 };
 
-// Phylum colors / 门的配色
+// Phylum colors
 const PHYLUM_COLORS: Record<string, string> = {
   Bacillota: "#e23fff",
   Bacteroidota: "#6ec1e4",
@@ -76,7 +74,7 @@ const PHYLUM_COLORS: Record<string, string> = {
   Verrucomicrobiota: "#6bcb77",
 };
 
-// ── Component / 组件 ────────────────────────────────────────────────────────
+// ── Component ───────────────────────────────────────────────────────────────
 
 const SankeyChart = () => {
   const { t } = useI18n();
@@ -96,23 +94,22 @@ const SankeyChart = () => {
     svg.selectAll("*").remove();
     const phylumMap = abundance.phylum_map ?? PHYLUM_MAP;
 
-    // ── Build Sankey data / 构建桑基数据 ──────────────────────────────────
+    // ── Build Sankey data ─────────────────────────────────────────────────
     const genera = abundance.genera;
     // Calculate average abundance across all conditions
-    // 计算所有条件下的平均丰度
     const genusAbundance: Record<string, number> = {};
     for (const g of genera) {
       const vals = Object.values(abundance.by_disease).map((d) => d[g] ?? 0);
       genusAbundance[g] = d3.mean(vals) ?? 0;
     }
 
-    // Get top 20 genera by abundance / 取丰度前20的属
+    // Get top 20 genera by abundance
     const topGenera = genera
       .filter((g) => phylumMap[g])
       .sort((a, b) => (genusAbundance[b] ?? 0) - (genusAbundance[a] ?? 0))
       .slice(0, 20);
 
-    // Aggregate by phylum / 按门聚合
+    // Aggregate by phylum
     const phylumTotals: Record<string, number> = {};
     for (const g of topGenera) {
       const p = phylumMap[g] ?? "Other";
@@ -123,7 +120,7 @@ const SankeyChart = () => {
       .sort((a, b) => b[1] - a[1])
       .map(([name]) => name);
 
-    // ── Layout dimensions / 布局尺寸 ────────────────────────────────────
+    // ── Layout dimensions ─────────────────────────────────────────────────
     const W = 900;
     const H = 620;
     const margin = { top: 50, right: 180, bottom: 50, left: 150 };
@@ -135,10 +132,10 @@ const SankeyChart = () => {
     svg.attr("viewBox", `0 0 ${W} ${H}`);
     const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
-    // ── Compute node positions / 计算节点位置 ───────────────────────────
+    // ── Compute node positions ────────────────────────────────────────────
     const totalValue = d3.sum(Object.values(phylumTotals));
 
-    // Left side: phyla / 左侧：门
+    // Left side: phyla
     const phylumNodes: SankeyNode[] = [];
     let py = 0;
     for (const p of phyla) {
@@ -147,15 +144,15 @@ const SankeyChart = () => {
       phylumNodes.push({ id: `p_${p}`, label: p, level: "phylum", x: 0, y: py, dy, value: val });
       py += dy + nodePad;
     }
-    // Center vertically / 垂直居中
+    // Center vertically
     const phylumH = py - nodePad;
     const phylumOffset = (iH - phylumH) / 2;
     phylumNodes.forEach((n) => (n.y += phylumOffset));
 
-    // Right side: genera / 右侧：属
+    // Right side: genera
     const genusNodes: SankeyNode[] = [];
     let gy = 0;
-    // Sort genera by phylum then abundance / 按门再按丰度排序
+    // Sort genera by phylum then abundance
     const sortedGenera = [...topGenera].sort((a, b) => {
       const pi = phyla.indexOf(phylumMap[a]);
       const pj = phyla.indexOf(phylumMap[b]);
@@ -173,7 +170,7 @@ const SankeyChart = () => {
     const genusOffset = (iH - genusH) / 2;
     genusNodes.forEach((n) => (n.y += genusOffset));
 
-    // ── Build links / 构建连接 ─────────────────────────────────────────
+    // ── Build links ──────────────────────────────────────────────────────
     // Track source/target offsets for stacking links
     const phylumOffsets: Record<string, number> = {};
     phylumNodes.forEach((n) => (phylumOffsets[n.id] = 0));
@@ -196,7 +193,7 @@ const SankeyChart = () => {
       genusOffsets[gNode.id] = (genusOffsets[gNode.id] ?? 0) + linkH;
     }
 
-    // ── Draw links (curved paths) / 绘制连接（曲线路径）──────────────────
+    // ── Draw links (curved paths) ─────────────────────────────────────────
     const linkGroup = g.append("g").attr("class", "links");
     linkGroup
       .selectAll("path")
@@ -240,7 +237,7 @@ const SankeyChart = () => {
       })
       .on("mouseleave", () => setHighlight(null));
 
-    // ── Draw phylum nodes / 绘制门节点 ──────────────────────────────────
+    // ── Draw phylum nodes ────────────────────────────────────────────────
     g.selectAll(".phylum-node")
       .data(phylumNodes)
       .join("rect")
@@ -256,7 +253,7 @@ const SankeyChart = () => {
       .on("mouseenter", (_, d) => setHighlight(d.label))
       .on("mouseleave", () => setHighlight(null));
 
-    // Phylum labels / 门标签
+    // Phylum labels
     g.selectAll(".phylum-label")
       .data(phylumNodes)
       .join("text")
@@ -271,7 +268,7 @@ const SankeyChart = () => {
       .attr("opacity", (d) => (!highlight || highlight === d.label ? 1 : 0.3))
       .text((d) => d.label);
 
-    // ── Draw genus nodes / 绘制属节点 ───────────────────────────────────
+    // ── Draw genus nodes ─────────────────────────────────────────────────
     g.selectAll(".genus-node")
       .data(genusNodes)
       .join("rect")
@@ -287,7 +284,7 @@ const SankeyChart = () => {
       .on("mouseenter", (_, d) => setHighlight(d.label))
       .on("mouseleave", () => setHighlight(null));
 
-    // Genus labels / 属标签
+    // Genus labels
     g.selectAll(".genus-label")
       .data(genusNodes)
       .join("text")
@@ -307,7 +304,7 @@ const SankeyChart = () => {
       .on("click", (_, d) => navigateRef.current(`/species/${d.label}`))
       .text((d) => `${d.label} (${(d.value * 100).toFixed(2)}%)`);
 
-    // ── Column headers / 列标题 ─────────────────────────────────────────
+    // ── Column headers ───────────────────────────────────────────────────
     g.append("text").attr("x", nodeW / 2).attr("y", -8)
       .attr("text-anchor", "middle").attr("fill", "var(--light-gray)")
       .attr("font-size", 12).attr("font-weight", 700).text("Phylum");

@@ -1,7 +1,7 @@
 /**
- * diseaseNames.ts — 疾病名称标准化显示工具
- * 统一将缩写 key（如 "IBD"）转为标准全称（如 "Inflammatory Bowel Disease (IBD)"）
- * 中文映射内嵌，不依赖后端 API
+ * diseaseNames.ts — Disease name display utilities
+ * Maps abbreviation keys (e.g. "IBD") to standard full names.
+ * Chinese name mapping is embedded (no backend dependency).
  */
 
 import { API_BASE } from "@/util/apiBase";
@@ -9,7 +9,7 @@ import { API_BASE } from "@/util/apiBase";
 let displayMap: Record<string, string> | null = null;
 let loading: Promise<void> | null = null;
 
-/** 预加载显示名称映射（应用启动时调用一次） */
+/** Preload display-name mapping (call once at app startup). */
 export function preloadDiseaseNames(): void {
   if (displayMap || loading) return;
   loading = fetch(`${API_BASE}/api/disease-display-names`)
@@ -18,7 +18,7 @@ export function preloadDiseaseNames(): void {
     .catch(() => { displayMap = {}; });
 }
 
-// ── 中文疾病名映射（内嵌，无需后端） ──────────────────────────────
+// ── Chinese disease name mapping (embedded, no backend needed) ────
 const DISEASE_ZH: Record<string, string> = {
   "NC": "健康对照",
   "hematopoietic_stem_cell_transplantation": "造血干细胞移植",

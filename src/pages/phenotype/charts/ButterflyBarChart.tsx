@@ -1,7 +1,5 @@
 /**
  * ButterflyBarChart — upgraded butterfly chart with phylum colors and significance markers
- * 升级版蝴蝶对称条形图：门级颜色编码 + 显著性标记 + log2FC标注
- * Phenotype association butterfly chart with phylum colors and significance markers
  */
 import { useEffect, useRef } from "react";
 import * as d3 from "d3";

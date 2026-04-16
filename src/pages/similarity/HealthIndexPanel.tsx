@@ -1,6 +1,6 @@
 /**
  * HealthIndexPanel.tsx
- * 肠道微生物组健康指数 (GMHI) — 群体分布 + 用户评分工作台
+ * Gut Microbiome Health Index (GMHI) — population distribution + user scoring workbench
  */
 import { useEffect, useRef, useState, type DragEvent } from "react";
 

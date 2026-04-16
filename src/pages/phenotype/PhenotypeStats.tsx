@@ -1,6 +1,5 @@
 /**
  * PhenotypeStats — 4-card summary row above charts
- * 表型分析结果摘要卡片组（4格）
  */
 import { useI18n } from "@/i18n";
 import type { PhenotypeAssociationResponse } from "./types";

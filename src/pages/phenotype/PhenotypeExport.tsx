@@ -1,6 +1,5 @@
 /**
  * PhenotypeExport — CSV / SVG / PNG export buttons
- * 导出按钮：CSV / SVG / PNG 三种格式
  */
 import { useI18n } from "@/i18n";
 import type { PhenotypeAssociationResponse } from "./types";

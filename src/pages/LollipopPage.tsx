@@ -1,6 +1,6 @@
 /**
  * LollipopPage.tsx — Lollipop Differential Abundance Plot
- * 棒棒糖差异丰度图：log2FC + 显著性 + 门级着色
+ * log2FC + significance + phylum-level coloring
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";

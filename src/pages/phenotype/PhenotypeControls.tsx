@@ -1,6 +1,5 @@
 /**
  * PhenotypeControls — dimension / group / taxonomy-level selectors
- * 表型分析控制面板：维度/分组/分类级别选择器
  */
 import { useEffect, useState, useCallback } from "react";
 import { useI18n } from "@/i18n";

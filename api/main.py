@@ -1934,12 +1934,11 @@ def diff_analysis(request: Request, req: DiffAnalysisRequest):
     return response
 
 
-# ── Phenotype Association Analysis / 表型关联分析端点 ─────────────────────────
+# ── Phenotype Association Analysis ─────────────────────────
 
 def _get_samples_by_pheno(meta: pd.DataFrame, dim_type: str, group: str) -> pd.Series:
     """
     Return boolean mask of samples belonging to a phenotype group.
-    返回属于某表型分组的样本布尔掩码
     """
     if dim_type == "disease":
         return _inform_label_mask(meta, group)
@@ -1962,7 +1961,6 @@ def _get_samples_by_pheno(meta: pd.DataFrame, dim_type: str, group: str) -> pd.S
 def phenotype_groups(request: Request, dim_type: str = "disease"):
     """
     Return groups and sample counts for a given dimension type.
-    返回某维度下所有分组及其样本量
     """
     meta = get_metadata()
     if dim_type == "disease":
@@ -2004,8 +2002,7 @@ def phenotype_association(
     top_n: int = 100,              # max results to return
 ):
     """
-    Core phenotype association analysis.
-    核心表型关联分析：Mann-Whitney U + BH-FDR + 效应量 + 流行率 + 门注释
+    Core phenotype association analysis: Mann-Whitney U + BH-FDR + effect size + prevalence + phylum annotation.
     """
     cache_key = f"phenotype_assoc:{dim_type}:{group_a}:{group_b}:{tax_level}:{min_prevalence}:{top_n}"
     cached = get_cached(cache_key)
@@ -2172,8 +2169,7 @@ def phenotype_taxa_profile(
     dim_type: str = "sex",
 ):
     """
-    Return abundance distribution (Q1/Q3/median/whiskers) per phenotype group.
-    返回某分类在各表型分组的丰度分布（用于箱线图）
+    Return abundance distribution (Q1/Q3/median/whiskers) per phenotype group (for box plots).
     """
     cache_key = f"phenotype_taxa_profile:{taxon}:{dim_type}"
     cached = get_cached(cache_key)
@@ -2246,21 +2242,20 @@ def phenotype_taxa_profile(
     return result
 
 
-# ── Species search & profile endpoints / 物种搜索与画像端点 ──────────────────
+# ── Species search & profile endpoints ──────────────────
 
 # Invalid genus names to filter out (taxonomy parsing artifacts)
-# 需过滤的无效属名（分类学解析产生的噪音）
 _INVALID_GENERA = {"NA", "group", "Sedis", "Incertae", "unclassified",
                    "uncultured", "Unknown", "unknown", "noname", "002", "sp"}
 
 
 def is_valid_genus(name: str) -> bool:
-    """Check if genus name is a real biological name. / 检查属名是否为真实生物名"""
+    """Check if genus name is a real biological name."""
     if not name or len(name) < 3:
         return False
     if name in _INVALID_GENERA:
         return False
-    if name[0].islower():  # real genus names are capitalized / 真实属名首字母大写
+    if name[0].islower():  # real genus names are capitalized
         return False
     if name.isdigit():
         return False
@@ -2269,7 +2264,7 @@ def is_valid_genus(name: str) -> bool:
 
 @lru_cache(maxsize=1)
 def get_genus_list() -> list[str]:
-    """Return sorted list of all valid genus names from abundance data. / 返回丰度数据中所有有效属名"""
+    """Return sorted list of all valid genus names from abundance data."""
     abund = get_abundance()
     genera = sorted(set(g for g in (extract_genus(c) for c in abund.columns) if is_valid_genus(g)))
     return genera
@@ -2282,13 +2277,12 @@ def get_genus_list() -> list[str]:
 def species_search(request: Request, q: str = ""):
     """
     Autocomplete genus search. Returns up to 20 matching genus names.
-    属名自动补全搜索，返回最多20个匹配结果
     """
     if not q or len(q.strip()) < 2:
         return {"results": []}
     q_lower = q.strip().lower()
     genera = get_genus_list()
-    # Prefix matches first, then contains matches / 前缀匹配优先，其次包含匹配
+    # Prefix matches first, then contains matches
     prefix = [g for g in genera if g.lower().startswith(q_lower)]
     contains = [g for g in genera if q_lower in g.lower() and g not in prefix]
     return {"results": (prefix + contains)[:20]}
@@ -2300,8 +2294,7 @@ def species_search(request: Request, q: str = ""):
 @limiter.limit("60/minute")
 def species_profile(request: Request, genus: str):
     """
-    Return a comprehensive profile for a given genus:
-    为给定属返回综合画像：丰度/疾病/国家/年龄/性别分布
+    Return a comprehensive profile for a given genus: abundance, disease, country, age, and sex distributions.
     """
     cache_key = f"species_profile:{genus.strip().lower()}"
     cached = get_cached(cache_key)
@@ -2316,24 +2309,22 @@ def species_profile(request: Request, genus: str):
 
     genus = genus.strip()
 
-    # Find matching columns in abundance matrix / 在丰度矩阵中查找匹配列
+    # Find matching columns in abundance matrix
     matching_cols = [c for c in abund.columns if extract_genus(c).lower() == genus.lower()]
     if not matching_cols:
         raise HTTPException(404, f"Genus '{genus}' not found in abundance data")
 
-    # Resolve the canonical genus name / 解析标准属名
+    # Resolve the canonical genus name
     canonical_name = extract_genus(matching_cols[0])
 
     # Sum abundance across all matching columns for the genus
-    # 对该属的所有匹配列求和
     genus_raw = abund[matching_cols].sum(axis=1)
 
     # Convert to relative abundance (%) per sample
-    # 转换为每样本相对丰度（%）
     sample_totals = abund.sum(axis=1).replace(0, 1)
     genus_abundance = genus_raw / sample_totals * 100
 
-    # Match to metadata / 与元数据关联
+    # Match to metadata
     meta_with_key = meta.set_index("sample_key")
     common_keys = genus_abundance.index.intersection(meta_with_key.index)
 
@@ -2343,7 +2334,7 @@ def species_profile(request: Request, genus: str):
     ga = genus_abundance.loc[common_keys]
     mm = meta_with_key.loc[common_keys]
 
-    # Overall stats / 总体统计
+    # Overall stats
     present_count = int((ga > 0).sum())
     total_count = len(ga)
     mean_abundance = float(ga.mean())
@@ -2351,7 +2342,7 @@ def species_profile(request: Request, genus: str):
     prevalence = present_count / total_count if total_count > 0 else 0
     phylum = extract_phylum(matching_cols[0]) or "Other"
 
-    # Strict NC baseline / 严格健康对照基线
+    # Strict NC baseline
     inform_cols = [f"inform{i}" for i in range(12)]
     nc_mask = _strict_nc_mask(mm, inform_cols)
     nc_vals = ga.loc[nc_mask].values.astype(float)
@@ -2360,7 +2351,7 @@ def species_profile(request: Request, genus: str):
 
     AGE_GROUP_ORDER = ["Infant", "Child", "Adolescent", "Adult", "Older_Adult", "Oldest_Old", "Centenarian", "Unknown"]
 
-    # Helper: group mean abundance / 辅助函数：按分组计算平均丰度
+    # Helper: group mean abundance
     def group_means(col_name: str, top_n: int = 30, order: list[str] | None = None) -> list[dict]:
         if col_name not in mm.columns:
             return []
@@ -2388,7 +2379,7 @@ def species_profile(request: Request, genus: str):
             results.sort(key=lambda x: x["mean_abundance"], reverse=True)
         return results[:top_n]
 
-    # Disease distribution (from inform0-11) / 疾病分布（来自inform0-11）
+    # Disease distribution (from inform0-11)
     disease_samples: dict[str, set[str]] = {}
     for col in inform_cols:
         if col not in mm.columns:
@@ -2460,7 +2451,7 @@ def species_profile(request: Request, genus: str):
     return result
 
 
-# ── Biomarker profile endpoint / 跨疾病标志物画像端点 ─────────────────────────
+# ── Biomarker profile endpoint ─────────────────────────
 
 @app.get("/api/biomarker-profile",
          summary="Cross-disease biomarker profile",
@@ -2471,7 +2462,6 @@ def biomarker_profile(request: Request, genus: str, min_samples: int = 10):
     """
     Cross-disease biomarker profile: for a given genus, compute its differential
     abundance (log2FC + Wilcoxon p) against healthy controls in every disease.
-    跨疾病标志物画像：计算给定属在每种疾病中相对健康对照的差异丰度
     """
     if not genus or not genus.strip():
         raise HTTPException(400, "genus parameter is required")
@@ -2485,19 +2475,19 @@ def biomarker_profile(request: Request, genus: str, min_samples: int = 10):
     meta = get_metadata()
     abund = get_abundance()
 
-    # Find genus columns / 查找属列
+    # Find genus columns
     matching_cols = [c for c in abund.columns if extract_genus(c).lower() == genus.lower()]
     if not matching_cols:
         raise HTTPException(404, f"Genus '{genus}' not found in abundance data")
 
     canonical_name = extract_genus(matching_cols[0])
 
-    # Compute genus relative abundance / 计算属相对丰度
+    # Compute genus relative abundance
     genus_raw = abund[matching_cols].sum(axis=1)
     sample_totals = abund.sum(axis=1).replace(0, 1)
     genus_rel = (genus_raw / sample_totals * 100).rename("rel_abund")
 
-    # Link metadata / 关联元数据
+    # Link metadata
     meta_keyed = meta.set_index("sample_key")
     common = genus_rel.index.intersection(meta_keyed.index)
     ga = genus_rel.loc[common]
@@ -2512,7 +2502,7 @@ def biomarker_profile(request: Request, genus: str, min_samples: int = 10):
 
     nc_mean = float(np.mean(nc_vals))
 
-    # Collect disease groups / 收集疾病分组
+    # Collect disease groups
     disease_samples: dict[str, list[str]] = {}
     for col in INFORM_COLS:
         if col not in mm.columns:
@@ -2523,7 +2513,7 @@ def biomarker_profile(request: Request, genus: str, min_samples: int = 10):
                 continue
             disease_samples.setdefault(normalized, []).append(str(idx))
 
-    # Compute log2FC and Wilcoxon p for each disease / 计算每种疾病的log2FC和Wilcoxon p
+    # Compute log2FC and Wilcoxon p for each disease
     pseudo = 1e-6
     results = []
     for disease_name, sample_ids in disease_samples.items():
@@ -2559,7 +2549,7 @@ def biomarker_profile(request: Request, genus: str, min_samples: int = 10):
             "prevalence_control": round(float((nc_vals > 0).sum() / len(nc_vals)), 4),
         })
 
-    # BH FDR correction / BH FDR校正
+    # BH FDR correction
     if results:
         p_vals = [r["p_value"] for r in results]
         adj_p = bh_correction(p_vals)
@@ -2585,7 +2575,7 @@ def biomarker_profile(request: Request, genus: str, min_samples: int = 10):
     return result
 
 
-# ── Disease ontology endpoint / 疾病本体端点 ──────────────────────────────────
+# ── Disease ontology endpoint ──────────────────────────────────
 
 @app.get("/api/disease-ontology", tags=["Disease"],
          summary="Disease ontology mapping",
@@ -2595,13 +2585,12 @@ def disease_ontology(request: Request):
     return DISEASE_ONTOLOGY
 
 
-# ── Disease browser endpoints / 疾病浏览端点 ─────────────────────────────────
+# ── Disease browser endpoints ─────────────────────────────────
 
 @lru_cache(maxsize=1)
 def get_disease_list_cached() -> list[dict]:
     """
     Build a list of all unique diseases with sample counts.
-    构建所有疾病及其样本数的列表
     """
     meta = get_metadata()
     disease_counts = _inform_label_counts(meta, include_nc=True)
@@ -2620,13 +2609,12 @@ def get_disease_list_cached() -> list[dict]:
 def disease_list(request: Request, q: str = ""):
     """
     Return all diseases with sample counts. Optional search filter.
-    返回所有疾病及样本数，可选搜索过滤
     """
     diseases = get_disease_list_cached()
     if q and q.strip():
         q_lower = q.strip().lower()
         diseases = [d for d in diseases if q_lower in d["name"].lower()]
-    # Enrich each disease with ontology info / 为每个疾病附加本体信息
+    # Enrich each disease with ontology info
     enriched = []
     for d in diseases:
         entry = dict(d)
@@ -2699,7 +2687,6 @@ def metabolism_overview(request: Request):
 def disease_profile(request: Request, disease: str, top_n: int = 40):
     """
     Return a profile for a given disease:
-    为给定疾病返回画像：
     - Top N genera by mean abundance in disease samples
     - Comparison with healthy control (control = samples with no disease annotation)
     - Age group distribution
@@ -2745,7 +2732,7 @@ def disease_profile(request: Request, disease: str, top_n: int = 40):
     return result
 
 
-# ── Microbe-disease network endpoint / 菌群-疾病网络端点 ─────────────────────
+# ── Microbe-disease network endpoint ─────────────────────
 
 @app.get("/api/disease-studies",
          summary="Disease study breakdown",
@@ -2936,24 +2923,23 @@ def _build_cooccurrence_result(
 def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera: int = 30):
     """
     Return nodes (diseases + genera) and edges for a force-directed network.
-    返回力导向图所需的节点（疾病 + 属）和边
     Edge weight = mean abundance of genus in disease samples.
     """
     cache_key = f"network:{top_diseases}:{top_genera}"
     cached = get_cached(cache_key)
     if cached:
         return cached
-    # 磁盘持久化缓存：重启后无需重算（7天有效）
+    # Disk-persistent cache: no recomputation needed after restart (7-day TTL)
     disk_cached = get_disk_cached_by_data(cache_key)
     if disk_cached:
-        set_cached(cache_key, disk_cached)   # 同步到内存缓存
+        set_cached(cache_key, disk_cached)   # sync to in-memory cache
         return disk_cached
     meta = get_metadata()
     abund = get_abundance()
 
     INFORM_COLS = [f"inform{i}" for i in range(12)]
 
-    # Get top diseases by sample count / 获取样本数最多的疾病
+    # Get top diseases by sample count
     disease_counts: dict[str, set[int]] = {}
     for col in INFORM_COLS:
         if col not in meta.columns:
@@ -2967,15 +2953,15 @@ def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera
     top_d = sorted(disease_counts.items(), key=lambda x: len(x[1]), reverse=True)[:top_diseases]
     disease_names = [d[0] for d in top_d]
 
-    # Build genus map（只保留 is_valid_genus 的属）/ 构建属映射
+    # Build genus map (keep only valid genera via is_valid_genus)
     genus_map: dict[str, list[str]] = {}
     for col in abund.columns:
         g = extract_genus(col)
         if is_valid_genus(g):
             genus_map.setdefault(g, []).append(col)
 
-    # 预聚合：把列按属合并为 genus_abund（行=样本，列=属）
-    # 避免在每个疾病的内层循环里逐属切割，大幅提速
+    # Pre-aggregate columns by genus into genus_abund (rows=samples, cols=genera)
+    # Avoids per-genus slicing inside the per-disease inner loop for speed
     genus_cols_ordered = list(genus_map.keys())
     genus_abund_full = pd.DataFrame(
         {g: abund[cols].sum(axis=1) for g, cols in genus_map.items()},
@@ -2983,7 +2969,6 @@ def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera
     )
 
     # For each disease, compute mean abundance of each genus
-    # 对每个疾病，计算每个属的平均丰度
     edges: list[dict] = []
     genus_set: set[str] = set()
 
@@ -2994,11 +2979,11 @@ def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera
         if len(common) == 0:
             continue
         disease_slice = genus_abund_full.loc[common]
-        # 行归一化为相对丰度 (%)
+        # Row-normalise to relative abundance (%)
         row_totals = disease_slice.sum(axis=1).replace(0, 1)
         disease_rel = disease_slice.div(row_totals, axis=0) * 100
 
-        # 按属均值排名，取 top_genera
+        # Rank genera by mean abundance, keep top_genera
         genus_means_s = disease_rel.mean()
         genus_means_s = genus_means_s[genus_means_s > 0].nlargest(top_genera)
 
@@ -3010,7 +2995,7 @@ def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera
             })
             genus_set.add(genus)
 
-    # Build nodes / 构建节点
+    # Build nodes
     nodes = []
     for d in disease_names:
         nodes.append({"id": d, "type": "disease", "size": len(disease_counts[d])})
@@ -3019,14 +3004,14 @@ def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera
 
     result = {"nodes": nodes, "edges": edges}
     set_cached(cache_key, result)
-    set_disk_cached(cache_key, result)   # 持久化到磁盘，重启后秒加载
+    set_disk_cached(cache_key, result)   # persist to disk for instant load after restart
     return result
 
 
-# ── Data management endpoints / 数据管理端点 ──────────────────────────────────
+# ── Data management endpoints ──────────────────────────────────
 
 def _check_admin(token: str | None):
-    """Reject if ADMIN_TOKEN unset or token doesn't match. / 校验admin token，空token也拒绝"""
+    """Reject if ADMIN_TOKEN unset or token doesn't match."""
     if not ADMIN_TOKEN or token != ADMIN_TOKEN:
         raise HTTPException(401, "Invalid admin token")
 
@@ -3036,7 +3021,7 @@ def _check_admin(token: str | None):
          description="Verify admin token validity.")
 @limiter.limit("10/minute")
 def admin_check(request: Request, x_admin_token: str | None = Header(None)):
-    """Verify admin token. / 验证管理员token"""
+    """Verify admin token."""
     _check_admin(x_admin_token)
     return {"status": "authorized"}
 
@@ -3073,11 +3058,10 @@ async def upload_metadata(
 ):
     """
     Upload new metadata CSV to merge into dataset. Requires admin token.
-    上传新元数据CSV合并到数据集（需要admin token）
     """
     _check_admin(x_admin_token)
 
-    # Save to temp file / 保存到临时文件
+    # Save to temp file
     suffix = ".csv"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         content = await file.read()
@@ -3088,7 +3072,6 @@ async def upload_metadata(
         from data_manager import update_metadata
         result = update_metadata(tmp_path)
         # Clear metadata cache so next request loads fresh data
-        # 清除元数据缓存，下次请求加载新数据
         get_metadata.cache_clear()
         return result
     finally:
@@ -3104,7 +3087,7 @@ async def validate_metadata_endpoint(
     file: UploadFile = File(...),
     x_admin_token: str | None = Header(None),
 ):
-    """Validate metadata CSV format without merging. / 校验格式但不合并"""
+    """Validate metadata CSV format without merging."""
     _check_admin(x_admin_token)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
@@ -3119,7 +3102,7 @@ async def validate_metadata_endpoint(
         os.unlink(tmp_path)
 
 
-# ── Data download endpoints / 数据下载端点 ────────────────────────────────────
+# ── Data download endpoints ────────────────────────────────────
 
 from fastapi.responses import JSONResponse, StreamingResponse
 import io
@@ -3210,20 +3193,19 @@ def _download_response(
 def download_summary_stats(request: Request, format: str = "csv"):
     """
     Download aggregated summary statistics (NOT raw sample data).
-    下载聚合统计数据（不提供原始样本数据）
 
     Returns sample counts by country, disease, age group, and sex.
     """
     meta = get_metadata()
     INFORM_COLS = [f"inform{i}" for i in range(12)]
 
-    # Country stats / 国家统计
+    # Country stats
     country_counts = meta["country"].value_counts().to_dict()
-    # Disease stats / 疾病统计
+    # Disease stats
     disease_counts = _inform_label_counts(meta, include_nc=False)
-    # Age group stats / 年龄组统计
+    # Age group stats
     age_counts = meta["age_group"].value_counts().to_dict() if "age_group" in meta.columns else {}
-    # Sex stats / 性别统计
+    # Sex stats
     sex_counts = meta["sex"].value_counts().to_dict() if "sex" in meta.columns else {}
 
     payload = {
@@ -3260,7 +3242,7 @@ def download_summary_stats(request: Request, format: str = "csv"):
          tags=["Download"])
 @limiter.limit("30/minute")
 def download_disease_profile_data(request: Request, disease: str, format: str = "csv"):
-    """Download disease profile data / 下载疾病画像数据"""
+    """Download disease profile data."""
     profile = disease_profile(request, disease, top_n=50)
     rows = profile.get("top_genera", [])
     return _download_response(
@@ -3293,7 +3275,7 @@ def download_disease_profile_data(request: Request, disease: str, format: str = 
          tags=["Download"])
 @limiter.limit("30/minute")
 def download_species_profile_data(request: Request, genus: str, format: str = "csv"):
-    """Download species profile data / 下载物种画像数据"""
+    """Download species profile data."""
     profile = species_profile(request, genus)
 
     rows = profile.get("by_disease", [])
@@ -3319,7 +3301,7 @@ def download_species_profile_data(request: Request, genus: str, format: str = "c
          tags=["Download"])
 @limiter.limit("30/minute")
 def download_genus_list(request: Request, format: str = "csv"):
-    """Download list of all genera / 下载所有属名列表"""
+    """Download list of all genera."""
     genera = get_genus_list()
 
     payload = {"genera": genera, "count": len(genera)}
@@ -3518,7 +3500,6 @@ def download_lifecycle(
 def biomarker_discovery(request: Request, disease: str, lda_threshold: float = 2.0, p_threshold: float = 0.05):
     """
     Discover biomarker taxa for a given disease vs healthy controls.
-    发现疾病标志物：疾病组 vs 健康对照的显著差异属
     """
     cache_key = f"biomarker_discovery:{disease.strip() if disease else ''}:{lda_threshold}:{p_threshold}"
     cached = get_cached(cache_key)
@@ -3631,7 +3612,6 @@ def biomarker_discovery(request: Request, disease: str, lda_threshold: float = 2
 def lollipop_data(request: Request, disease: str, top_n: int = 40):
     """
     Return differential abundance data for lollipop plot.
-    返回棒棒糖图格式的差异丰度数据
     """
     if not disease or not disease.strip():
         raise HTTPException(400, "disease parameter is required")
@@ -3667,7 +3647,6 @@ def lollipop_data(request: Request, disease: str, top_n: int = 40):
 def chord_data(request: Request, top_diseases: int = 10, top_genera: int = 12):
     """
     Return disease-genus association matrix for chord diagram.
-    返回疾病-属关联矩阵用于弦图
     """
     cache_key = f"chord:{top_diseases}:{top_genera}"
     cached = get_cached(cache_key)
@@ -3746,7 +3725,6 @@ def chord_data(request: Request, top_diseases: int = 10, top_genera: int = 12):
 def species_cooccurrence(request: Request, genus: str, top_k: int = 10, disease: str = ""):
     """
     Return top co-occurring genera for a given genus.
-    返回给定属的 Top 共现微生物
     """
     if not genus or not genus.strip():
         raise HTTPException(400, "genus parameter is required")
@@ -3876,7 +3854,6 @@ def cooccurrence_network(
 ):
     """
     Compute genus co-occurrence network based on Spearman correlation.
-    基于 Spearman 相关性计算属共现网络
     """
     cache_key = f"cooccurrence:{disease}:{min_r}:{top_genera}:{max_samples}:{method}:{fdr_threshold}"
     cached = get_cached(cache_key)
@@ -4314,8 +4291,7 @@ def lifecycle_atlas(
     top_genera: int = 15,
 ):
     """
-    Return genus composition across 7 named life stages (Infant–Centenarian) plus Unknown.
-    返回 7 个命名生命阶段（婴儿–百岁老人）加 Unknown 的属级组成
+    Return genus composition across 7 named life stages (Infant-Centenarian) plus Unknown.
     """
     return _lifecycle_internal(disease=disease, country=country, top_genera=top_genera, use_cache=True)
 
@@ -4377,7 +4353,7 @@ def lifecycle_compare(
     return result
 
 
-# ── 样本相似性搜索 API / Sample Similarity Search ─────────────────────────────
+# ── Sample Similarity Search ─────────────────────────────
 
 
 @app.get("/api/genus-names",
@@ -4385,12 +4361,10 @@ def lifecycle_compare(
          description="Returns all valid genus names from abundance data.")
 @limiter.limit("120/minute")
 async def get_genus_names(request: Request):
-    """返回丰度矩阵所有属名列表（供前端下载模板用）。
-    Return list of genus names from abundance matrix columns.
-    """
+    """Return list of genus names from abundance matrix columns (for frontend template download)."""
     abund = get_abundance()
     genera = sorted(set(extract_genus(c) for c in abund.columns))
-    # 过滤无效属名
+    # Filter out invalid genus names
     genera = [g for g in genera if g and g not in ("", "NA", "unknown")]
     return {"genera": genera, "count": len(genera)}
 
@@ -4400,11 +4374,10 @@ async def get_genus_names(request: Request):
           description="Find most similar samples using Bray-Curtis or Jaccard distance.")
 @limiter.limit("20/minute")
 async def similarity_search(request: Request, req: SimilarityRequest):
-    """接收用户上传的丰度向量，返回 Top-K 最相似样本。
-    Receive user abundance vector, return Top-K most similar samples.
-    注意：不暴露批量原始数据，仅返回样本ID、距离、元数据摘要。
+    """Receive user abundance vector, return Top-K most similar samples.
+    Note: does not expose bulk raw data; only returns sample IDs, distances, and metadata summaries.
     """
-    # ── 参数校验 ──
+    # ── Parameter validation ──
     if req.metric not in ("braycurtis", "jaccard"):
         raise HTTPException(400, "metric must be 'braycurtis' or 'jaccard'")
     if req.top_k < 1 or req.top_k > 50:
@@ -4416,7 +4389,7 @@ async def similarity_search(request: Request, req: SimilarityRequest):
     meta = get_metadata()
     inform_cols = [f"inform{i}" for i in range(12)]
 
-    # ── 构建属名与列索引映射 ──
+    # ── Build genus name to column index mapping ──
     genus_to_indices: dict[str, list[int]] = {}
     genus_display: dict[str, str] = {}
     for idx, column in enumerate(abund.columns):
@@ -4427,7 +4400,7 @@ async def similarity_search(request: Request, req: SimilarityRequest):
         genus_to_indices.setdefault(genus_key, []).append(idx)
         genus_display.setdefault(genus_key, genus)
 
-    # ── 样本过滤：先缩小搜索空间，再做相似性检索 ──
+    # ── Sample filtering: narrow search space before similarity retrieval ──
     filtered_meta = meta.copy()
     if req.filter_disease.strip():
         filtered_meta = filtered_meta[_inform_label_mask(filtered_meta, req.filter_disease)]
@@ -4449,7 +4422,7 @@ async def similarity_search(request: Request, req: SimilarityRequest):
     abund_filtered = abund.loc[valid_idx]
     sample_keys = list(abund_filtered.index)
 
-    # ── 将用户提交的属名->丰度值对齐到丰度矩阵的列顺序 ──
+    # ── Align user-submitted genus->abundance values to matrix column order ──
     query_vector = np.zeros(len(abund_filtered.columns), dtype=float)
     matched_genera = 0
     matched_genera_pairs: list[tuple[str, float]] = []
@@ -4469,7 +4442,7 @@ async def similarity_search(request: Request, req: SimilarityRequest):
     if matched_genera == 0:
         raise HTTPException(400, "No matching genera found in the abundance matrix")
 
-    # ── 调用 analysis.py 中的相似性搜索函数 ──
+    # ── Call similarity search function from analysis.py ──
     results = sample_similarity_search(
         query_vector=query_vector,
         abundance_matrix=abund_filtered.values,
@@ -4498,7 +4471,7 @@ async def similarity_search(request: Request, req: SimilarityRequest):
                 return [primary]
         return diseases or ["Unknown"]
 
-    # ── 补充元数据信息（疾病、国家、年龄组、项目） ──
+    # ── Enrich with metadata (disease, country, age group, project) ──
     for item in results:
         key = item["sample_key"]
         if key in meta_lookup.index:
@@ -4516,7 +4489,7 @@ async def similarity_search(request: Request, req: SimilarityRequest):
             item["age_group"] = "Unknown"
             item["project_id"] = ""
 
-    # ── 轻量 preview 热图载荷：只返回 query + top matches 在少量属上的相对丰度 ──
+    # ── Lightweight preview heatmap payload: return relative abundances for query + top matches on a few genera ──
     preview_taxa_keys = [genus_key for genus_key, _ in sorted(matched_genera_pairs, key=lambda item: item[1], reverse=True)[:12]]
     preview_taxa = [genus_display.get(genus_key, genus_key.title()) for genus_key in preview_taxa_keys]
 
@@ -4553,7 +4526,7 @@ async def similarity_search(request: Request, req: SimilarityRequest):
     }
 
 
-# ── Cross-study meta-analysis / 跨研究元分析 ────────────────────────────────
+# ── Cross-study meta-analysis ────────────────────────────────
 
 @app.get("/api/project-list",
          summary="List available projects",
@@ -4649,7 +4622,6 @@ async def project_detail(request: Request, project_id: str):
           summary="Cross-study meta-analysis",
           description="""
 Cross-cohort consensus biomarker discovery with inverse-variance weighted meta-analysis.
-跨队列一致性标志物发现（逆方差加权元分析）。
 
 Steps:
 1. For each selected project, split samples into disease vs. NC (normal control)
@@ -4661,7 +4633,7 @@ Steps:
           tags=["Analysis"])
 @limiter.limit("10/minute")
 async def cross_study_analysis(request: Request, req: CrossStudyRequest):
-    """跨研究元分析：多队列一致性标志物发现"""
+    """Cross-study meta-analysis: multi-cohort consensus biomarker discovery."""
     if len(req.project_ids) < 2:
         raise HTTPException(400, "At least 2 projects required")
     cache_key = "cross_study:" + json.dumps(
@@ -4893,7 +4865,7 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
     return result
 
 
-# ── Health Index / 微生物组健康指数 ──────────────────────────────────────────
+# ── Health Index ──────────────────────────────────────────
 
 def _psi_score(values_pct: np.ndarray, R_prime: float, detection_pct: float = 1e-3) -> float:
     """
@@ -4928,9 +4900,9 @@ def _psi_score(values_pct: np.ndarray, R_prime: float, detection_pct: float = 1e
 def _compute_health_disease_genera() -> dict:
     """
     Per-study random-effects meta-analysis for health/disease genus selection.
-    每个 BioProject 内部独立计算 NC vs disease 的 log2FC 与方差,
-    然后用 DerSimonian-Laird random-effects 模型合并跨研究效应量。
-    这避免了 batch effect / Simpson's paradox,与 Gupta 2020 的多研究一致性思想一致。
+    Computes NC vs disease log2FC and variance independently within each BioProject,
+    then pools cross-study effect sizes via DerSimonian-Laird random-effects model.
+    This avoids batch effect / Simpson's paradox, consistent with Gupta 2020's multi-study approach.
 
     Disk cache: result pickled next to main.py. Auto-invalidated when either
     METADATA_PATH or ABUNDANCE_PATH source file mtime is newer than the pickle.
@@ -4975,7 +4947,7 @@ def _compute_health_disease_genera() -> dict:
     if len(meta_local) < 20:
         return {"health_genera": [], "disease_genera": [], "nc_stats": {}}
 
-    # Genus-level aggregation 一次性完成
+    # Genus-level aggregation (done once upfront)
     genus_labels = [extract_genus(c) for c in col_names]
     unique_genera_all = list(dict.fromkeys(genus_labels))
     valid_idx = [i for i, g in enumerate(unique_genera_all) if is_valid_genus(g)]
@@ -5123,8 +5095,8 @@ def _compute_health_disease_genera() -> dict:
         n_dis_total = 0
 
     # ── Hybrid selection: pooled Wilcoxon for breadth, RE Hedges' g for weight ──
-    # 选属 = 全样本 NC vs all-disease Wilcoxon + BH-FDR  (与文献广筛口径一致)
-    # 权重 = 跨研究随机效应 Hedges' g                    (跨 BioProject 防混杂)
+    # Selection = pooled NC vs all-disease Wilcoxon + BH-FDR (broad screening, consistent with literature)
+    # Weight = cross-study random-effects Hedges' g (cross-BioProject confounding control)
     re_lookup = {row["genus"]: row for row in all_results}
 
     nc_pool_keys_unique2 = list(dict.fromkeys(nc_pool_keys))
@@ -5175,8 +5147,8 @@ def _compute_health_disease_genera() -> dict:
         r["adjusted_p"] = float(q)
 
     # ── Marker selection: Wilcoxon + log2fc + Gupta-inspired abundance floor ──
-    # 组合策略:
-    #   (1) 全样本 NC vs all-disease Mann-Whitney U + BH-FDR (adjusted_p<0.05)
+    # Combined strategy:
+    #   (1) Pooled NC vs all-disease Mann-Whitney U + BH-FDR (adjusted_p<0.05)
     #   (2) |log2FC| ≥ 0.5 (Gupta 2020 threshold)
     #   (3) mean ≥ 1e-4 (0.01 %, Gupta 2020 minimum mean abundance)
     # Weight = |log2FC| (per-BioProject Hedges'g kept in response for audit).
@@ -5330,7 +5302,7 @@ def _compute_health_disease_genera() -> dict:
           summary="Gut Microbiome Health Index (GMHI)",
           description="""
 Gut Microbiome Health Index (GMHI) — Gupta et al. 2020 Nat Commun replication.
-基于 Gupta 2020 ψ 公式计算肠道菌群健康指数。
+Gut microbiome health index computed using the Gupta 2020 psi formula.
 
 Formula (Gupta 2020, Eq. 1):
     GMHI = log10((ψ_MH + ε) / (ψ_MN + ε))
@@ -5347,7 +5319,7 @@ genera with FDR-adjusted Wilcoxon p<0.05, |log2FC|≥0.5, and |g|≥0.2.
           tags=["Similarity"])
 @limiter.limit("20/minute")
 async def health_index(request: Request, req: HealthIndexRequest):
-    """计算微生物组健康指数"""
+    """Compute microbiome health index."""
     if not req.abundances:
         raise HTTPException(400, "abundances dict must not be empty")
 
@@ -5432,8 +5404,8 @@ async def health_index(request: Request, req: HealthIndexRequest):
     raw_score = raw_score_weighted  # legacy field kept for back-compat
 
     # ── Universal softmax health score (paper Figure 1g / Supp Table 6) ──
-    # 单样本用 frozen universal softmax 计算 P(NC)×100,percentile 从 Supp Table
-    # 6 的 NC 分布里搜。legacy Gupta psi 字段保留用于向后兼容展示。
+    # Single-sample scoring via frozen universal softmax P(NC)*100; percentile
+    # looked up from Supp Table 6 NC distribution. Legacy Gupta psi fields kept for backward compat.
     try:
         p_nc, _n_matched_univ, _n_total_univ = _score_universal_pnc(
             req.abundances,
@@ -5549,7 +5521,7 @@ def _compute_population_gmhi() -> dict:
          tags=["Similarity"])
 @limiter.limit("60/minute")
 async def health_index_reference(request: Request):
-    """返回健康指数参考数据（健康属/疾病属列表 + 群体分布）"""
+    """Return health index reference data (health/disease genera lists + population distribution)."""
     ref = _compute_health_disease_genera()
     pop = _compute_population_gmhi()
     return {
@@ -5561,10 +5533,10 @@ async def health_index_reference(request: Request):
     }
 
 
-# ── Usage tracking / 使用统计追踪 ────────────────────────────────────────────
+# ── Usage tracking ────────────────────────────────────────────
 
 class TrackEvent(BaseModel):
-    """使用统计事件"""
+    """Usage tracking event."""
     event: str       # page_view / analysis_run / export / search
     page: str = ""
     detail: str = ""
@@ -5576,7 +5548,7 @@ _ANALYTICS_FILE = Path(__file__).parent / "analytics.jsonl"
           description="Log usage events for publication metrics.")
 @limiter.limit("120/minute")
 async def track_event(request: Request, evt: TrackEvent):
-    """记录使用统计事件（用于论文指标）"""
+    """Log usage event (for publication metrics)."""
     entry = {
         "timestamp": datetime.now().isoformat(),
         "event": evt.event,
@@ -5596,7 +5568,7 @@ async def track_event(request: Request, evt: TrackEvent):
          description="Returns aggregated usage statistics (admin only).")
 @limiter.limit("30/minute")
 async def analytics_summary(request: Request, token: str = ""):
-    """管理员查看使用统计汇总"""
+    """Admin view of aggregated usage statistics."""
     if token != ADMIN_TOKEN:
         raise HTTPException(403, "Invalid admin token")
 
@@ -5986,7 +5958,7 @@ async def health_score(request: Request, req: HealthScoreRequest):
     }
 
 
-# ── API v1 version aliases / API v1 版本别名 ─────────────────────────────────
+# ── API v1 version aliases ─────────────────────────────────
 @app.get("/api/v1/{path:path}")
 @limiter.limit("120/minute")
 async def v1_redirect_get(path: str, request: Request):

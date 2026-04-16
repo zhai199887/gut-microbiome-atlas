@@ -241,6 +241,21 @@ def warmup_data():
             _run_warmup(item)
         logging.info("Phenotype warmups completed (sequential)")
 
+        # 疾病浏览器预热：串行执行，预热高频疾病的 profile + studies
+        _top_diseases = ["IBD", "CD", "UC", "obesity", "colorectal cancer",
+                         "T2D", "liver cirrhosis", "adenoma", "IBS"]
+        disease_warmups = []
+        for _d in _top_diseases:
+            disease_warmups.append(
+                (f"disease-profile {_d}", lambda d=_d: getattr(disease_profile, "__wrapped__", disease_profile)(None, d, 40))
+            )
+            disease_warmups.append(
+                (f"disease-studies {_d}", lambda d=_d: getattr(disease_studies, "__wrapped__", disease_studies)(None, d))
+            )
+        for item in disease_warmups:
+            _run_warmup(item)
+        logging.info("Disease browser warmups completed (sequential)")
+
     def _preload_data():
         # Avoid blocking startup on the full abundance matrix so health checks
         # and public API probes can recover immediately after code updates.
@@ -2723,6 +2738,10 @@ def disease_profile(request: Request, disease: str, top_n: int = 40):
     cached = get_cached(cache_key)
     if cached:
         return cached
+    disk = get_disk_cached_by_data(cache_key)
+    if disk is not None:
+        set_cached(cache_key, disk)
+        return disk
 
     meta = get_metadata()
     abund = get_abundance()
@@ -2746,6 +2765,7 @@ def disease_profile(request: Request, disease: str, top_n: int = 40):
         "category_zh": onto.get("category_zh", ""),
     })
     set_cached(cache_key, result)
+    set_disk_cached(cache_key, result)
     return result
 
 
@@ -2764,6 +2784,10 @@ def disease_studies(request: Request, disease: str):
     cached = get_cached(cache_key)
     if cached:
         return cached
+    disk = get_disk_cached_by_data(cache_key)
+    if disk is not None:
+        set_cached(cache_key, disk)
+        return disk
 
     try:
         result = build_disease_studies(get_metadata(), get_abundance(), disease)
@@ -2774,6 +2798,7 @@ def disease_studies(request: Request, disease: str):
         raise HTTPException(400, message)
 
     set_cached(cache_key, result)
+    set_disk_cached(cache_key, result)
     return result
 
 

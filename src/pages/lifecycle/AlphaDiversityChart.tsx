@@ -1,6 +1,5 @@
 /**
  * AlphaDiversityChart.tsx — Shannon/Simpson diversity trend across life stages
- * 生命周期 alpha 多样性趋势图
  */
 import { useEffect, useRef } from "react";
 

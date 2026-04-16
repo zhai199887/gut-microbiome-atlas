@@ -342,7 +342,7 @@ const HealthIndexPanel = () => {
           setGbhi(gPayload);
         }
       } catch {
-        // non-fatal: new endpoint optional while backend is rolling out
+        // non-fatal: GBHI endpoint optional
       }
     } catch (err: unknown) {
       const detail = err instanceof Error ? err.message : "";

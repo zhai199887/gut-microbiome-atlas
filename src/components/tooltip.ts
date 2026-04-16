@@ -11,7 +11,6 @@ const options: Partial<Props> = {
   appendTo: document.body,
   plugins: [followCursor],
   hideOnClick: false,
-  // onHide: () => false,
 };
 
 /** update all tooltips in document */

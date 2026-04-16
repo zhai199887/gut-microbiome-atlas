@@ -1,7 +1,6 @@
 /**
  * MetabolismPage.tsx
  * Browse literature-curated metabolic roles without overstating pathway activity
- * 浏览文献策展的代谢功能关联，不伪装成功能活性测量
  */
 import { useEffect, useRef, useState } from "react";
 import { renderToString } from "react-dom/server";

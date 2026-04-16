@@ -1,6 +1,5 @@
 /**
  * TransitionPanel.tsx — Age group transition summary
- * 年龄段过渡变化摘要
  */
 import type { LifecycleTransition } from "../LifecyclePage";
 import classes from "../LifecyclePage.module.css";

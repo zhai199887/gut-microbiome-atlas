@@ -146,7 +146,7 @@ const SimilarityPage = () => {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      // noop
+      // ignored
     }
   };
 

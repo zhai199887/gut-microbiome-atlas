@@ -1,6 +1,5 @@
 /**
  * LifecyclePage.tsx — Lifecycle Microbiome Atlas workspace
- * 全生命周期微生物组图谱工作台
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";

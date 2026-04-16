@@ -158,8 +158,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 @app.on_event("startup")
 def warmup_data():
-    """Pre-load data into memory at startup to avoid cold-start latency.
-    ????????????????????"""
+    """Pre-load data into memory at startup to avoid cold-start latency."""
     import threading
 
     def _warmup_endpoints():
@@ -676,9 +675,6 @@ def count_unique_genera_resolved() -> int:
     return len({extract_genus(c).strip() for c in cols})
 
 
-# Deprecated: historically this returned the column count (= taxa), not genera.
-# Kept as an alias for `count_total_taxa_from_abundance` so legacy callers keep
-# working while the UI migrates to `total_taxa` / `total_unique_genera`.
 def count_unique_genera_from_abundance() -> int:  # noqa: D401 - kept for back-compat
     return count_total_taxa_from_abundance()
 
@@ -1542,15 +1538,12 @@ def data_stats(request: Request):
     result = {
         "total_samples": int(len(meta)),
         "total_countries": int(meta.loc[meta["country"] != "unknown", "country"].nunique()) if "country" in meta.columns else 0,
-        # Legacy alias kept for compatibility: non-NC condition labels only.
         "total_diseases": len(non_nc_condition_labels),
         "total_non_nc_condition_labels": len(non_nc_condition_labels),
         "total_condition_categories": len(non_nc_condition_labels) + int(has_nc_category),
         "total_projects": count_unique_projects(meta),
         "total_taxa": count_total_taxa_from_abundance(),
         "total_unique_genera": count_unique_genera_resolved(),
-        # Deprecated: alias for total_taxa (historically misnamed). Kept so older
-        # cached clients keep working. Remove after one release cycle.
         "total_genera": count_total_taxa_from_abundance(),
         "country_project_counts": country_project_counts,
         "last_updated": version_info.get("last_updated", datetime.now().strftime("%Y-%m-%d")),
@@ -1771,189 +1764,6 @@ def diff_analysis(request: Request, req: DiffAnalysisRequest):
         group_b_name=filter_to_label(req.group_b_filter),
     )
 
-    # NOTE: Legacy implementation retained for reference; the active endpoint is implemented in run_compare_analysis() above.
-
-    # Extract abundance matrices and normalize to relative abundance (%)
-    raw_a = abund.loc[valid_a].values.astype(float)
-    raw_b = abund.loc[valid_b].values.astype(float)
-    totals_a = raw_a.sum(axis=1, keepdims=True)
-    totals_b = raw_b.sum(axis=1, keepdims=True)
-    totals_a[totals_a == 0] = 1
-    totals_b[totals_b == 0] = 1
-    mat_a = raw_a / totals_a * 100
-    mat_b = raw_b / totals_b * 100
-    col_names = abund.columns.tolist()
-
-    # ── Aggregate by taxonomy level ──────────────────────────────────────────
-    def group_by_level(matrix: np.ndarray, cols: list[str], level: str):
-        """Aggregate columns by taxonomy level."""
-        if level == "genus":
-            labels = [extract_genus(c) for c in cols]
-        elif level == "phylum":
-            labels = [extract_phylum(c) for c in cols]
-        else:
-            labels = [extract_genus(c) for c in cols]
-
-        # Sum columns with the same label
-        unique_labels = list(dict.fromkeys(labels))  # preserve order
-        agg = np.zeros((matrix.shape[0], len(unique_labels)))
-        for i, lbl in enumerate(unique_labels):
-            idxs = [j for j, l in enumerate(labels) if l == lbl]
-            agg[:, i] = matrix[:, idxs].sum(axis=1)
-        return agg, unique_labels
-
-    agg_a, taxa = group_by_level(mat_a, col_names, req.taxonomy_level)
-    agg_b, _    = group_by_level(mat_b, col_names, req.taxonomy_level)
-
-    # ── Differential abundance test ─────────────────────────────────────────────
-    # Use wilcoxon as base test for LEfSe/PERMANOVA methods too
-    base_method = req.method if req.method in ("wilcoxon", "t-test") else "wilcoxon"
-
-    diff_results = []
-    p_values = []
-
-    for i, taxon in enumerate(taxa):
-        vals_a = agg_a[:, i]
-        vals_b = agg_b[:, i]
-
-        mean_a = float(np.mean(vals_a))
-        mean_b = float(np.mean(vals_b))
-
-        # log2 fold change (add pseudocount to avoid log(0))
-        pseudo = 1e-6
-        log2fc = math.log2((mean_a + pseudo) / (mean_b + pseudo))
-
-        # Statistical test
-        u_stat = 0.0
-        try:
-            if base_method == "wilcoxon":
-                mwu = stats.mannwhitneyu(vals_a, vals_b, alternative="two-sided")
-                u_stat, p = float(mwu.statistic), float(mwu.pvalue)
-            else:
-                t_res = stats.ttest_ind(vals_a, vals_b)
-                u_stat, p = float(t_res.statistic), float(t_res.pvalue)
-        except Exception:
-            p = 1.0
-
-        # Effect size
-        n_a, n_b = len(vals_a), len(vals_b)
-        if base_method == "wilcoxon":
-            effect_size = float(1 - 2 * u_stat / (n_a * n_b)) if n_a * n_b > 0 else 0.0
-        else:
-            pooled_std = float(np.std(np.concatenate([vals_a, vals_b])))
-            effect_size = float((mean_a - mean_b) / pooled_std) if pooled_std > 0 else 0.0
-
-        p_values.append(float(p))
-        diff_results.append({
-            "taxon": taxon,
-            "mean_a": mean_a,
-            "mean_b": mean_b,
-            "log2fc": log2fc,
-            "p_value": float(p),
-            "adjusted_p": 0.0,
-            "effect_size": effect_size,
-        })
-
-    # BH correction
-    adj_p = bh_correction(p_values)
-    for i, row in enumerate(diff_results):
-        row["adjusted_p"] = adj_p[i]
-
-    # Sort by adjusted p-value
-    diff_results.sort(key=lambda x: x["adjusted_p"])
-
-    # ── LEfSe analysis (if requested) ───────────────────────────────────────
-    lefse_results = None
-    if req.method == "lefse":
-        lefse_results = lefse_analysis(agg_a, agg_b, taxa)
-
-    # ── PERMANOVA (if requested) ────────────────────────────────────────────
-    permanova_result = None
-    if req.method == "permanova":
-        permanova_result = permanova_test(agg_a, agg_b)
-
-    # ── Alpha diversity ─────────────────────────────────────────────────────────
-    shannon_a = [shannon_diversity(r) for r in agg_a]
-    simpson_a = [simpson_diversity(r) for r in agg_a]
-    shannon_b = [shannon_diversity(r) for r in agg_b]
-    simpson_b = [simpson_diversity(r) for r in agg_b]
-
-    alpha_diversity = {
-        "group_a": {
-            "shannon": shannon_a[:500],   # limit payload size
-            "simpson": simpson_a[:500],
-        },
-        "group_b": {
-            "shannon": shannon_b[:500],
-            "simpson": simpson_b[:500],
-        },
-    }
-
-    # ── Beta diversity PCoA ──────────────────────────────────────────────────
-    pcoa_coords = bray_curtis_pcoa(agg_a, agg_b, max_samples=150)
-
-    # Build group name labels
-    def filter_to_label(f: GroupFilter) -> str:
-        parts = []
-        if f.country:
-            parts.append(f.country.title())
-        if f.disease:
-            parts.append(f.disease)
-        if f.age_group:
-            parts.append(f.age_group)
-        if f.sex:
-            parts.append(f.sex.title())
-        return "-".join(parts) if parts else "Group"
-
-    group_a_name = filter_to_label(req.group_a_filter)
-    group_b_name = filter_to_label(req.group_b_filter)
-
-    response = {
-        "summary": {
-            "group_a_name": group_a_name,
-            "group_b_name": group_b_name,
-            "group_a_n": len(valid_a),
-            "group_b_n": len(valid_b),
-            "taxonomy_level": req.taxonomy_level,
-            "method": req.method,
-            "total_taxa": len(taxa),
-        },
-        "diff_taxa": diff_results[:200],   # top 200 by significance
-        "alpha_diversity": alpha_diversity,
-        "beta_diversity": {
-            "pcoa_coords": pcoa_coords,
-        },
-    }
-
-    # Attach LEfSe and PERMANOVA results if computed
-    if lefse_results is not None:
-        response["lefse_results"] = lefse_results
-    if permanova_result is not None:
-        response["permanova"] = permanova_result
-
-    return response
-
-
-# ── Phenotype Association Analysis ─────────────────────────
-
-def _get_samples_by_pheno(meta: pd.DataFrame, dim_type: str, group: str) -> pd.Series:
-    """
-    Return boolean mask of samples belonging to a phenotype group.
-    """
-    if dim_type == "disease":
-        return _inform_label_mask(meta, group)
-    elif dim_type == "age":
-        if "age_group" in meta.columns:
-            return meta["age_group"].str.lower() == group.lower()
-        return pd.Series(False, index=meta.index)
-    elif dim_type == "sex":
-        if "sex" in meta.columns:
-            return meta["sex"].str.lower() == group.lower()
-        return pd.Series(False, index=meta.index)
-    return pd.Series(False, index=meta.index)
-
-
-# End of unreachable legacy implementation for /api/diff-analysis.
 @app.get("/api/phenotype-groups",
          summary="List phenotype groups",
          description="Return all available groups for a dimension type with sample counts.")
@@ -5401,11 +5211,11 @@ async def health_index(request: Request, req: HealthIndexRequest):
     psi_MN = _psi_score(np.asarray(d_marker_vals, dtype=float), R_MN_prime, detection_pct)
     pseudo = 1e-5  # Gupta's ε
     raw_score_weighted = math.log10((psi_MH + pseudo) / (psi_MN + pseudo))
-    raw_score = raw_score_weighted  # legacy field kept for back-compat
+    raw_score = raw_score_weighted
 
     # ── Universal softmax health score (paper Figure 1g / Supp Table 6) ──
     # Single-sample scoring via frozen universal softmax P(NC)*100; percentile
-    # looked up from Supp Table 6 NC distribution. Legacy Gupta psi fields kept for backward compat.
+    # looked up from Supp Table 6 NC distribution.
     try:
         p_nc, _n_matched_univ, _n_total_univ = _score_universal_pnc(
             req.abundances,
@@ -5418,7 +5228,7 @@ async def health_index(request: Request, req: HealthIndexRequest):
         normalized = float(round(p_nc * 100.0, 1))
     except Exception as e:
         logging.warning(f"[health-index] universal softmax fallback: {e}")
-        # Extreme fallback: keep legacy Gupta normalisation (should not happen)
+        # Fallback: legacy Gupta normalisation
         normalized = max(0.0, min(100.0, (raw_score_weighted + 2.0) / 4.0 * 100.0))
 
     pop = _compute_population_gmhi()

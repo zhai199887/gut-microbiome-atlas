@@ -2943,7 +2943,7 @@ def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera
     if cached:
         return cached
     # 磁盘持久化缓存：重启后无需重算（7天有效）
-    disk_cached = get_disk_cached(cache_key)
+    disk_cached = get_disk_cached_by_data(cache_key)
     if disk_cached:
         set_cached(cache_key, disk_cached)   # 同步到内存缓存
         return disk_cached
@@ -3523,7 +3523,7 @@ def biomarker_discovery(request: Request, disease: str, lda_threshold: float = 2
     cached = get_cached(cache_key)
     if cached:
         return cached
-    disk_hit = get_disk_cached(cache_key)
+    disk_hit = get_disk_cached_by_data(cache_key)
     if disk_hit:
         set_cached(cache_key, disk_hit)
         return disk_hit
@@ -3640,7 +3640,7 @@ def lollipop_data(request: Request, disease: str, top_n: int = 40):
     cached = get_cached(cache_key)
     if cached:
         return cached
-    disk_hit = get_disk_cached(cache_key)
+    disk_hit = get_disk_cached_by_data(cache_key)
     if disk_hit:
         set_cached(cache_key, disk_hit)
         return disk_hit
@@ -4113,7 +4113,7 @@ def _lifecycle_internal(
         cached = get_cached(cache_key)
         if cached:
             return cached
-        disk_hit = get_disk_cached(cache_key)
+        disk_hit = get_disk_cached_by_data(cache_key)
         if disk_hit:
             set_cached(cache_key, disk_hit)
             return disk_hit
@@ -4337,7 +4337,7 @@ def lifecycle_compare(
     cached = get_cached(cache_key)
     if cached:
         return cached
-    disk_hit = get_disk_cached(cache_key)
+    disk_hit = get_disk_cached_by_data(cache_key)
     if disk_hit:
         set_cached(cache_key, disk_hit)
         return disk_hit

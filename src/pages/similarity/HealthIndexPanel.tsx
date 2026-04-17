@@ -765,7 +765,7 @@ const HealthIndexPanel = () => {
                 10-Class Softmax Probabilities
               </h3>
               <p style={{ margin: "0 0 12px", fontSize: 11, color: "#888" }}>
-                Order matches paper Figure 1g: NC + 9 diseases
+                Order: NC + 9 diseases
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {[{ key: "p_nc" as const, label: "NC (健康对照)" }, ...GBHI_DISEASE_CLASSES].map(

@@ -5402,6 +5402,154 @@ async def analytics_summary(request: Request, token: str = ""):
     }
 
 
+# ── Email daily report ────────────────────────────────────────────
+
+class EmailReportRequest(BaseModel):
+    token: str
+    to: str = "zhaijinxia07@gmail.com"
+
+@app.post("/api/admin/email-report", tags=["Admin"],
+          summary="Generate and email daily analytics report")
+@limiter.limit("10/hour")
+async def email_daily_report(request: Request, req: EmailReportRequest):
+    """Generate yesterday's analytics report and send via email."""
+    if req.token != ADMIN_TOKEN:
+        raise HTTPException(403, "Invalid admin token")
+
+    import smtplib
+    from email.mime.text import MIMEText
+    from collections import Counter
+
+    # Read analytics
+    events = []
+    if _ANALYTICS_FILE.exists():
+        with open(_ANALYTICS_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        events.append(json.loads(line))
+                    except Exception:
+                        pass
+
+    if not events:
+        raise HTTPException(404, "No analytics data")
+
+    # Find yesterday (Beijing time UTC+8)
+    from datetime import timedelta, timezone
+    bj_tz = timezone(timedelta(hours=8))
+    now_bj = datetime.now(bj_tz)
+    yesterday = (now_bj - timedelta(days=1)).strftime("%Y-%m-%d")
+    day_before = (now_bj - timedelta(days=2)).strftime("%Y-%m-%d")
+
+    # Build daily stats
+    daily_data: dict = {}
+    for e in events:
+        day = e.get("timestamp", "")[:10]
+        if not day:
+            continue
+        if day not in daily_data:
+            daily_data[day] = {"views": 0, "ips": set(), "pages": Counter(),
+                               "uas": [], "referers": []}
+        daily_data[day]["views"] += 1
+        ip = e.get("ip", "")
+        if ip:
+            daily_data[day]["ips"].add(ip)
+        daily_data[day]["pages"][e.get("page", "")] += 1
+        daily_data[day]["uas"].append(e.get("ua", ""))
+        daily_data[day]["referers"].append(e.get("referer", ""))
+
+    # Pick report date
+    report_date = yesterday if yesterday in daily_data else (
+        sorted(daily_data.keys())[-1] if daily_data else yesterday)
+    d = daily_data.get(report_date, {"views": 0, "ips": set(), "pages": Counter(),
+                                      "uas": [], "referers": []})
+
+    # Trend
+    prev = daily_data.get(day_before, {"views": 0})
+    trend_pct = ((d["views"] - prev["views"]) / prev["views"] * 100
+                 if prev["views"] > 0 else 0)
+    trend_str = f"↑ {trend_pct:.0f}%" if trend_pct > 0 else (
+        f"↓ {abs(trend_pct):.0f}%" if trend_pct < 0 else "→ 持平")
+
+    # Device breakdown
+    mobile_cnt = sum(1 for ua in d["uas"] if any(
+        k in ua.lower() for k in ("mobile", "android", "iphone", "ipad")))
+    desktop_cnt = len(d["uas"]) - mobile_cnt
+    total_ua = max(len(d["uas"]), 1)
+
+    # Top pages
+    top_pages_lines = []
+    for i, (page, cnt) in enumerate(d["pages"].most_common(8), 1):
+        label = {"": "未知", "/": "首页"}.get(page, page)
+        top_pages_lines.append(f"  {i}. {label} — {cnt}次")
+
+    # Referer sources
+    ref_counter = Counter()
+    for r in d["referers"]:
+        if not r:
+            ref_counter["直接访问"] += 1
+        elif "google" in r.lower():
+            ref_counter["Google"] += 1
+        elif "gutbiomedb" in r.lower():
+            ref_counter["站内跳转"] += 1
+        else:
+            ref_counter[r[:40]] += 1
+    ref_lines = [f"  - {k}：{v}次" for k, v in ref_counter.most_common(5)]
+
+    all_ips = set()
+    for dd in daily_data.values():
+        all_ips |= dd["ips"]
+    total_views = sum(dd["views"] for dd in daily_data.values())
+
+    body = f"""📊 GutBiomeDB 访问日报 — {report_date}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 总浏览量：{d['views']} 次
+👥 独立访客：{len(d['ips'])} 个IP
+
+🔥 热门页面：
+{chr(10).join(top_pages_lines) if top_pages_lines else '  (无数据)'}
+
+🌐 访客来源：
+{chr(10).join(ref_lines) if ref_lines else '  (无来源数据)'}
+
+📱 设备分布：
+  - 桌面端：{desktop_cnt}/{total_ua} ({desktop_cnt/total_ua*100:.0f}%)
+  - 移动端：{mobile_cnt}/{total_ua} ({mobile_cnt/total_ua*100:.0f}%)
+
+📊 趋势：较前日 {trend_str}
+
+累计总浏览量：{total_views} 次 | 累计独立访客：{len(all_ips)} 个
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+平台：https://gutbiomedb.online
+Vercel Analytics: https://vercel.com → compendium_website → Analytics
+
+此邮件由 GutBiomeDB 自动报告系统发送。
+"""
+    subject = f"📊 GutBiomeDB 访问日报 — {report_date}"
+
+    # Send via SMTP
+    smtp_user = os.environ.get("GMAIL_USER", "zhaijinxia07@gmail.com")
+    smtp_pass = os.environ.get("GMAIL_APP_PASSWORD", "")
+    if not smtp_pass:
+        raise HTTPException(500, "GMAIL_APP_PASSWORD not configured in .env.local")
+
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = smtp_user
+    msg["To"] = req.to
+
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as s:
+            s.starttls()
+            s.login(smtp_user, smtp_pass)
+            s.send_message(msg)
+    except Exception as exc:
+        raise HTTPException(500, f"Email send failed: {exc}")
+
+    return {"status": "sent", "to": req.to, "subject": subject, "date": report_date}
+
+
 # ── Universal GBHI (/api/health_score) ──────────────────────────────────────
 # Frozen multinomial softmax classifier from gbhi_universal.pkl. Single
 # LogisticRegression (lbfgs, C=1.0, class_weight=balanced) over 10 classes,

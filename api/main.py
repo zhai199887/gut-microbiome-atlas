@@ -1819,7 +1819,8 @@ def phenotype_association(
     """
     Core phenotype association analysis: Mann-Whitney U + BH-FDR + effect size + prevalence + phylum annotation.
     """
-    cache_key = f"phenotype_assoc:{dim_type}:{group_a}:{group_b}:{tax_level}:{min_prevalence}:{top_n}"
+    # Cache schema version: bump _v<n> when this endpoint's output shape changes.
+    cache_key = f"phenotype_assoc_v1:{dim_type}:{group_a}:{group_b}:{tax_level}:{min_prevalence}:{top_n}"
     cached = get_cached(cache_key)
     if cached is not None:
         return cached
@@ -1986,7 +1987,7 @@ def phenotype_taxa_profile(
     """
     Return abundance distribution (Q1/Q3/median/whiskers) per phenotype group (for box plots).
     """
-    cache_key = f"phenotype_taxa_profile:{taxon}:{dim_type}"
+    cache_key = f"phenotype_taxa_profile_v1:{taxon}:{dim_type}"
     cached = get_cached(cache_key)
     if cached is not None:
         return cached
@@ -2512,7 +2513,7 @@ def disease_profile(request: Request, disease: str, top_n: int = 40):
         raise HTTPException(400, "disease parameter is required")
     disease = disease.strip()
 
-    cache_key = f"disease_profile:{disease}:{top_n}"
+    cache_key = f"disease_profile_v1:{disease}:{top_n}"
     cached = get_cached(cache_key)
     if cached:
         return cached
@@ -2558,7 +2559,7 @@ def disease_studies(request: Request, disease: str):
         raise HTTPException(400, "disease parameter is required")
     disease = disease.strip()
 
-    cache_key = f"disease_studies:{disease}"
+    cache_key = f"disease_studies_v1:{disease}"
     cached = get_cached(cache_key)
     if cached:
         return cached
@@ -2740,7 +2741,7 @@ def microbe_disease_network(request: Request, top_diseases: int = 15, top_genera
     Return nodes (diseases + genera) and edges for a force-directed network.
     Edge weight = mean abundance of genus in disease samples.
     """
-    cache_key = f"network:{top_diseases}:{top_genera}"
+    cache_key = f"network_v1:{top_diseases}:{top_genera}"
     cached = get_cached(cache_key)
     if cached:
         return cached
@@ -3316,7 +3317,7 @@ def biomarker_discovery(request: Request, disease: str, lda_threshold: float = 2
     """
     Discover biomarker taxa for a given disease vs healthy controls.
     """
-    cache_key = f"biomarker_discovery:{disease.strip() if disease else ''}:{lda_threshold}:{p_threshold}"
+    cache_key = f"biomarker_discovery_v1:{disease.strip() if disease else ''}:{lda_threshold}:{p_threshold}"
     cached = get_cached(cache_key)
     if cached:
         return cached
@@ -3432,7 +3433,7 @@ def lollipop_data(request: Request, disease: str, top_n: int = 40):
         raise HTTPException(400, "disease parameter is required")
     disease = disease.strip()
 
-    cache_key = f"lollipop:{disease}:{top_n}"
+    cache_key = f"lollipop_v1:{disease}:{top_n}"
     cached = get_cached(cache_key)
     if cached:
         return cached

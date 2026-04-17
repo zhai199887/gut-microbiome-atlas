@@ -15,6 +15,7 @@ import MapSection from "@/sections/MapSection";
 import PhenotypeCharts from "@/sections/PhenotypeCharts";
 import SankeyChart from "@/sections/SankeyChart";
 import "@/components/tooltip";
+import { Analytics } from "@vercel/analytics/react";
 import { trackEvent } from "@/util/tracking";
 import { preloadDiseaseNames } from "@/util/diseaseNames";
 import "./App.css";
@@ -190,6 +191,7 @@ const App = () => (
   <I18nProvider>
     <BrowserRouter>
       <AppShell />
+      <Analytics />
     </BrowserRouter>
   </I18nProvider>
 );

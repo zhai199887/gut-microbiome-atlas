@@ -60,10 +60,6 @@ METADATA_PATH = os.getenv("METADATA_PATH", "")  # set via .env.local
 ABUNDANCE_PATH = os.getenv("ABUNDANCE_PATH", "")  # set via .env.local
 ADMIN_TOKEN    = os.getenv("ADMIN_TOKEN", "")
 
-# ── Cache version: auto-derived from main.py file hash; invalidated on code change
-import hashlib as _hashlib
-CACHE_BUST = _hashlib.md5(open(__file__, "rb").read()).hexdigest()[:8]
-
 # Validate at startup — use logging so warnings are never silently swallowed
 if not METADATA_PATH:
     logging.warning("METADATA_PATH not set — data endpoints will fail. Set it in .env.local")
@@ -282,8 +278,13 @@ os.makedirs(_DISK_CACHE_DIR, exist_ok=True)
 _DISK_CACHE_TTL = 86400 * 7  # 7 days
 
 def _disk_cache_path(key: str) -> str:
+    # Filename is derived only from the endpoint-provided cache_key.
+    # Freshness is enforced by get_disk_cached_by_data (file mtime vs source-data mtime).
+    # Per-endpoint output-format versions belong inside the cache_key itself
+    # (e.g. "phenotype_assoc_v2:..."), so unrelated endpoints are not
+    # invalidated when one endpoint's schema changes.
     safe = key.replace(":", "_").replace("/", "_")
-    return os.path.join(_DISK_CACHE_DIR, f"{safe}_v{CACHE_BUST}.json")
+    return os.path.join(_DISK_CACHE_DIR, f"{safe}.json")
 
 def get_disk_cached(key: str):
     """Load from disk cache if fresh; returns None if missing/expired."""
@@ -1773,6 +1774,33 @@ def phenotype_groups(request: Request, dim_type: str = "disease"):
         groups = [{"group": k, "sample_count": int(v)} for k, v in vc.items() if k.strip() and k in {"male", "female"}]
         return {"dim_type": dim_type, "groups": groups}
     return {"dim_type": dim_type, "groups": []}
+
+
+def _get_samples_by_pheno(meta: pd.DataFrame, dim_type: str, group: str) -> pd.Series:
+    """Return a boolean mask over meta rows matching the given phenotype group.
+
+    dim_type:
+        - "sex":     exact match on meta["sex"].
+        - "age":     exact match on meta["age_group"].
+        - "disease": match on any of inform0..inform11 equal to the group label
+                     (covers both disease labels such as "UC" and the control
+                     label "NC").
+    """
+    if dim_type == "sex":
+        if "sex" not in meta.columns:
+            return pd.Series(False, index=meta.index)
+        return meta["sex"].fillna("").astype(str).str.strip() == group
+    if dim_type == "age":
+        if "age_group" not in meta.columns:
+            return pd.Series(False, index=meta.index)
+        return meta["age_group"].fillna("").astype(str).str.strip() == group
+    if dim_type == "disease":
+        mask = pd.Series(False, index=meta.index)
+        for col in (f"inform{i}" for i in range(12)):
+            if col in meta.columns:
+                mask |= meta[col].fillna("").astype(str).str.strip() == group
+        return mask
+    return pd.Series(False, index=meta.index)
 
 
 @app.get("/api/phenotype-association",

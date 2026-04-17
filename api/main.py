@@ -2112,7 +2112,7 @@ def species_profile(request: Request, genus: str):
     """
     Return a comprehensive profile for a given genus: abundance, disease, country, age, and sex distributions.
     """
-    cache_key = f"species_profile:{genus.strip().lower()}"
+    cache_key = f"species_profile_v1:{genus.strip().lower()}"
     cached = get_cached(cache_key)
     if cached:
         return cached
@@ -2282,7 +2282,7 @@ def biomarker_profile(request: Request, genus: str, min_samples: int = 10):
     if not genus or not genus.strip():
         raise HTTPException(400, "genus parameter is required")
 
-    cache_key = f"biomarker_profile:{genus.strip().lower()}:{min_samples}"
+    cache_key = f"biomarker_profile_v1:{genus.strip().lower()}:{min_samples}"
     cached = get_cached(cache_key)
     if cached:
         return cached
@@ -2464,7 +2464,7 @@ def metabolism_category_profile(request: Request, category_id: str):
     if category is None:
         raise HTTPException(status_code=404, detail=f"Category '{category_id}' not found")
 
-    cache_key = f"metabolism_profile:{category_id}"
+    cache_key = f"metabolism_profile_v1:{category_id}"
     cached = get_cached(cache_key)
     if cached:
         return cached
@@ -2484,7 +2484,7 @@ def metabolism_category_profile(request: Request, category_id: str):
 @limiter.limit("60/minute")
 def metabolism_overview(request: Request):
     """Return overview heatmap data for the metabolism module."""
-    cache_key = "metabolism_overview"
+    cache_key = "metabolism_overview_v1"
     cached = get_cached(cache_key)
     if cached:
         return cached
@@ -3464,7 +3464,7 @@ def chord_data(request: Request, top_diseases: int = 10, top_genera: int = 12):
     """
     Return disease-genus association matrix for chord diagram.
     """
-    cache_key = f"chord:{top_diseases}:{top_genera}"
+    cache_key = f"chord_v1:{top_diseases}:{top_genera}"
     cached = get_cached(cache_key)
     if cached:
         return cached
@@ -3546,7 +3546,7 @@ def species_cooccurrence(request: Request, genus: str, top_k: int = 10, disease:
         raise HTTPException(400, "genus parameter is required")
 
     disease_name = disease.strip()
-    cache_key = f"species_cooccurrence:{genus.strip().lower()}:{top_k}:{disease_name.lower() or '__nc__'}"
+    cache_key = f"species_cooccurrence_v1:{genus.strip().lower()}:{top_k}:{disease_name.lower() or '__nc__'}"
     cached = get_cached(cache_key)
     if cached:
         return cached
@@ -3671,7 +3671,7 @@ def cooccurrence_network(
     """
     Compute genus co-occurrence network based on Spearman correlation.
     """
-    cache_key = f"cooccurrence:{disease}:{min_r}:{top_genera}:{max_samples}:{method}:{fdr_threshold}"
+    cache_key = f"cooccurrence_v1:{disease}:{min_r}:{top_genera}:{max_samples}:{method}:{fdr_threshold}"
     cached = get_cached(cache_key)
     if cached:
         return cached
@@ -3710,7 +3710,7 @@ def network_compare(
         raise HTTPException(400, "disease parameter is required")
 
     disease = disease.strip()
-    cache_key = f"network_compare:{disease}:{min_r}:{top_genera}:{max_samples}:{method}:{fdr_threshold}"
+    cache_key = f"network_compare_v1:{disease}:{min_r}:{top_genera}:{max_samples}:{method}:{fdr_threshold}"
     cached = get_cached(cache_key)
     if cached:
         return cached
@@ -3902,7 +3902,7 @@ def _lifecycle_internal(
 ) -> dict:
     """Compute lifecycle atlas data with optional fixed genera for compare mode."""
     fixed_part = ",".join(fixed_genera or [])
-    cache_key = f"lifecycle:v9:{disease}:{country}:{top_genera}:{fixed_part}"
+    cache_key = f"lifecycle_v9:{disease}:{country}:{top_genera}:{fixed_part}"
     if use_cache:
         cached = get_cached(cache_key)
         if cached:
@@ -4126,7 +4126,7 @@ def lifecycle_compare(
     if not disease or not disease.strip():
         raise HTTPException(400, "disease parameter is required for comparison mode")
 
-    cache_key = f"lifecycle_compare:v3:{disease}:{country}:{top_genera}"
+    cache_key = f"lifecycle_compare_v3:{disease}:{country}:{top_genera}"
     cached = get_cached(cache_key)
     if cached:
         return cached
@@ -4452,7 +4452,7 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
     """Cross-study meta-analysis: multi-cohort consensus biomarker discovery."""
     if len(req.project_ids) < 2:
         raise HTTPException(400, "At least 2 projects required")
-    cache_key = "cross_study:" + json.dumps(
+    cache_key = "cross_study_v1:" + json.dumps(
         {
             "project_ids": sorted(str(project_id).strip() for project_id in req.project_ids),
             "disease": req.disease.strip(),

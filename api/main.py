@@ -2923,6 +2923,37 @@ def clear_disk_cache_endpoint(request: Request, x_admin_token: str | None = Head
             "message": "Disk and memory cache cleared. Warmup will re-run on next request."}
 
 
+@app.post("/api/admin/rehash-seed",
+          summary="Reset cache-audit baseline hashes",
+          description="Rewrite .endpoint_source_hashes.json using current source. "
+                      "Use after a legitimate refactor to silence spurious stale warnings. "
+                      "Pass ?endpoint=NAME to reset one entry only.",
+          tags=["Admin"])
+@no_cache_tracking
+@limiter.limit("10/minute")
+def rehash_seed(
+    request: Request,
+    endpoint: Optional[str] = None,
+    x_admin_token: str | None = Header(None),
+):
+    _check_admin(x_admin_token)
+    if endpoint is None:
+        try:
+            CACHE_AUDIT_HASH_FILE.unlink(missing_ok=True)
+        except OSError as e:
+            raise HTTPException(500, f"Failed to delete hash file: {e}") from e
+        report = cache_audit.run(app, CACHE_AUDIT_HASH_FILE)
+        app.state.cache_audit_report = report
+        return {"reset": "all", "seeded": len(report.seeded)}
+    audits = cache_audit.scan_endpoints(app)
+    try:
+        cache_audit.reset_endpoint(endpoint, CACHE_AUDIT_HASH_FILE, audits)
+    except KeyError:
+        raise HTTPException(404, f"endpoint '{endpoint}' not found in audit scan")
+    app.state.cache_audit_report = cache_audit.run(app, CACHE_AUDIT_HASH_FILE)
+    return {"reset": endpoint}
+
+
 @app.post("/api/admin/upload-metadata",
           summary="Upload metadata",
           description="Upload and merge new metadata CSV file (requires admin token).")

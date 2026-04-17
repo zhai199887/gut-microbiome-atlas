@@ -14,7 +14,6 @@ import Overview from "@/sections/Overview";
 import MapSection from "@/sections/MapSection";
 import PhenotypeCharts from "@/sections/PhenotypeCharts";
 import SankeyChart from "@/sections/SankeyChart";
-// Search moved to standalone /search page
 import "@/components/tooltip";
 import { trackEvent } from "@/util/tracking";
 import { preloadDiseaseNames } from "@/util/diseaseNames";

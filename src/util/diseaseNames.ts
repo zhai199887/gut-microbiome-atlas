@@ -289,7 +289,7 @@ const DISEASE_ZH: Record<string, string> = {
   "Ulcerative Colitis": "溃疡性结肠炎",
   "Urolithiasis": "尿路结石",
   "Vitiligo": "白癜风",
-  // ── 补全全部 125 个缺失翻译（2026-04-05） ──
+  // ── Extended translations (125 entries) ──
   "Chronic Fatigue Syndrome / Myalgic Encephalomyelitis (CFS/ME)": "慢性疲劳综合征/肌痛性脑脊髓炎",
   "Compulsory drug abstinence": "强制戒毒",
   "Critically ill patients with acute respiratory failure": "急性呼吸衰竭危重患者",
@@ -418,9 +418,8 @@ const DISEASE_ZH: Record<string, string> = {
 };
 
 /**
- * 获取疾病的标准化显示名称（仅全称，不附加缩写括号）
- * - 有映射 → 返回标准全称（如 "Colorectal Cancer"）
- * - 无映射 → 返回原始 key，下划线替换为空格，首字母大写
+ * Return the standardized display name for a disease key (full name only, no abbreviation suffix).
+ * Mapped keys return the canonical name; unmapped keys are formatted from the raw key.
  */
 export function diseaseDisplayName(key: string): string {
   const mapped = displayMap && displayMap[key] ? displayMap[key] : "";
@@ -452,7 +451,6 @@ function humanizeDiseaseKey(key: string): string {
 }
 
 // Build normalized lookup for fuzzy matching (once)
-// 构建归一化查找表用于模糊匹配（仅构建一次）
 const _DISEASE_ZH_NORM: Record<string, string> = {};
 for (const [k, v] of Object.entries(DISEASE_ZH)) {
   _DISEASE_ZH_NORM[k.toLowerCase().replace(/[_\s-]+/g, " ").trim()] = v;
@@ -492,13 +490,13 @@ export function sortDiseaseItemsByName<T extends { name: string }>(items: readon
   return [...items].sort((a, b) => compareDiseaseKeys(a.name, b.name));
 }
 
-/** 获取简短显示名（用于按钮/标签等空间有限的场景） */
+/** Short display name for space-constrained UI elements (buttons, labels). */
 export function diseaseShortName(key: string, maxLen = 30): string {
   const full = diseaseDisplayName(key);
   return full.length > maxLen ? full.slice(0, maxLen - 1) + "…" : full;
 }
 
-/** 国际化简短显示名 */
+/** Localized short display name. */
 export function diseaseShortNameI18n(key: string, locale: string, maxLen = 30): string {
   const full = diseaseDisplayNameI18n(key, locale);
   return full.length > maxLen ? full.slice(0, maxLen - 1) + "…" : full;

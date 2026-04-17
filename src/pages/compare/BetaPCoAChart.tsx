@@ -8,22 +8,10 @@ import { useI18n } from "@/i18n";
 import classes from "../ComparePage.module.css";
 import type { BetaMetric, BetaPoint, DiffResult } from "./types";
 
-// Compute 2σ confidence ellipse parameters in pixel space.
-// Matches the paper's matplotlib conf_ellipse(n_std=2.0, np.cov) exactly:
-// - sample covariance (n-1 denominator)
-// - covariance matrix transformed to pixel space before eigendecomposition
-//   so the angle and radii are correct even when x/y axes have different scales
-// Exact translation of the paper's conf_ellipse (gen_fig1b_pcoa.py, n_std=2.0):
-//   cov = np.cov(x, y)
-//   vals, vecs = np.linalg.eigh(cov)   → eigendecomposition in DATA space
-//   theta = arctan2(*vecs[:,0][::-1])  → angle of major eigenvector
-//   w, h = 2*n_std*sqrt(vals)          → full width/height = 2× semi-axis
-//   Ellipse(center, width=w, height=h, angle=theta)
-//
-// We generate points along the ellipse in data coordinates (64-gon), then
-// map each to pixel space via xScale/yScale — identical to matplotlib's transform.
-// All display points are shown; only the covariance fit uses IQR-trimmed core
-// so one or two extreme outlier samples don't inflate the ellipse shape.
+// Compute 2σ confidence ellipse in pixel space.
+// Steps: sample covariance (n-1) → eigendecomposition in data space →
+// semi-axes = n_std * sqrt(eigenvalues) → 64-gon in data coords → project via xScale/yScale.
+// Covariance fit uses IQR-trimmed core to avoid outlier inflation.
 function ellipsePathFromPoints(
   points: BetaPoint[],
   xScale: d3.ScaleLinear<number, number>,
@@ -32,7 +20,7 @@ function ellipsePathFromPoints(
 ): string | null {
   if (points.length < 3) return null;
 
-  // IQR-trim core (matches paper's subsample which lacks extreme outlier NC samples)
+  // IQR-trim core to exclude extreme outliers from covariance estimation
   const sortedX = [...points].map((p) => p.x).sort((a, b) => a - b);
   const sortedY = [...points].map((p) => p.y).sort((a, b) => a - b);
   const q1x = d3.quantile(sortedX, 0.25) ?? 0; const q3x = d3.quantile(sortedX, 0.75) ?? 0;
@@ -215,7 +203,7 @@ const BetaPCoAChart = ({ result }: { result: DiffResult }) => {
         .text(`${displayLabel} (n=${item.n})`);
     });
 
-    // PERMANOVA stats box — mirrors the paper figure
+    // PERMANOVA stats box
     const perm = result.permanova;
     if (perm) {
       const bx = margin.left + innerWidth - 192;

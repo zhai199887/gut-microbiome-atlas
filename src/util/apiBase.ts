@@ -1,5 +1,5 @@
 export const LOCAL_API_BASE = "http://localhost:8000";
-export const PUBLIC_API_BASE = "https://32c774a.r12.cpolar.top";
+export const PUBLIC_API_BASE = import.meta.env.VITE_PUBLIC_API_BASE || "https://32c774a.r12.cpolar.top";
 const LOCAL_API_PORT = "8000";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 

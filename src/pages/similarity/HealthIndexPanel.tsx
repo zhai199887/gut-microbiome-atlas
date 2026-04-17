@@ -76,9 +76,8 @@ interface DeviationEntry {
   status: string;
 }
 
-// New: multinomial softmax GBHI response (matches paper Fig 1g, gbhi_universal.pkl)
+// Multinomial softmax GBHI response (10-class classifier)
 // Backend endpoint: POST /api/health_score
-// 10 classes: NC + {CDI, CD, UC, RA, HIV, adenoma, obesity, IBS, CRC}
 interface GbhiResult {
   p_nc: number;
   p_cdi: number;
@@ -94,7 +93,7 @@ interface GbhiResult {
   tier: "high" | "moderate" | "low";
 }
 
-// Ordered disease class labels matching the paper's 10-class softmax output
+// Ordered disease class labels for the 10-class softmax output
 const GBHI_DISEASE_CLASSES: Array<{ key: keyof GbhiResult; label: string }> = [
   { key: "p_cdi", label: "CDI" },
   { key: "p_cd", label: "CD" },
@@ -330,7 +329,7 @@ const HealthIndexPanel = () => {
       const payload: HealthResult = await resp.json();
       setResult(payload);
 
-      // Also call the new universal multinomial softmax GBHI endpoint (paper Fig 1g)
+      // Also call the universal multinomial softmax GBHI endpoint
       try {
         const gResp = await fetch(`${API_BASE}/api/health_score`, {
           method: "POST",
@@ -354,7 +353,7 @@ const HealthIndexPanel = () => {
 
   useEffect(() => {
     if (!result || !gaugeRef.current) return;
-    // Prefer the new multinomial softmax GBHI score when available (paper Fig 1g)
+    // Prefer the multinomial softmax GBHI score when available
     const displayScore = gbhi ? gbhi.health_score : result.score;
     const svg = d3.select(gaugeRef.current);
     svg.selectAll("*").remove();

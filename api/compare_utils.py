@@ -542,8 +542,8 @@ def run_compare_analysis(
     chao1_a = [round(chao1_richness(row), 6) for row in raw_agg_a]
     chao1_b = [round(chao1_richness(row), 6) for row in raw_agg_b]
 
-    # Use seed-42 random subsample (≤500/group) for scatter display — matches paper Methods.
-    # Pre-computed full-population statistics are sent separately for exact boxplot drawing.
+    # Seed-42 random subsample (≤500/group) for scatter display.
+    # Full-population statistics are sent separately for exact boxplot drawing.
     alpha_diversity = {
         "group_a": {
             "shannon": _random_subsample_list(shannon_a),

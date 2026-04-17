@@ -53,7 +53,7 @@ const VolcanoChart = ({ result }: { result: DiffResult }) => {
     ) * 1.08;
 
     const xScale = d3.scaleLinear().domain([-xExtent, xExtent]).range([0, innerWidth]);
-    // Cube-root power scale: compresses extreme values, spreads mid-range — same as paper figure
+    // Cube-root power scale: compresses extreme values, spreads mid-range
     const yScale = d3.scalePow().exponent(1 / 3).domain([0, yMax]).range([innerHeight, 0]);
 
     const getColor = (taxon: DiffTaxon) => {

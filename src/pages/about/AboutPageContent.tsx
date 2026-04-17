@@ -34,7 +34,6 @@ type StatsPayload = {
   total_projects?: number;
   total_taxa?: number;
   total_unique_genera?: number;
-  /** @deprecated use total_taxa */
   total_genera?: number;
   version?: string;
   last_updated?: string;

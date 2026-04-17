@@ -14,18 +14,19 @@ from scipy.spatial.distance import cdist, braycurtis
 
 try:
     import networkx as nx
-except ImportError:  # pragma: no cover - dependency is optional during local smoke tests
+except ImportError:  # pragma: no cover
     nx = None
 
 try:
     import community as community_louvain
-except ImportError:  # pragma: no cover - dependency is optional during local smoke tests
+except ImportError:  # pragma: no cover
     community_louvain = None
 
+_FASTSPAR_DIR = Path(os.environ.get("FASTSPAR_DIR", r"E:\tools\fastspar"))
 FASTSPAR_WRAPPERS = {
-    "fastspar": Path(r"E:\tools\fastspar\fastspar.cmd"),
-    "bootstrap": Path(r"E:\tools\fastspar\fastspar_bootstrap.cmd"),
-    "pvalues": Path(r"E:\tools\fastspar\fastspar_pvalues.cmd"),
+    "fastspar": _FASTSPAR_DIR / "fastspar.cmd",
+    "bootstrap": _FASTSPAR_DIR / "fastspar_bootstrap.cmd",
+    "pvalues": _FASTSPAR_DIR / "fastspar_pvalues.cmd",
 }
 
 FASTSPAR_MAIN_ITERATIONS = 50
@@ -292,7 +293,7 @@ def fastspar_cooccurrence(
     """
     if not _fastspar_available():
         raise RuntimeError(
-            "SparCC is unavailable because E:\\tools\\fastspar\\fastspar*.cmd wrappers were not found."
+            "SparCC is unavailable: FastSpar wrappers not found. Set FASTSPAR_DIR environment variable."
         )
 
     n_samples, n_taxa = abundance_matrix.shape

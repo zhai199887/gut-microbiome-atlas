@@ -404,7 +404,6 @@ def _load_metadata_cached() -> pd.DataFrame:
     for col in inform_cols + ["inform-all"]:
         df[col] = df[col].map(_normalize_inform_label)
 
-    # Legacy: keep "disease" as inform-all for backward compatibility
     if "inform-all" in df.columns:
         df["disease"] = df["inform-all"].fillna("").astype(str).str.strip()
         df.loc[df["disease"] == "", "disease"] = "unknown"
@@ -675,7 +674,8 @@ def count_unique_genera_resolved() -> int:
     return len({extract_genus(c).strip() for c in cols})
 
 
-def count_unique_genera_from_abundance() -> int:  # noqa: D401 - kept for back-compat
+def count_unique_genera_from_abundance() -> int:
+    """Alias for count_total_taxa_from_abundance (backward compatibility)."""
     return count_total_taxa_from_abundance()
 
 
@@ -1165,29 +1165,6 @@ class HealthIndexRequest(BaseModel):
 
 
 # ── Helper functions ────────────────────────────────────────────────────────────
-
-def apply_filter(df: pd.DataFrame, f: GroupFilter) -> pd.DataFrame:
-    """Filter metadata dataframe by group conditions."""
-    result = df.copy()
-    if f.country:
-        result = result[result["country"].str.lower() == f.country.lower()]
-    if f.disease:
-        # Match if ANY of inform0-11 contains the disease
-        INFORM_COLS = [f"inform{i}" for i in range(12)]
-        disease_lower = f.disease.strip().lower()
-        mask = pd.Series(False, index=result.index)
-        for col in INFORM_COLS:
-            if col in result.columns:
-                mask |= result[col].fillna("").astype(str).str.strip().str.lower() == disease_lower
-        result = result[mask]
-    if f.age_group:
-        if "age_group" in result.columns:
-            result = result[result["age_group"].str.lower() == f.age_group.lower()]
-    if f.sex:
-        if "sex" in result.columns:
-            result = result[result["sex"].str.lower() == f.sex.lower()]
-    return result
-
 
 def apply_filter(df: pd.DataFrame, f: GroupFilter) -> pd.DataFrame:
     """Filter metadata using inform0-11 disease groups and strict NC controls."""
@@ -4021,7 +3998,7 @@ def _lifecycle_internal(
                 row["significant"] = bool(adj[i] < 0.05)
         spearman_results = sp_rows
 
-    # PERMANOVA is computed offline by gen_fig1f_lifecycle.py (too expensive for API)
+    # PERMANOVA computed offline (too expensive for real-time API)
     permanova_result: dict = {}
 
     # ── Alpha diversity summary statistics ──
@@ -4529,7 +4506,7 @@ async def cross_study_analysis(request: Request, req: CrossStudyRequest):
             mean_d = float(np.mean(vals_d))
             mean_c = float(np.mean(vals_c))
             # Effect size: difference in mean log2-transformed relative abundances
-            # (pseudocount 1e-6), per paper Methods — matches log-scale SE below
+            # (pseudocount 1e-6) — log-scale SE for meta-analysis
             log2_d = np.log2(vals_d + pseudo)
             log2_c = np.log2(vals_c + pseudo)
             log2fc = float(np.mean(log2_d) - np.mean(log2_c))
@@ -4712,11 +4689,9 @@ def _compute_health_disease_genera() -> dict:
     Per-study random-effects meta-analysis for health/disease genus selection.
     Computes NC vs disease log2FC and variance independently within each BioProject,
     then pools cross-study effect sizes via DerSimonian-Laird random-effects model.
-    This avoids batch effect / Simpson's paradox, consistent with Gupta 2020's multi-study approach.
 
     Disk cache: result pickled next to main.py. Auto-invalidated when either
     METADATA_PATH or ABUNDANCE_PATH source file mtime is newer than the pickle.
-    Avoids the 40+ GB peak from recomputing on cold start / lru_cache miss.
     """
     import pickle
     _cache_path = Path(__file__).parent / "health_disease_genera.pkl"
@@ -4904,9 +4879,7 @@ def _compute_health_disease_genera() -> dict:
     else:
         n_dis_total = 0
 
-    # ── Hybrid selection: pooled Wilcoxon for breadth, RE Hedges' g for weight ──
-    # Selection = pooled NC vs all-disease Wilcoxon + BH-FDR (broad screening, consistent with literature)
-    # Weight = cross-study random-effects Hedges' g (cross-BioProject confounding control)
+    # Hybrid marker selection: pooled Wilcoxon for breadth, RE Hedges' g for weight
     re_lookup = {row["genus"]: row for row in all_results}
 
     nc_pool_keys_unique2 = list(dict.fromkeys(nc_pool_keys))
@@ -4956,12 +4929,7 @@ def _compute_health_disease_genera() -> dict:
     for r, q in zip(pooled_results, q_pooled):
         r["adjusted_p"] = float(q)
 
-    # ── Marker selection: Wilcoxon + log2fc + Gupta-inspired abundance floor ──
-    # Combined strategy:
-    #   (1) Pooled NC vs all-disease Mann-Whitney U + BH-FDR (adjusted_p<0.05)
-    #   (2) |log2FC| ≥ 0.5 (Gupta 2020 threshold)
-    #   (3) mean ≥ 1e-4 (0.01 %, Gupta 2020 minimum mean abundance)
-    # Weight = |log2FC| (per-BioProject Hedges'g kept in response for audit).
+    # Marker selection: Wilcoxon + log2FC + abundance floor
     detection_pct = 1e-3  # 0.001 % — matches Gupta detection threshold 1e-5 fraction
     mask_nc_bin = mat_nc_p > detection_pct
     mask_dis_bin = mat_dis_p > detection_pct
@@ -5027,7 +4995,7 @@ def _compute_health_disease_genera() -> dict:
     health_genera.sort(key=lambda x: x["weight"], reverse=True)
     disease_genera.sort(key=lambda x: x["weight"], reverse=True)
 
-    # Cap marker counts (Gupta 2020 used 7 MH + 43 MN; we keep up to 50 each)
+    # Cap marker counts to 50 per direction
     health_genera = health_genera[:50]
     disease_genera = disease_genera[:50]
 
@@ -5076,14 +5044,6 @@ def _compute_health_disease_genera() -> dict:
         R_MN_prime = 1.0
     R_MH_prime = max(R_MH_prime, 1.0)
     R_MN_prime = max(R_MN_prime, 1.0)
-
-    # Expose marker matrices for downstream paper-figure scripts (not used by API)
-    globals()["_LAST_MARKER_MATRICES"] = {
-        "h_mat_nc": h_mat,
-        "d_mat_nc": d_mat,
-        "h_mat_dis": _marker_matrix_pct_dis(health_genera) if health_genera else np.zeros((mat_dis_p.shape[0], 0)),
-        "d_mat_dis": _marker_matrix_pct_dis(disease_genera) if disease_genera else np.zeros((mat_dis_p.shape[0], 0)),
-    }
 
     _result = {
         "health_genera": health_genera,
@@ -5409,10 +5369,9 @@ async def analytics_summary(request: Request, token: str = ""):
 
 
 # ── Universal GBHI (/api/health_score) ──────────────────────────────────────
-# Frozen multinomial softmax classifier from gbhi_universal.pkl (Nature
-# Microbiology, Universal multinomial softmax layer). Single LogisticRegression
-# (lbfgs, C=1.0, class_weight=balanced) over 10 classes, fit on 98,847 labeled
-# samples. Feature vector z(s) ∈ R^352 =
+# Frozen multinomial softmax classifier from gbhi_universal.pkl. Single
+# LogisticRegression (lbfgs, C=1.0, class_weight=balanced) over 10 classes,
+# fit on 98,847 labeled samples. Feature vector z(s) ∈ R^352 =
 #   [ R_union (289 marker residuals) | 61 cov dummies + log10(length) | psi_universal ]
 # Covariate residualization β̂ fitted once on full 168k compendium (Wirbel 2019
 # batch-norm style; label-agnostic). Health(s) = P(NC|s) * 100.
@@ -5471,7 +5430,7 @@ def _gbhi_gupta_psi(G_pct: np.ndarray, mh: list[int], mn: list[int]) -> float:
     return val
 
 
-SUPP_TABLE6_XLSX = r"E:\microbiomap_clone\compendium_website\docs\NatureMicrobiology_LaTeX\supplementary_table6_gbhi_scores.xlsx"
+SUPP_TABLE6_XLSX = os.path.join(os.path.dirname(__file__), "..", "docs", "NatureMicrobiology_LaTeX", "supplementary_table6_gbhi_scores.xlsx")
 
 
 @lru_cache(maxsize=1)
@@ -5597,7 +5556,7 @@ class HealthScoreRequest(BaseModel):
 
 
 def _gbhi_tier(p_nc: float) -> str:
-    """Tier from P(NC). Cutoffs documented in code — align w/ paper Results.
+    """Tier from P(NC).
 
     high      : P(NC) * 100 >= 70  (NC training median ≈ 0.75)
     moderate  : 40 <= P(NC)*100 < 70
@@ -5698,7 +5657,7 @@ async def health_score(request: Request, req: HealthScoreRequest):
         if cat_map.get(pre) == val:
             dummies[i] = 1.0
 
-    # Training used log10(length+1) with median fill. Paper median ≈ 300 bp.
+    # Training used log10(length+1) with median fill (300 bp default).
     length = float(req.length) if req.length and req.length > 0 else 300.0
     log_len = np.float32(math.log10(length + 1.0))
 

@@ -21,3 +21,19 @@ def test_main_app_startup_populates_cache_audit_report(tmp_path, monkeypatch):
         assert len(report.seeded) == 20
         assert len(report.stale) == 0
         assert len(report.unknown) == 0
+
+
+def test_health_omits_cache_audit_fields_when_clean(tmp_path, monkeypatch):
+    monkeypatch.setenv("CACHE_AUDIT_HASH_FILE", str(tmp_path / ".h.json"))
+    if "main" in sys.modules:
+        del sys.modules["main"]
+    import main
+
+    with TestClient(main.app) as client:
+        r = client.get("/api/health")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "ok"
+        assert "stale_cache_warnings" not in body
+        assert body.get("seeded_count") == 20
+        assert "unknown_count" not in body

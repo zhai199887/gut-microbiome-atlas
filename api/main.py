@@ -1465,7 +1465,16 @@ def permanova_test(
 @limiter.limit("120/minute")
 def health(request: Request):
     """Health check."""
-    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+    body = {"status": "ok", "timestamp": datetime.now().isoformat()}
+    report = getattr(app.state, "cache_audit_report", None)
+    if report is not None:
+        if report.stale:
+            body["stale_cache_warnings"] = report.stale
+        if report.seeded:
+            body["seeded_count"] = len(report.seeded)
+        if report.unknown:
+            body["unknown_count"] = len(report.unknown)
+    return body
 
 
 @app.get("/api/filter-options",

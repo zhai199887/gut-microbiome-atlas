@@ -11,6 +11,7 @@ import inspect
 import json
 import re
 import textwrap
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -314,3 +315,17 @@ def reset_endpoint(name: str, prior_file: Path, audits: list[EndpointAudit]) -> 
     }
     prior_file.parent.mkdir(parents=True, exist_ok=True)
     prior_file.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+
+
+def run(app: Any, prior_file: Path) -> AuditReport:
+    """Top-level orchestration. Raises DuplicateCacheKeyError (and nothing else on purpose)."""
+    start = time.perf_counter()
+    audits = scan_endpoints(app)
+
+    detect_cache_key_collisions(audits)
+
+    prior = load_prior(prior_file)
+    report = compute_report(audits, prior)
+    persist(audits, prior_file)
+    report.elapsed_ms = (time.perf_counter() - start) * 1000.0
+    return report

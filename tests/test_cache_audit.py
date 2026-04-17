@@ -294,3 +294,44 @@ def test_reset_endpoint_raises_when_name_not_in_audits(seeded_hash_file):
     audits = [_tracked_audit("other", "v1", "zzz")]
     with pytest.raises(KeyError):
         reset_endpoint("disease_profile", seeded_hash_file, audits)
+
+
+from cache_audit import run
+
+
+def test_run_first_invocation_seeds_and_returns_report(tmp_hash_file):
+    app = _make_fake_app()
+    report = run(app, tmp_hash_file)
+    assert report.total == 3
+    assert report.tracked == 1
+    assert "foo" in report.seeded
+    assert "bar" in report.unknown
+    assert len(report.stale) == 0
+    assert report.elapsed_ms >= 0.0
+    raw = json.loads(tmp_hash_file.read_text())
+    assert "foo" in raw
+
+
+def test_run_second_invocation_sees_no_changes(tmp_hash_file):
+    app = _make_fake_app()
+    run(app, tmp_hash_file)
+    report = run(app, tmp_hash_file)
+    assert len(report.stale) == 0
+    assert len(report.seeded) == 0
+
+
+def test_run_raises_on_duplicate_cache_key(tmp_hash_file):
+    app = FastAPI()
+
+    @app.get("/a")
+    def a():
+        cache_key = "dup_v1"
+        return {}
+
+    @app.get("/b")
+    def b():
+        cache_key = "dup_v1"
+        return {}
+
+    with pytest.raises(DuplicateCacheKeyError):
+        run(app, tmp_hash_file)

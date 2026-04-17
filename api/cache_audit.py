@@ -8,9 +8,12 @@ from __future__ import annotations
 import ast
 import hashlib
 import inspect
+import json
 import re
 import textwrap
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Literal
 
 _VERSION_RE = re.compile(r"^([A-Za-z0-9_]+?)_v(\d+)(?::|$)")
@@ -236,3 +239,54 @@ def detect_cache_key_collisions(audits: list[EndpointAudit]) -> None:
                 f"{seen[key]} AND {a.fn_name}"
             )
         seen[key] = a.fn_name
+
+
+def load_prior(prior_file: Path) -> dict:
+    """Read the hash file. Return empty dict on missing/corrupted, not an error."""
+    try:
+        raw = prior_file.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    except OSError:
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return data
+
+
+def persist(audits: list[EndpointAudit], prior_file: Path) -> None:
+    """Upsert each trackable audit into the hash file, preserve existing entries not touched."""
+    existing = load_prior(prior_file)
+    out: dict = dict(existing)
+    out.setdefault("_meta", {
+        "seeded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "schema_version": 1,
+    })
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    for a in audits:
+        if a.status not in ("tracked", "source_unavailable"):
+            continue
+        if a.cache_key_name is None:
+            continue
+        prior_entry = existing.get(a.cache_key_name, {})
+        if a.status == "source_unavailable":
+            out[a.cache_key_name] = {
+                **prior_entry,
+                "source_status": "source_unavailable",
+                "last_seen_utc": now,
+            }
+        else:
+            out[a.cache_key_name] = {
+                "hash": a.current_hash,
+                "cache_key_version": a.version,
+                "source_status": "source",
+                "last_seen_utc": now,
+            }
+
+    prior_file.parent.mkdir(parents=True, exist_ok=True)
+    prior_file.write_text(json.dumps(out, indent=2), encoding="utf-8")

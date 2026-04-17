@@ -1,4 +1,5 @@
 """Unit tests for api/cache_audit.py pure functions."""
+import json
 import sys
 from pathlib import Path
 
@@ -229,3 +230,41 @@ def test_detect_collisions_ignores_non_tracked_status():
         EndpointAudit("/b", "GET", "b", "unknown"),
     ]
     detect_cache_key_collisions(audits)
+
+
+from cache_audit import persist, load_prior
+
+
+def test_load_prior_missing_file_returns_empty_dict(tmp_hash_file):
+    assert load_prior(tmp_hash_file) == {}
+
+
+def test_load_prior_corrupted_returns_empty_dict(tmp_hash_file):
+    tmp_hash_file.write_text("{ not valid json")
+    assert load_prior(tmp_hash_file) == {}
+
+
+def test_persist_writes_upsert_with_meta(tmp_hash_file, seeded_hash_file):
+    audits = [
+        _tracked_audit("network", "v1", "zzz999"),
+    ]
+    persist(audits, seeded_hash_file)
+    raw = json.loads(seeded_hash_file.read_text())
+    assert raw["_meta"]["schema_version"] == 1
+    assert "disease_profile" in raw
+    assert raw["network"]["hash"] == "zzz999"
+    assert raw["network"]["cache_key_version"] == "v1"
+
+
+def test_persist_preserves_hash_when_source_unavailable(seeded_hash_file):
+    audits = [
+        EndpointAudit(
+            path="/api/disease-profile", method="GET", fn_name="disease_profile",
+            status="source_unavailable", cache_key_name="disease_profile",
+            version="v1", current_hash="", source_status="source_unavailable",
+        ),
+    ]
+    persist(audits, seeded_hash_file)
+    raw = json.loads(seeded_hash_file.read_text())
+    assert raw["disease_profile"]["hash"] == "a7b3c1"
+    assert raw["disease_profile"]["source_status"] == "source_unavailable"
